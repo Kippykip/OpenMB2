@@ -1,0 +1,98 @@
+cmake_minimum_required(VERSION 3.16)
+project(OpenMB2 VERSION 0.1.0 LANGUAGES C)
+
+set(CMAKE_C_STANDARD 99)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+
+option(OPENMB2_FETCH_SDL "Download and build SDL2 if it isn't installed" ON)
+option(OPENMB2_BUILD_TOOLS "Build the command-line tools (mb2inspect)" ON)
+
+# Warnings for our own code only (not for a downloaded SDL).
+function(openmb2_warnings target)
+    if(MSVC)
+        target_compile_options(${target} PRIVATE /W4)
+        target_compile_definitions(${target} PRIVATE _CRT_SECURE_NO_WARNINGS)
+    else()
+        target_compile_options(${target} PRIVATE -Wall -Wextra)
+    endif()
+endfunction()
+
+# ---------------------------------------------------------------------------
+# Core library: file access, parsers and game data. No SDL, no GL, so the
+# tools and tests can use it on their own.
+# ---------------------------------------------------------------------------
+add_library(openmb2_core STATIC
+    src/core/config.c
+    src/core/log.c
+    src/core/vfs.c
+    src/game/level.c
+    src/game/params.c
+)
+target_include_directories(openmb2_core PUBLIC src)
+openmb2_warnings(openmb2_core)
+
+if(OPENMB2_BUILD_TOOLS)
+    add_executable(mb2inspect tools/mb2inspect.c)
+    target_link_libraries(mb2inspect PRIVATE openmb2_core)
+    openmb2_warnings(mb2inspect)
+endif()
+
+# ---------------------------------------------------------------------------
+# SDL2: Emscripten has its own port; elsewhere use an installed copy, or
+# download a static build when there isn't one (handy on Windows).
+# ---------------------------------------------------------------------------
+if(EMSCRIPTEN)
+    set(SDL2_TARGET "")
+elseif(NOT TARGET SDL2::SDL2)
+    find_package(SDL2 CONFIG QUIET)
+    if(NOT SDL2_FOUND AND OPENMB2_FETCH_SDL)
+        message(STATUS "SDL2 not found, downloading it")
+        include(FetchContent)
+        set(SDL_SHARED OFF CACHE BOOL "" FORCE)
+        set(SDL_STATIC ON CACHE BOOL "" FORCE)
+        set(SDL_TEST OFF CACHE BOOL "" FORCE)
+        FetchContent_Declare(SDL2
+            URL https://github.com/libsdl-org/SDL/releases/download/release-2.30.9/SDL2-2.30.9.tar.gz)
+        FetchContent_MakeAvailable(SDL2)
+    endif()
+endif()
+
+if(NOT EMSCRIPTEN)
+    if(TARGET SDL2::SDL2-static)
+        set(SDL2_TARGET SDL2::SDL2-static)
+    elseif(TARGET SDL2::SDL2)
+        set(SDL2_TARGET SDL2::SDL2)
+    else()
+        message(FATAL_ERROR "SDL2 is required. Install it or enable OPENMB2_FETCH_SDL.")
+    endif()
+endif()
+
+# ---------------------------------------------------------------------------
+# The game
+# ---------------------------------------------------------------------------
+add_executable(openmb2
+    src/main.c
+    src/platform/gl.c
+)
+target_link_libraries(openmb2 PRIVATE openmb2_core)
+openmb2_warnings(openmb2)
+
+if(EMSCRIPTEN)
+    target_compile_options(openmb2 PRIVATE -sUSE_SDL=2)
+    target_link_options(openmb2 PRIVATE -sUSE_SDL=2 -sMAX_WEBGL_VERSION=1 -sALLOW_MEMORY_GROWTH=1)
+    set_target_properties(openmb2 PROPERTIES SUFFIX ".html")
+else()
+    if(TARGET SDL2::SDL2main)
+        target_link_libraries(openmb2 PRIVATE SDL2::SDL2main)
+    endif()
+    target_link_libraries(openmb2 PRIVATE ${SDL2_TARGET})
+endif()
+
+# While the engine is young it keeps a console window on Windows, so the
+# log is visible. Set WIN32_EXECUTABLE on the target to hide it later.
+if(MINGW)
+    target_link_options(openmb2 PRIVATE -static -static-libgcc)
+    if(OPENMB2_BUILD_TOOLS)
+        target_link_options(mb2inspect PRIVATE -static -static-libgcc)
+    endif()
+endif()
