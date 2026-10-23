@@ -138,10 +138,27 @@ static void scan_child(const char *relative, const char *name, bool is_dir, int 
 
 #ifdef _WIN32
 
+/*
+ * Windows: file names are UTF-16, and the "A" functions would turn any
+ * character outside the ANSI code page into '?' (Levels0r has a level
+ * named with a Cyrillic letter). So we use the wide functions and keep
+ * every path in UTF-8 inside the engine.
+ */
+static bool utf8_to_wide(const char *utf8, wchar_t *out, int out_count)
+{
+    return MultiByteToWideChar(CP_UTF8, 0, utf8, -1, out, out_count) > 0;
+}
+
+static bool wide_to_utf8(const wchar_t *wide, char *out, int out_size)
+{
+    return WideCharToMultiByte(CP_UTF8, 0, wide, -1, out, out_size, NULL, NULL) > 0;
+}
+
 static void scan_folder(const char *relative, int depth)
 {
     char pattern[VFS_MAX_PATH];
-    WIN32_FIND_DATAA found;
+    wchar_t wide_pattern[VFS_MAX_PATH];
+    WIN32_FIND_DATAW found;
     HANDLE handle;
 
     if (depth > VFS_MAX_DEPTH)
@@ -151,15 +168,27 @@ static void scan_folder(const char *relative, int depth)
         snprintf(pattern, sizeof(pattern), "%s\\*", g_vfs.root);
     else
         snprintf(pattern, sizeof(pattern), "%s\\%s\\*", g_vfs.root, relative);
+    if (!utf8_to_wide(pattern, wide_pattern, VFS_MAX_PATH))
+        return;
 
-    handle = FindFirstFileA(pattern, &found);
+    handle = FindFirstFileW(wide_pattern, &found);
     if (handle == INVALID_HANDLE_VALUE)
         return;
     do {
+        char name[VFS_MAX_PATH];
         bool is_dir = (found.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
-        scan_child(relative, found.cFileName, is_dir, depth);
-    } while (FindNextFileA(handle, &found));
+        if (wide_to_utf8(found.cFileName, name, sizeof(name)))
+            scan_child(relative, name, is_dir, depth);
+    } while (FindNextFileW(handle, &found));
     FindClose(handle);
+}
+
+static FILE *open_file(const char *path)
+{
+    wchar_t wide_path[VFS_MAX_PATH];
+    if (!utf8_to_wide(path, wide_path, VFS_MAX_PATH))
+        return NULL;
+    return _wfopen(wide_path, L"rb");
 }
 
 #else
@@ -188,6 +217,11 @@ static void scan_folder(const char *relative, int depth)
         scan_child(relative, item->d_name, S_ISDIR(info.st_mode), depth);
     }
     closedir(dir);
+}
+
+static FILE *open_file(const char *path)
+{
+    return fopen(path, "rb");
 }
 
 #endif
@@ -322,7 +356,7 @@ void *vfs_read(const char *game_path, size_t *out_size)
     if (!vfs_exists(game_path) || !vfs_real_path(game_path, path, sizeof(path)))
         return NULL;
 
-    file = fopen(path, "rb");
+    file = open_file(path);
     if (file == NULL)
         return NULL;
 

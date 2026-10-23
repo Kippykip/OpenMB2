@@ -19,11 +19,55 @@
 #include <SDL_opengles2.h>
 #include <stdbool.h>
 
-#define GL_FUNCTIONS(X)                    \
-    X(PFNGLGETSTRINGPROC, GetString)       \
-    X(PFNGLVIEWPORTPROC, Viewport)         \
-    X(PFNGLCLEARCOLORPROC, ClearColor)     \
-    X(PFNGLCLEARPROC, Clear)
+#define GL_FUNCTIONS(X)                                        \
+    X(PFNGLGETSTRINGPROC, GetString)                           \
+    X(PFNGLGETERRORPROC, GetError)                             \
+    X(PFNGLVIEWPORTPROC, Viewport)                             \
+    X(PFNGLCLEARCOLORPROC, ClearColor)                         \
+    X(PFNGLCLEARPROC, Clear)                                   \
+    X(PFNGLENABLEPROC, Enable)                                 \
+    X(PFNGLDISABLEPROC, Disable)                               \
+    X(PFNGLBLENDFUNCPROC, BlendFunc)                           \
+    X(PFNGLDEPTHMASKPROC, DepthMask)                           \
+    X(PFNGLDEPTHFUNCPROC, DepthFunc)                           \
+    X(PFNGLCULLFACEPROC, CullFace)                             \
+    X(PFNGLFRONTFACEPROC, FrontFace)                           \
+    X(PFNGLCREATESHADERPROC, CreateShader)                     \
+    X(PFNGLSHADERSOURCEPROC, ShaderSource)                     \
+    X(PFNGLCOMPILESHADERPROC, CompileShader)                   \
+    X(PFNGLGETSHADERIVPROC, GetShaderiv)                       \
+    X(PFNGLGETSHADERINFOLOGPROC, GetShaderInfoLog)             \
+    X(PFNGLDELETESHADERPROC, DeleteShader)                     \
+    X(PFNGLCREATEPROGRAMPROC, CreateProgram)                   \
+    X(PFNGLATTACHSHADERPROC, AttachShader)                     \
+    X(PFNGLBINDATTRIBLOCATIONPROC, BindAttribLocation)         \
+    X(PFNGLLINKPROGRAMPROC, LinkProgram)                       \
+    X(PFNGLGETPROGRAMIVPROC, GetProgramiv)                     \
+    X(PFNGLGETPROGRAMINFOLOGPROC, GetProgramInfoLog)           \
+    X(PFNGLDELETEPROGRAMPROC, DeleteProgram)                   \
+    X(PFNGLUSEPROGRAMPROC, UseProgram)                         \
+    X(PFNGLGETUNIFORMLOCATIONPROC, GetUniformLocation)         \
+    X(PFNGLUNIFORM1IPROC, Uniform1i)                           \
+    X(PFNGLUNIFORM1FPROC, Uniform1f)                           \
+    X(PFNGLUNIFORM2FPROC, Uniform2f)                           \
+    X(PFNGLUNIFORM3FPROC, Uniform3f)                           \
+    X(PFNGLUNIFORM4FVPROC, Uniform4fv)                         \
+    X(PFNGLUNIFORMMATRIX4FVPROC, UniformMatrix4fv)             \
+    X(PFNGLGENBUFFERSPROC, GenBuffers)                         \
+    X(PFNGLBINDBUFFERPROC, BindBuffer)                         \
+    X(PFNGLBUFFERDATAPROC, BufferData)                         \
+    X(PFNGLDELETEBUFFERSPROC, DeleteBuffers)                   \
+    X(PFNGLVERTEXATTRIBPOINTERPROC, VertexAttribPointer)       \
+    X(PFNGLENABLEVERTEXATTRIBARRAYPROC, EnableVertexAttribArray) \
+    X(PFNGLDRAWARRAYSPROC, DrawArrays)                         \
+    X(PFNGLGENTEXTURESPROC, GenTextures)                       \
+    X(PFNGLBINDTEXTUREPROC, BindTexture)                       \
+    X(PFNGLACTIVETEXTUREPROC, ActiveTexture)                   \
+    X(PFNGLTEXIMAGE2DPROC, TexImage2D)                         \
+    X(PFNGLTEXPARAMETERIPROC, TexParameteri)                   \
+    X(PFNGLDELETETEXTURESPROC, DeleteTextures)                 \
+    X(PFNGLPIXELSTOREIPROC, PixelStorei)                       \
+    X(PFNGLREADPIXELSPROC, ReadPixels)
 
 typedef struct GlFunctions {
 #define X(type, name) type name;

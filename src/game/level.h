@@ -24,7 +24,8 @@
  *   2      y        signed grid position (height / layer)
  *   3      z        signed grid position (row)
  *   4-7    colour   always ff ff ff ff so far; byte order not confirmed
- *   8-19   unknown  kept in raw[] until they are decoded
+ *   8-19   brick model, rotation, texture and tile: see scene.c and
+ *          docs/formats.md. Kept in raw[].
  */
 #ifndef OPENMB2_LEVEL_H
 #define OPENMB2_LEVEL_H

@@ -11,13 +11,15 @@ the Community Edition or one of the unboxed builds).
 
 ## Status
 
-Milestone 1 of 6: the engine skeleton.
+Milestone 2 of 6: a 3D level viewer.
 
 - [x] Reads the game folder, with Windows-style file names on any system
 - [x] Parses the game's config files (menus, boards, pads, prizes, ...)
 - [x] Reads level files and `params.txt`
 - [x] Opens a window with an OpenGL ES 2 (or OpenGL 2.1) context
-- [ ] Milestone 2: draw a level in 3D (meshes, textures, camera)
+- [x] Loads DirectX `.x` models (text and binary) and the game's textures
+- [x] Milestone 2: draws any level in 3D with its board, bricks and camera
+- [ ] Animated models, the sky background and non-brick objects
 - [ ] Milestone 3: playable core (bat, ball, bricks, score, sound, music)
 - [ ] Milestone 4: prizes, cannons, teleports, water/fire, animals
 - [ ] Milestone 5: menus, fonts, languages, options, saves
@@ -30,8 +32,19 @@ openmb2 --game "G:\Games\Magic Ball 2 Community Edition"
 ```
 
 or copy `openmb2.exe` into the game folder and run it from there. For now
-it opens a window, logs what it found, and quits with Escape.
-Alt+Enter toggles fullscreen.
+it is a level viewer:
+
+| Key | Does |
+| --- | --- |
+| Left / Right | previous / next level |
+| Page Up / Page Down | previous / next level pack |
+| mouse drag, wheel | turn and zoom the camera |
+| Space | reset the camera |
+| Alt+Enter | fullscreen |
+| Escape | quit |
+
+`--level "Levels1/001_Vesi.mb2"` starts on a level, and
+`--screenshot shot.bmp` saves the first frame and quits.
 
 `mb2inspect` looks inside a game folder:
 
@@ -68,13 +81,22 @@ cmake --build build
 src/core/      no SDL or GL here; shared with the tools
   vfs.c        case-insensitive access to the game folder
   config.c     parser for the game's { key: value } files
+  xfile.c      DirectX .x model loader
+  image.c      texture decoding (jpg/png/bmp, DDS)
+  matrix.c     Direct3D-style vectors and matrices
   log.c        logging
 src/game/      game data and (later) game logic
   level.c      .mb2 level loader
+  board.c      board and background files
+  textures.c   textureset.txt and texture scripts
+  scene.c      builds a level's geometry (bricks baked like the original)
   params.c     params.txt settings
+src/render/    OpenGL ES 2 renderer
 src/platform/  SDL and OpenGL glue
   gl.c         loads GL functions at runtime
+src/viewer.c   the level viewer
 src/main.c     startup and main loop
+src/third_party/ stb_image (public domain / MIT)
 tools/         command-line tools
 docs/          file format notes
 ```

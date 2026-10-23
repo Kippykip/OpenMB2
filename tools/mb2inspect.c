@@ -7,6 +7,7 @@
  *   mb2inspect <game folder> scan            parse every config and level
  *   mb2inspect <game folder> config <file>   print one config file
  *   mb2inspect <game folder> level <file>    print one level
+ *   mb2inspect <game folder> mesh <file>     print one .x model
  *   mb2inspect <game folder> ls [folder]     list a folder
  *
  * "scan" doubles as a test of the loaders: it reports every file that
@@ -15,6 +16,7 @@
 #include "../src/core/config.h"
 #include "../src/core/log.h"
 #include "../src/core/vfs.h"
+#include "../src/core/xfile.h"
 #include "../src/game/level.h"
 
 #include <stdio.h>
@@ -100,6 +102,7 @@ static void walk_files(const char *folder, FileFn fn, void *user)
 typedef struct ScanStats {
     int configs, config_failures;
     int levels, level_failures, objects;
+    int meshes, mesh_failures;
     int missing_refs;
     int type_counts[256];
 } ScanStats;
@@ -166,11 +169,26 @@ static void scan_level(const char *path, ScanStats *stats)
     level_free(&level);
 }
 
+static void scan_mesh(const char *path, ScanStats *stats)
+{
+    XModel model;
+
+    stats->meshes++;
+    if (!xfile_load(&model, path)) {
+        printf("  FAILED to parse model %s\n", path);
+        stats->mesh_failures++;
+        return;
+    }
+    xfile_free(&model);
+}
+
 static void scan_file(const char *path, void *user)
 {
     ScanStats *stats = user;
 
-    if (has_extension(path, ".mb2"))
+    if (has_extension(path, ".x"))
+        scan_mesh(path, stats);
+    else if (has_extension(path, ".mb2"))
         scan_level(path, stats);
     else if (has_extension(path, ".txt") && !starts_with_folder(path, "languages"))
         scan_config(path, stats); /* language files are plain line lists */
@@ -188,6 +206,8 @@ static int command_scan(void)
            stats.config_failures);
     printf("levels:  %d parsed, %d failed, %d objects\n", stats.levels - stats.level_failures,
            stats.level_failures, stats.objects);
+    printf("models:  %d parsed, %d failed\n", stats.meshes - stats.mesh_failures,
+           stats.mesh_failures);
     printf("missing file references: %d\n", stats.missing_refs);
     printf("object types:");
     for (type = 0; type < 256; type++) {
@@ -195,7 +215,7 @@ static int command_scan(void)
             printf(" 0x%02x=%d", type, stats.type_counts[type]);
     }
     printf("\n");
-    return stats.config_failures + stats.level_failures > 0 ? 1 : 0;
+    return stats.config_failures + stats.level_failures + stats.mesh_failures > 0 ? 1 : 0;
 }
 
 /* ------------------------------------------------------------------------ */
@@ -248,6 +268,27 @@ static int command_level(const char *path)
     return 0;
 }
 
+static int command_mesh(const char *path)
+{
+    XModel model;
+    int i;
+
+    if (!xfile_load(&model, path))
+        return 1;
+    printf("%d triangles, bounds (%g %g %g) to (%g %g %g)\n", model.vertex_count / 3,
+           model.min[0], model.min[1], model.min[2], model.max[0], model.max[1], model.max[2]);
+    for (i = 0; i < model.material_count; i++) {
+        const XMaterial *m = &model.materials[i];
+        printf("material %d: diffuse %.2f %.2f %.2f %.2f power %g texture '%s'\n", i,
+               m->diffuse[0], m->diffuse[1], m->diffuse[2], m->diffuse[3], m->power, m->texture);
+    }
+    for (i = 0; i < model.part_count; i++)
+        printf("part %d: frame '%s', material %d, %d triangles\n", i, model.parts[i].frame,
+               model.parts[i].material, model.parts[i].vertex_count / 3);
+    xfile_free(&model);
+    return 0;
+}
+
 static void print_child(const char *name, bool is_dir, void *user)
 {
     (void)user;
@@ -262,6 +303,7 @@ static void usage(void)
             "usage: mb2inspect <game folder> scan\n"
             "       mb2inspect <game folder> config <file>\n"
             "       mb2inspect <game folder> level <file>\n"
+            "       mb2inspect <game folder> mesh <file>\n"
             "       mb2inspect <game folder> ls [folder]\n");
 }
 
@@ -284,6 +326,8 @@ int main(int argc, char **argv)
         result = command_config(argv[3]);
     } else if (strcmp(command, "level") == 0 && argc >= 4) {
         result = command_level(argv[3]);
+    } else if (strcmp(command, "mesh") == 0 && argc >= 4) {
+        result = command_mesh(argv[3]);
     } else if (strcmp(command, "ls") == 0) {
         result = vfs_list(argc >= 4 ? argv[3] : "", print_child, NULL) > 0 ? 0 : 1;
     } else {

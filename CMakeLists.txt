@@ -22,14 +22,27 @@ endfunction()
 # Core library: file access, parsers and game data. No SDL, no GL, so the
 # tools and tests can use it on their own.
 # ---------------------------------------------------------------------------
+# Vendored libraries, built without our warning flags.
+add_library(openmb2_third_party STATIC src/third_party/stb_image_impl.c)
+
 add_library(openmb2_core STATIC
     src/core/config.c
+    src/core/image.c
     src/core/log.c
+    src/core/matrix.c
     src/core/vfs.c
+    src/core/xfile.c
+    src/game/board.c
     src/game/level.c
     src/game/params.c
+    src/game/scene.c
+    src/game/textures.c
 )
 target_include_directories(openmb2_core PUBLIC src)
+target_link_libraries(openmb2_core PUBLIC openmb2_third_party)
+if(NOT MSVC)
+    target_link_libraries(openmb2_core PUBLIC m)
+endif()
 openmb2_warnings(openmb2_core)
 
 if(OPENMB2_BUILD_TOOLS)
@@ -73,7 +86,9 @@ endif()
 # ---------------------------------------------------------------------------
 add_executable(openmb2
     src/main.c
+    src/viewer.c
     src/platform/gl.c
+    src/render/render.c
 )
 target_link_libraries(openmb2 PRIVATE openmb2_core)
 openmb2_warnings(openmb2)

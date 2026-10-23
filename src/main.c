@@ -4,12 +4,14 @@
 /*
  * main.c - OpenMB2 entry point.
  *
- * Milestone 1: find the user's game folder, read their settings, open a
- * window with an OpenGL ES 2 context and run the main loop. Nothing is
- * drawn yet apart from a clear colour; the loaders are exercised at
- * startup so problems show up in the log.
+ * Finds the user's game folder, reads their settings, opens a window with
+ * an OpenGL ES 2 context and runs the main loop. For now (milestone 2)
+ * the loop runs the level viewer, see viewer.h.
  *
- * Usage: openmb2 [--game <folder>] [--debug]
+ * Usage: openmb2 [--game <folder>] [--level <file>] [--screenshot <file.bmp>] [--debug]
+ *
+ *   --level       start on this level, e.g. "Levels1/001_Vesi.mb2"
+ *   --screenshot  draw one frame, save it as a .bmp and quit (for testing)
  */
 #include "core/config.h"
 #include "core/log.h"
@@ -17,6 +19,7 @@
 #include "game/level.h"
 #include "game/params.h"
 #include "platform/gl.h"
+#include "viewer.h"
 
 #include <SDL.h>
 #include <stdio.h>
@@ -38,6 +41,7 @@ typedef struct App {
     SDL_GLContext gl_context;
     Params params;
     bool running;
+    const char *screenshot_path;
 } App;
 
 static App g_app;
@@ -198,6 +202,35 @@ static void toggle_fullscreen(void)
 /* Main loop                                                                */
 /* ------------------------------------------------------------------------ */
 
+/* Save the frame just drawn (before swapping) as a .bmp. */
+static void save_screenshot(const char *path, int width, int height)
+{
+    SDL_Surface *surface = SDL_CreateRGBSurfaceWithFormat(0, width, height, 32,
+                                                          SDL_PIXELFORMAT_ABGR8888);
+    int y;
+
+    if (surface == NULL)
+        return;
+    gl.PixelStorei(GL_PACK_ALIGNMENT, 1);
+    gl.ReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, surface->pixels);
+    /* GL rows go bottom to top; flip them. */
+    for (y = 0; y < height / 2; y++) {
+        Uint8 *a = (Uint8 *)surface->pixels + (size_t)y * surface->pitch;
+        Uint8 *b = (Uint8 *)surface->pixels + (size_t)(height - 1 - y) * surface->pitch;
+        int x;
+        for (x = 0; x < surface->pitch; x++) {
+            Uint8 t = a[x];
+            a[x] = b[x];
+            b[x] = t;
+        }
+    }
+    if (SDL_SaveBMP(surface, path) == 0)
+        log_info("saved %s", path);
+    else
+        log_error("can't save %s: %s", path, SDL_GetError());
+    SDL_FreeSurface(surface);
+}
+
 static void handle_event(const SDL_Event *event)
 {
     switch (event->type) {
@@ -209,8 +242,11 @@ static void handle_event(const SDL_Event *event)
             g_app.running = false;
         else if (event->key.keysym.sym == SDLK_RETURN && (event->key.keysym.mod & KMOD_ALT))
             toggle_fullscreen();
+        else
+            viewer_handle_event(event);
         break;
     default:
+        viewer_handle_event(event);
         break;
     }
 }
@@ -224,9 +260,11 @@ static void run_frame(void)
         handle_event(&event);
 
     SDL_GL_GetDrawableSize(g_app.window, &width, &height);
-    gl.Viewport(0, 0, width, height);
-    gl.ClearColor(0.05f, 0.08f, 0.20f, 1.0f);
-    gl.Clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    viewer_draw(width, height, (float)SDL_GetTicks());
+    if (g_app.screenshot_path != NULL) {
+        save_screenshot(g_app.screenshot_path, width, height);
+        g_app.running = false;
+    }
     SDL_GL_SwapWindow(g_app.window);
 
 #ifdef __EMSCRIPTEN__
@@ -245,6 +283,7 @@ static void show_error(const char *message)
 
 static void shutdown_app(void)
 {
+    viewer_shutdown();
     if (g_app.gl_context != NULL)
         SDL_GL_DeleteContext(g_app.gl_context);
     if (g_app.window != NULL)
@@ -256,11 +295,16 @@ static void shutdown_app(void)
 int main(int argc, char **argv)
 {
     const char *game_folder = NULL;
+    const char *start_level = NULL;
     int i;
 
     for (i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--game") == 0 && i + 1 < argc)
             game_folder = argv[++i];
+        else if (strcmp(argv[i], "--level") == 0 && i + 1 < argc)
+            start_level = argv[++i];
+        else if (strcmp(argv[i], "--screenshot") == 0 && i + 1 < argc)
+            g_app.screenshot_path = argv[++i];
         else if (strcmp(argv[i], "--debug") == 0)
             log_set_level(LOG_DEBUG);
     }
@@ -284,6 +328,12 @@ int main(int argc, char **argv)
 
     if (!create_window()) {
         show_error("Couldn't open a window with OpenGL support.");
+        shutdown_app();
+        return 1;
+    }
+
+    if (!viewer_init(g_app.window, start_level)) {
+        show_error("Couldn't start the level viewer. See the log for details.");
         shutdown_app();
         return 1;
     }

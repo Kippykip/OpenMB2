@@ -71,7 +71,7 @@ Config without a class. Keys: `soundvolume`, `musicvolume` (0-100),
 `infravision`, `act` (online activation; unused), `joystick`, `msensivity`.
 Loaded by `src/game/params.c`.
 
-## Levels, `.mb2` (layout confirmed, record fields partly guessed)
+## Levels, `.mb2` (layout confirmed, brick fields read from the exe)
 
 | Offset | Size | Contents |
 | --- | --- | --- |
@@ -87,9 +87,20 @@ Object record:
 | Byte | Meaning |
 | --- | --- |
 | 0 | type. `0x00`-`0x38` bricks; others match the hidden editor's tool codes (`0x84`/`0x88` teleport in/out, `0x90` fire, `0x94` water, `0xa0` cannon, `0xa4` fireworks, `0xb8` sheep, `0xbc` elk, `0xc0` ostrich, `0xc8` camel, `0xca` giraffe, `0xce` rabbit, `0xdc` elephant, `0xde` crocodile...) |
-| 1, 2, 3 | signed grid position x, y, z (guess: x across, y height, z rows). No two objects in a level share a position. |
+| 1, 2, 3 | signed grid position x, y, z: x across, y up, z away from the bat. The brick is placed at (x − 0.01, y, z). No two objects in a level share a position. |
 | 4-7 | colour, always `ff ff ff ff` so far |
-| 8-19 | unknown. Byte 12 varies by brick (0x06, 0x08, 0x20, 0x28...), byte 15 looks like a tile index (0x23, 0x33, 0x44 = column/row in an 8×8 tile sheet?). To be decoded in milestone 2. |
+| 8 | flags. `0x80` adds an overlay model `Meshes/<model>dophgt<height>.x` drawn with texture index byte 14 + 1 and tile byte 16; `0x20` / `0x40` mirror the overlay's U / V. Always 0 in the levels checked so far. |
+| 9 | rotation bits, applied about X, then Y, then Z, then moved into place: `0x01` X 90°, `0x02` X 180°, `0x04` Y 22.5°, `0x08` Y 45°, `0x10` Y 90°, `0x20` Y 180°, `0x40` Z 90°, `0x80` Z 180° |
+| 10, 11 | unknown |
+| 12 | model number: `Meshes/<n>.x` |
+| 13 | height in layers. 1 uses `Meshes/<n>.x`, h > 1 uses `Meshes/<n>height<h>.x` (e.g. `0HEIGHT2.X`) |
+| 14 | texture script index, in `registertexture` order in the level's texture set (stock: 0 t_fake, 1 t_lighting, 2 t_water, 3 t_interface, 4-9 t_tileset1-6, 10 t_billboard, ...) |
+| 15 | tile in the texture sheet: column in the high nibble, row in the low nibble. UVs become `(u + column) × xfactor`, `(v + row) × yfactor`. |
+| 16 | overlay tile (see byte 8) |
+| 17-19 | unknown |
+
+The original bakes every brick into world space when the level loads
+(rotate, translate, remap UVs) and draws all bricks of one texture together.
 
 Loader: `src/game/level.c`. Dump one with `mb2inspect <folder> level <file>`.
 
@@ -107,11 +118,71 @@ All music is one tracker module, `Music/mb01.mo3`. Each cue file
 (`MB0`-`MB3`, `MENU`, `ENTER`, `INTRO`) gives a start `order:` and `row:`
 in it. OpenMB2 will play it with libopenmpt, which reads MO3.
 
+## Texture sets and scripts (confirmed, flag meanings partly guessed)
+
+`textureset.txt` holds the scene light (`lightdir: 0 -4 1`, and
+`ambientcolor`, `diffusecolor`, `specularcolor` as hex ARGB) and a list of
+`registertexture:` script paths. A script looks like:
+
+```
+texture
+{
+  texture: tileset01.jpg     image in Textures/
+  xfactor: 0.125             tile width in UV units (8 tiles across)
+  yfactor: 0.125
+  bricktexture               flags, see below
+  deletedead
+}
+```
+
+Flags seen: `alpha` (blended), `zdisable` (no depth writes, a guess),
+`twosided`, `notlighted`, `billboard`, `interface`, `bricktexture`,
+`deletedead`, `specular`, `faketexture` (no image), `updated` (drawn at
+runtime). `movex`/`movey` scroll the texture and `scalex`/`scaley`
+appear on the water texture; their units aren't confirmed yet.
+
+The original registers every file in `Textures/` (not subfolders) at
+startup. To load an image it strips the extension and tries `.png`,
+`.dds`, `.jpg`, `.bmp` in `Textures/`. Direct3D stretches every image to
+power-of-two sides, and OpenMB2 does the same. `tileset04.dds` is DXT5.
+
+## Boards and backgrounds (confirmed)
+
+Board files: shape flag `rect`, `round` or `compaund`; `halfwidth`,
+`halfheight`, `radius`, `batline`; `scalex` multiplies halfwidth and
+radius, `scalez` multiplies halfheight and batline; `camera: <look-at z>
+<distance>`; `skinmesh:` a model in `SkinMeshes/`; `randomizetexture`
+replaces the texture of the model's `Doska` frame with a random
+`Board/Square|Round|SemicircularNN.jpg` (NN = rand() % 10).
+
+Background files only have `skinmesh:` (the sky sphere `fon.x`) and an
+optional `randomizetexture`, which picks `BG/bgNN.jpg` (NN = rand() % 28).
+`bgnone.txt` has no `randomizetexture`, and `fon.x` names `01.jpg`, which
+isn't in `Textures/`. What the original shows then is still to be checked.
+
+## Camera (confirmed)
+
+The camera orbits the point (0, 0, look-at z) from the board file. At the
+start of a level: yaw 0, pitch 50° (0.8727 rad), roll 0.05, zoom 1.
+Eye = (0, 0, −distance × zoom) turned by `YawPitchRoll(yaw, pitch, roll)`,
+view = `LookAtLH(eye, (0, 0, look-at z), up (0, 1, 0))`. Projection is
+`PerspectiveFovLH(45°, aspect 1.0, near 1, far 1000)` in 4:3 modes, so
+the picture is stretched to the screen. The intro flies in along one of 15
+built-in spline paths (rand() % 15); OpenMB2 doesn't do that yet.
+
+## Models, `.x` (confirmed)
+
+DirectX `.x` files, `xof 0303txt 0032` (26 files, mostly `Meshes/`) and
+`xof 0303bin 0032` (53 files, mostly `SkinMeshes/`). The loader
+(`src/core/xfile.c`) reads both, applies the frame hierarchy and flattens
+each model to triangles grouped by material. Skin weights and animation
+sets are skipped for now. Frame names matter: boards have `Doska` (the
+floor) and `Stenki` (the walls).
+
 ## Still to look at
 
-- DirectX `.x` meshes, text and binary, with skinning and animation.
-- Texture definition flags (`bricktexture`, `deletedead`, `billboard`,
-  `zdisable`, `xfactor`/`yfactor` tile sizes, `movex`/`scaley` scrolling).
+- Animation sets in `SkinMeshes/` (bats, animals, prizes).
+- What brick record bytes 10, 11, 17-19 do, and the non-brick objects.
 - Font layout files in `Text/`.
 - Ball physics, prize effects and scoring: these live in the original exe,
   and will be checked there one function at a time.
