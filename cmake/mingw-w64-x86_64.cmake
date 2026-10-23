@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
 # Cross-compile for 64-bit Windows from Linux with MinGW-w64:
 #   cmake -S . -B build-win -DCMAKE_TOOLCHAIN_FILE=cmake/mingw-w64-x86_64.cmake
 set(CMAKE_SYSTEM_NAME Windows)

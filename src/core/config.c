@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later */
+/* Copyright (C) 2026 the OpenMB2 contributors */
+
 #include "config.h"
 #include "log.h"
 #include "vfs.h"

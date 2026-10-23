@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later */
+/* Copyright (C) 2026 the OpenMB2 contributors */
+
 /*
  * config.h - parser for the game's text definition files.
  *

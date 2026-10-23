@@ -81,3 +81,12 @@ docs/          file format notes
 
 The code aims to be easy to read: one job per file, plain C99, comments
 that say *why*. See `docs/formats.md` for what's known about the data files.
+
+## Licence
+
+OpenMB2 is free software under the GNU General Public License, version 2 or
+(at your option) any later version. See `LICENSE`.
+
+This licence covers the OpenMB2 code only. Magic Ball 2's own files (levels,
+models, textures, sounds, music) belong to their original owners and are not
+part of this project.

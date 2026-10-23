@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later */
+/* Copyright (C) 2026 the OpenMB2 contributors */
+
 /*
  * mb2inspect - look inside a Magic Ball 2 game folder from the command line.
  *
