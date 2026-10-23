@@ -150,6 +150,16 @@ texture set registers them, setting each texture's states as it goes
 Glass is tileset 4, so bricks from tilesets 5 and 6 drawn later cover
 glass in front of them, while tilesets 1 to 3 show through it.
 
+## Music (player 0x425360)
+
+All the tunes are in one module, Music/mb01.mo3, played with BASS. Each
+Music/*.txt names the module and where its tune starts (`order:`, `row:`);
+the tune then loops by itself through the pattern jumps in the module.
+mb0 to mb3 are the level tunes; menu, enter and intro the others. A level
+starts a random one of the four (rand() % 4), and F6 moves on to the next
+(0x41bfe8). The volume is params.txt's musicvolume. OpenMB2 plays the
+module with libopenmpt.
+
 ## Lives and score
 
 A new game starts with 3 lives and score 0. Losing the last ball loses a

@@ -55,6 +55,7 @@ static struct {
     Play play;
     bool playing;
     int score, lives;  /* carried from level to level */
+    int music;         /* which level tune is playing, 0-3 */
     XModel bat_model, ball_model;
     RenderMesh background, board, bricks, bat, ball;
     RenderLight light;
@@ -315,6 +316,15 @@ static void update_title(void)
     }
 }
 
+/* The level tunes are Music/mb0.txt to mb3.txt (0x41474f, 0x41c00a). */
+static void play_level_music(int tune)
+{
+    char path[32];
+    v.music = (tune % 4 + 4) % 4;
+    snprintf(path, sizeof(path), "Music/mb%d.txt", v.music);
+    audio_play_music(path);
+}
+
 static void load_level(int pack, int level)
 {
     const Pack *p;
@@ -345,6 +355,8 @@ static void load_level(int pack, int level)
     memcpy(v.light.ambient, ts->ambient, sizeof(v.light.ambient));
     memcpy(v.light.diffuse, ts->diffuse, sizeof(v.light.diffuse));
     reset_camera();
+    /* Like the original, each level starts one of the four tunes at random. */
+    play_level_music(rand());
 
     if (play_start(&v.play, &v.scene, v.score, v.lives, v.options.mouse_sensitivity)) {
         v.play.sound = play_sound;
@@ -430,6 +442,9 @@ void play_screen_handle_event(const SDL_Event *event)
         case SDLK_PAGEDOWN: jump_to_level(v.pack + 1, 0); break;
         case SDLK_PAGEUP: jump_to_level(v.pack - 1, 0); break;
         case SDLK_SPACE: reset_camera(); break;
+        case SDLK_F6: /* like the original: the next tune */
+            play_level_music(v.music + 1);
+            break;
         case SDLK_F7: /* like the original: a new random background */
             if (v.scene_loaded) {
                 scene_randomize_background(&v.scene, rand());

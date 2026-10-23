@@ -27,6 +27,7 @@ add_library(openmb2_third_party STATIC
     src/third_party/stb_image_impl.c
     src/third_party/stb_vorbis_impl.c
 )
+target_include_directories(openmb2_third_party PRIVATE src/third_party)
 
 add_library(openmb2_core STATIC
     src/core/config.c
@@ -97,6 +98,9 @@ add_executable(openmb2
 )
 target_link_libraries(openmb2 PRIVATE openmb2_core)
 openmb2_warnings(openmb2)
+
+include(cmake/libopenmpt.cmake)
+target_link_libraries(openmb2 PRIVATE ${LIBOPENMPT_TARGET})
 
 if(EMSCRIPTEN)
     target_compile_options(openmb2 PRIVATE -sUSE_SDL=2)

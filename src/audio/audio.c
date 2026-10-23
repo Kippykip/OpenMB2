@@ -3,7 +3,10 @@
 
 #include "audio.h"
 #include "../core/log.h"
+#include "../core/config.h"
 #include "../core/vfs.h"
+
+#include <libopenmpt/libopenmpt.h>
 
 #include <SDL.h>
 #include <stdio.h>
@@ -37,6 +40,10 @@ static struct {
     Sound sounds[MAX_SOUNDS];
     int sound_count;
     Voice voices[MAX_VOICES];
+    int music_master;          /* 0-256 */
+    openmpt_module *music;     /* NULL when no music is playing */
+    char music_file[96];       /* the module it was loaded from */
+    int16_t music_buffer[2048 * 2];
 } a;
 
 static short sample_at(const Sound *s, int frame, int channel)
@@ -52,8 +59,15 @@ static void mix(void *user, Uint8 *stream, int bytes)
     int frames = bytes / 4, i, v;
 
     (void)user;
+    /* The music goes under the sound effects. */
+    if (a.music != NULL && frames <= 2048)
+        openmpt_module_read_interleaved_stereo(a.music, OUTPUT_RATE, (size_t)frames, a.music_buffer);
+    else
+        memset(a.music_buffer, 0, sizeof(a.music_buffer));
     for (i = 0; i < frames; i++) {
-        int left = 0, right = 0;
+        int left = (a.music_buffer[i * 2] * a.music_master) >> 8;
+        int right = (a.music_buffer[i * 2 + 1] * a.music_master) >> 8;
+        int effects_left = 0, effects_right = 0;
 
         for (v = 0; v < MAX_VOICES; v++) {
             Voice *voice = &a.voices[v];
@@ -73,23 +87,24 @@ static void mix(void *user, Uint8 *stream, int bytes)
             r = sample_at(voice->sound, frame, 1);
             l += (int)(((int64_t)(sample_at(voice->sound, frame + 1, 0) - l) * frac) >> 16);
             r += (int)(((int64_t)(sample_at(voice->sound, frame + 1, 1) - r) * frac) >> 16);
-            left += (l * voice->left) >> 8;
-            right += (r * voice->right) >> 8;
+            effects_left += (l * voice->left) >> 8;
+            effects_right += (r * voice->right) >> 8;
             voice->position += voice->step;
         }
-        left = (left * a.master) >> 8;
-        right = (right * a.master) >> 8;
+        left += (effects_left * a.master) >> 8;
+        right += (effects_right * a.master) >> 8;
         out[i * 2] = (Sint16)(left > 32767 ? 32767 : left < -32768 ? -32768 : left);
         out[i * 2 + 1] = (Sint16)(right > 32767 ? 32767 : right < -32768 ? -32768 : right);
     }
 }
 
-bool audio_init(int sound_volume)
+bool audio_init(int sound_volume, int music_volume)
 {
     SDL_AudioSpec want, have;
 
     memset(&a, 0, sizeof(a));
     a.master = sound_volume * 256 / 100;
+    a.music_master = music_volume * 256 / 100;
     if (SDL_InitSubSystem(SDL_INIT_AUDIO) != 0) {
         log_warn("no sound: %s", SDL_GetError());
         return false;
@@ -115,6 +130,8 @@ void audio_shutdown(void)
 
     if (a.device != 0)
         SDL_CloseAudioDevice(a.device);
+    if (a.music != NULL)
+        openmpt_module_destroy(a.music);
     for (i = 0; i < a.sound_count; i++)
         free(a.sounds[i].samples);
     memset(&a, 0, sizeof(a));
@@ -185,4 +202,83 @@ void audio_play(const char *name, int volume, int pan)
         }
     }
     SDL_UnlockAudioDevice(a.device);
+}
+
+/* libopenmpt's messages go to our log; only warnings and worse. */
+static void music_log(const char *message, void *user)
+{
+    (void)user;
+    log_warn("music: %s", message);
+}
+
+static openmpt_module *load_module(const char *path)
+{
+    openmpt_module *module;
+    void *data;
+    size_t size;
+
+    data = vfs_read(path, &size);
+    if (data == NULL) {
+        log_warn("music %s not found", path);
+        return NULL;
+    }
+    module = openmpt_module_create_from_memory2(data, size, music_log, NULL, NULL, NULL, NULL,
+                                                NULL, NULL);
+    free(data);
+    if (module == NULL) {
+        log_warn("can't play %s", path);
+        return NULL;
+    }
+    /* Each tune loops back on itself inside the module; never stop. */
+    openmpt_module_set_repeat_count(module, -1);
+    return module;
+}
+
+void audio_play_music(const char *path)
+{
+    Config cfg;
+    const char *file;
+    int order, row;
+    openmpt_module *module = NULL, *old = NULL;
+
+    if (a.device == 0)
+        return;
+    if (!config_load(&cfg, path)) {
+        log_warn("can't load %s", path);
+        return;
+    }
+    file = config_get_string(&cfg, "file", "");
+    order = config_get_int(&cfg, "order", 0);
+    row = config_get_int(&cfg, "row", 0);
+
+    /* All the tunes are in one module, so keep it if it's the same file. */
+    if (a.music == NULL || SDL_strcasecmp(a.music_file, file) != 0)
+        module = load_module(file);
+    SDL_LockAudioDevice(a.device);
+    if (module != NULL) {
+        old = a.music;
+        a.music = module;
+        snprintf(a.music_file, sizeof(a.music_file), "%s", file);
+    }
+    if (a.music != NULL)
+        openmpt_module_set_position_order_row(a.music, order, row);
+    SDL_UnlockAudioDevice(a.device);
+    if (old != NULL)
+        openmpt_module_destroy(old);
+    config_free(&cfg);
+}
+
+void audio_stop_music(void)
+{
+    openmpt_module *old;
+
+    if (a.device == 0)
+        return;
+    SDL_LockAudioDevice(a.device);
+    old = a.music;
+    a.music = NULL;
+    a.music_file[0] = '\0';
+    SDL_UnlockAudioDevice(a.device);
+    if (old != NULL)
+        openmpt_module_destroy(old);
 }

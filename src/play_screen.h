@@ -8,6 +8,7 @@
  *   mouse               move the bat; left button launches the ball
  *   right drag, wheel   turn and zoom the camera, as in the original
  *   Space               reset the camera
+ *   F6                  next tune, as in the game
  *   F7 / F8             random background / board floor, as in the game
  *   Left / Right        previous / next level (testing)
  *   Page Up / Down      previous / next level pack (testing)

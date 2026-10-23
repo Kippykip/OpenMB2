@@ -362,7 +362,7 @@ int main(int argc, char **argv)
     }
 
     srand((unsigned)time(NULL));
-    audio_init(g_app.params.sound_volume);
+    audio_init(g_app.params.sound_volume, g_app.params.music_volume);
     options.mouse_sensitivity = g_app.params.mouse_sensitivity;
     if (!play_screen_init(g_app.window, &options)) {
         show_error("Couldn't start the game. See the log for details.");
