@@ -64,10 +64,17 @@ void render_mesh_destroy(RenderMesh *mesh);
 /* Start a frame: viewport, clear, camera and light. */
 void render_begin(int width, int height, Mat4 view, Mat4 projection, const RenderLight *light);
 
+typedef enum RenderPass {
+    RENDER_PASS_SOLID,   /* only the parts that aren't blended */
+    RENDER_PASS_BLENDED, /* only the blended ones */
+    RENDER_PASS_ALL      /* every part, in order */
+} RenderPass;
+
 /*
- * Draw a mesh. Call once with alpha_pass false for every mesh, then again
- * with true, so blended parts are drawn over everything solid.
+ * Draw a mesh. Usually every mesh is drawn with RENDER_PASS_SOLID, then
+ * again with RENDER_PASS_BLENDED, so blended parts go over everything
+ * solid.
  */
-void render_draw(const RenderMesh *mesh, Mat4 model, bool alpha_pass, float time_ms);
+void render_draw(const RenderMesh *mesh, Mat4 model, RenderPass pass, float time_ms);
 
 #endif

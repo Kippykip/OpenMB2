@@ -37,6 +37,11 @@ typedef struct SceneBrick {
     int model, height, texture, tile, overlay_tile;
     bool hidden;   /* not drawn, e.g. glass that hasn't been hit */
     bool removed;  /* broken */
+    /*
+     * Tipping off a ledge: how far it still has to turn, in radians (+ to
+     * the left, - to the right). It turns about its bottom edge's middle.
+     */
+    float tip;
 } SceneBrick;
 
 typedef struct ModelCache ModelCache;

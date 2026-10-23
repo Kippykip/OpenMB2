@@ -355,6 +355,7 @@ typedef struct Parser {
     NamedMaterial *library; /* top-level materials, used by reference */
     int library_count;
     char frame[32]; /* the frame being read */
+    char path[160]; /* it and the named frames around it, "/outer/inner/" */
 } Parser;
 
 static void default_material(XMaterial *m)
@@ -662,6 +663,7 @@ static void flatten_mesh(Parser *ps, const RawMesh *mesh, Mat4 world)
             }
             model->parts = grown;
             snprintf(model->parts[model->part_count].frame, sizeof(grown->frame), "%s", ps->frame);
+            snprintf(model->parts[model->part_count].path, sizeof(grown->path), "%s", ps->path);
             model->parts[model->part_count].material =
                 mesh->material_count > 0 ? mesh->materials[slot] : -1;
             model->parts[model->part_count].first_vertex = first;
@@ -768,11 +770,17 @@ static void parse_object(Parser *ps, const char *type, Mat4 parent)
 
     if (strcmp(type, "Frame") == 0) {
         char outer[sizeof(ps->frame)];
+        size_t outer_path = strlen(ps->path);
         memcpy(outer, ps->frame, sizeof(outer));
-        if (name[0] != '\0') /* unnamed frames belong to the named one around them */
+        if (name[0] != '\0') { /* unnamed frames belong to the named one around them */
             snprintf(ps->frame, sizeof(ps->frame), "%.31s", name);
+            if (outer_path == 0)
+                snprintf(ps->path, sizeof(ps->path), "/");
+            snprintf(ps->path + strlen(ps->path), sizeof(ps->path) - strlen(ps->path), "%.31s/", name);
+        }
         parse_frame(ps, parent);
         memcpy(ps->frame, outer, sizeof(outer));
+        ps->path[outer_path] = '\0';
     } else if (strcmp(type, "Mesh") == 0) {
         parse_mesh(ps, parent);
     } else if (strcmp(type, "Material") == 0) {
@@ -808,6 +816,13 @@ static void compute_bounds(XModel *model)
                 model->max[axis] = v;
         }
     }
+}
+
+bool xpart_in_frame(const XPart *part, const char *frame)
+{
+    char needle[40];
+    snprintf(needle, sizeof(needle), "/%.31s/", frame);
+    return strstr(part->path, needle) != NULL;
 }
 
 bool xfile_parse(XModel *model, const void *data, size_t size, const char *name)

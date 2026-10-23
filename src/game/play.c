@@ -324,7 +324,8 @@ static void brick_gravity(Play *play, int index)
     unsigned bits;
     int dx = 0;
 
-    if (b->removed || b->position.x != pb->target_x)
+    /* Not while it is still on its way somewhere (0x402750). */
+    if (b->removed || b->position.x != pb->target_x || b->position.y - pb->target_y > 0.5f)
         return;
     bits = support(play, index, pb->cell_x, pb->cell_y, pb->cell_z);
     if (bits & SUPPORT_FLOOR)
@@ -348,28 +349,42 @@ static void brick_gravity(Play *play, int index)
     pb->cell_y -= 1;
     pb->target_x += (float)dx;
     pb->target_y -= 2.0f;
+    if (dx != 0)
+        play->scene->bricks[index].tip = dx < 0 ? 1.5707964f : -1.5707964f;
     grid_place(play, index);
 }
 
-/* The drawn brick catches up with where it is: 0.003 a ms down (0x402e40). */
+/*
+ * The drawn brick catches up with where it is (0x402e40): a tipping brick
+ * turns 0.005 radians a ms and then steps into its new place; otherwise it
+ * falls 0.003 units a ms.
+ */
 static void brick_move(Play *play, int index, uint32_t ms)
 {
     SceneBrick *b = &play->scene->bricks[index];
     const PlayBrick *pb = &play->bricks[index];
-    float fall = 0.003f * (float)ms, slide = 0.0015f * (float)ms;
+    float turn = 0.005f * (float)ms;
 
-    if (b->position.y > pb->target_y) {
-        b->position.y -= fall;
+    if (b->tip > 0.0f) {
+        b->tip -= turn;
+        if (b->tip <= 0.0f) {
+            b->tip = 0.0f;
+            b->position.x -= 1.0f;
+            b->position.y -= 1.0f;
+        }
+        play->bricks_changed = true;
+    } else if (b->tip < 0.0f) {
+        b->tip += turn;
+        if (b->tip >= 0.0f) {
+            b->tip = 0.0f;
+            b->position.x += 1.0f;
+            b->position.y -= 1.0f;
+        }
+        play->bricks_changed = true;
+    } else if (b->position.y > pb->target_y) {
+        b->position.y -= 0.003f * (float)ms;
         if (b->position.y < pb->target_y)
             b->position.y = pb->target_y;
-        play->bricks_changed = true;
-    }
-    /* A tipping brick slides one cell while it drops two layers. */
-    if (b->position.x != pb->target_x) {
-        if (fabsf(b->position.x - pb->target_x) <= slide)
-            b->position.x = pb->target_x;
-        else
-            b->position.x += b->position.x < pb->target_x ? slide : -slide;
         play->bricks_changed = true;
     }
 }

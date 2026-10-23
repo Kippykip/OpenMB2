@@ -126,10 +126,12 @@ static unsigned texture_for_name(const char *name)
 
 /*
  * A model from SkinMeshes: one part per material. override replaces the
- * texture of every part in override_frame ("" = all parts).
+ * texture of every part in override_frame ("" = all parts). keep, if not
+ * NULL, picks the parts to draw.
  */
 static void build_model_mesh(RenderMesh *mesh, const XModel *model, uint32_t flags,
-                             const char *override, const char *override_frame)
+                             const char *override, const char *override_frame,
+                             bool (*keep)(const XPart *part))
 {
     int i;
 
@@ -142,6 +144,8 @@ static void build_model_mesh(RenderMesh *mesh, const XModel *model, uint32_t fla
         bool overridden = override[0] != '\0' &&
                           (override_frame[0] == '\0' || strcmp(xpart->frame, override_frame) == 0);
 
+        if (keep != NULL && !keep(xpart))
+            continue;
         memset(&part, 0, sizeof(part));
         part.first_vertex = xpart->first_vertex;
         part.vertex_count = xpart->vertex_count;
@@ -218,13 +222,13 @@ static void build_background_mesh(void)
 {
     render_mesh_destroy(&v.background);
     build_model_mesh(&v.background, &v.scene.background_model,
-                     RENDER_TWO_SIDED | RENDER_NOT_LIGHTED, v.scene.background_texture, "");
+                     RENDER_TWO_SIDED | RENDER_NOT_LIGHTED, v.scene.background_texture, "", NULL);
 }
 
 static void build_board_mesh(void)
 {
     render_mesh_destroy(&v.board);
-    build_model_mesh(&v.board, &v.scene.board_model, 0, v.scene.board_texture, "Doska");
+    build_model_mesh(&v.board, &v.scene.board_model, 0, v.scene.board_texture, "Doska", NULL);
 }
 
 static void reset_camera(void)
@@ -235,6 +239,18 @@ static void reset_camera(void)
     v.camera.yaw = 0.0f;
     v.camera.pitch = 0.8727f; /* 50 degrees */
     v.camera.roll = 0.05f;
+}
+
+/*
+ * The bat model holds every look the bat can have: the plain bat is the
+ * body (with its turbines and fans), the hands and the plate. The magnet
+ * replaces the plate, and the guns, bazooka and cannon are extra frames
+ * (0x404d62).
+ */
+static bool plain_bat_part(const XPart *part)
+{
+    return xpart_in_frame(part, "Corpus") || xpart_in_frame(part, "L_Hand") ||
+           xpart_in_frame(part, "R_Hand") || xpart_in_frame(part, "Plashka");
 }
 
 /* The bat model named by the level's pad file ("grdata"). */
@@ -252,7 +268,7 @@ static void load_bat_model(void)
         config_free(&cfg);
     }
     if (xfile_load(&v.bat_model, path))
-        build_model_mesh(&v.bat, &v.bat_model, 0, "", "");
+        build_model_mesh(&v.bat, &v.bat_model, 0, "", "", plain_bat_part);
     else
         log_warn("can't load the bat model %s", path);
 }
@@ -372,7 +388,7 @@ bool play_screen_init(SDL_Window *window, const PlayScreenOptions *options)
         }
     }
     if (xfile_load(&v.ball_model, "SkinMeshes/s_ball.x"))
-        build_model_mesh(&v.ball, &v.ball_model, 0, "", "");
+        build_model_mesh(&v.ball, &v.ball_model, 0, "", "", NULL);
     else
         log_warn("can't load the ball model SkinMeshes/s_ball.x");
     load_level(pack, level);
@@ -532,15 +548,22 @@ void play_screen_frame(int width, int height, uint32_t ms)
             }
         }
         for (pass = 0; pass < 2; pass++) {
-            bool alpha = pass == 1;
-            render_draw(&v.background, identity, alpha, t);
-            render_draw(&v.board, board, alpha, t);
-            render_draw(&v.bricks, identity, alpha, t);
+            RenderPass kind = pass == 0 ? RENDER_PASS_SOLID : RENDER_PASS_BLENDED;
+            render_draw(&v.background, identity, kind, t);
+            render_draw(&v.board, board, kind, t);
+            /*
+             * The original draws the bricks texture by texture, in the
+             * texture set's order, blended or not. Glass (tileset 4, no depth
+             * writes) so goes under bricks behind it drawn from a later
+             * tileset; copy that rather than sorting.
+             */
+            if (pass == 0)
+                render_draw(&v.bricks, identity, RENDER_PASS_ALL, t);
             if (v.playing) {
                 if (v.play.state != PLAY_BAT_LOST && v.play.state != PLAY_GAME_OVER)
-                    render_draw(&v.bat, bat_matrix, alpha, t);
+                    render_draw(&v.bat, bat_matrix, kind, t);
                 for (i = 0; i < v.play.ball_count; i++)
-                    render_draw(&v.ball, ball_matrices[i], alpha, t);
+                    render_draw(&v.ball, ball_matrices[i], kind, t);
             }
         }
     }

@@ -314,7 +314,7 @@ void render_begin(int width, int height, Mat4 view, Mat4 projection, const Rende
     gl.ActiveTexture(GL_TEXTURE0);
 }
 
-void render_draw(const RenderMesh *mesh, Mat4 model, bool alpha_pass, float time_ms)
+void render_draw(const RenderMesh *mesh, Mat4 model, RenderPass pass, float time_ms)
 {
     Mat4 mvp = mat4_multiply(model, r.view_projection);
     int i;
@@ -340,7 +340,7 @@ void render_draw(const RenderMesh *mesh, Mat4 model, bool alpha_pass, float time
         bool blended = (part->flags & RENDER_ALPHA) != 0;
         float u = part->uv_speed[0] * time_ms, v = part->uv_speed[1] * time_ms;
 
-        if (blended != alpha_pass)
+        if (pass != RENDER_PASS_ALL && blended != (pass == RENDER_PASS_BLENDED))
             continue;
 
         if (blended)

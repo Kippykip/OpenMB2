@@ -287,7 +287,7 @@ static int command_mesh(const char *path)
                m->diffuse[0], m->diffuse[1], m->diffuse[2], m->diffuse[3], m->power, m->texture);
     }
     for (i = 0; i < model.part_count; i++)
-        printf("part %d: frame '%s', material %d, %d triangles\n", i, model.parts[i].frame,
+        printf("part %d: frame '%s' (%s), material %d, %d triangles\n", i, model.parts[i].frame, model.parts[i].path,
                model.parts[i].material, model.parts[i].vertex_count / 3);
     xfile_free(&model);
     return 0;

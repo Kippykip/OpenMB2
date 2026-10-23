@@ -37,6 +37,7 @@ typedef struct XMaterial {
 /* A run of triangles (3 vertices each) drawn with one material. */
 typedef struct XPart {
     char frame[32]; /* name of the frame holding the mesh, e.g. "Doska" */
+    char path[160]; /* every named frame it is in, outermost first: "/Corpus/L_Fan/" */
     int material;
     int first_vertex;
     int vertex_count;
@@ -57,5 +58,8 @@ bool xfile_parse(XModel *model, const void *data, size_t size, const char *name)
 /* Read and parse a file from the game folder. */
 bool xfile_load(XModel *model, const char *game_path);
 void xfile_free(XModel *model);
+
+/* Is the part in this frame, or in a frame inside it? */
+bool xpart_in_frame(const XPart *part, const char *frame);
 
 #endif

@@ -68,9 +68,19 @@ static Mat4 brick_matrix(const SceneBrick *b)
     if (b->rotation & 0x40) rz += PI / 2.0f;
     if (b->rotation & 0x80) rz += PI;
 
-    return mat4_multiply(
+    Mat4 world = mat4_multiply(
         mat4_multiply(mat4_multiply(mat4_rotation_x(rx), mat4_rotation_y(ry)), mat4_rotation_z(rz)),
         mat4_translation(b->position.x, b->position.y, b->position.z));
+
+    /* The part of a tip done so far, about (x, y - 1, z) (0x402f36). */
+    if (b->tip != 0.0f) {
+        float turned = b->tip > 0.0f ? PI / 2.0f - b->tip : -PI / 2.0f - b->tip;
+        Vec3 p = b->position;
+        world = mat4_multiply(world, mat4_translation(-p.x, 1.0f - p.y, -p.z));
+        world = mat4_multiply(world, mat4_rotation_z(turned));
+        world = mat4_multiply(world, mat4_translation(p.x, p.y - 1.0f, p.z));
+    }
+    return world;
 }
 
 /* ------------------------------------------------------------------------ */
@@ -248,6 +258,11 @@ static bool load_skinmesh(XModel *model, const char *name)
     return xfile_load(model, path);
 }
 
+static int compare_batches(const void *a, const void *b)
+{
+    return ((const BrickBatch *)a)->texture - ((const BrickBatch *)b)->texture;
+}
+
 void scene_bake_bricks(Scene *scene)
 {
     int i;
@@ -260,6 +275,8 @@ void scene_bake_bricks(Scene *scene)
         if (!b->hidden && !b->removed)
             bake_brick(scene, scene->models, b);
     }
+    /* In texture order, which is the order the original draws them in. */
+    qsort(scene->batches, (size_t)scene->batch_count, sizeof(*scene->batches), compare_batches);
 }
 
 bool scene_load(Scene *scene, const char *level_path, int random)

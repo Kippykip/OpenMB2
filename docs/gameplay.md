@@ -123,10 +123,32 @@ at the cells around it (x is its left cell, y its bottom layer):
 - The same the other way round: held only under its left half, right side
   clear (bits & 0x31 == 0), unless only its left half is loaded (0x40).
 
-The grid changes at once; the drawn brick follows, falling 0.003 units a
-ms. Bricks at y > 0.5 are out of the ball's reach, so a level can only be
+The grid changes at once; the drawn brick follows (0x402e40). A falling
+brick drops 0.003 units a ms. A tipping brick first turns 0.005 radians a
+ms about the middle of its bottom edge, (x, y - 1, z), until it has turned
+90 degrees; then it steps one unit across and one down and falls the last
+unit. A brick isn't checked again until it has caught up: same x as its
+target and within 0.5 of its target y (0x402750). Bricks at y > 0.5 are out of the ball's reach, so a level can only be
 finished because upper bricks come down. Glass (invisible) bricks hold
 others up like any brick; 028_Taxi stands its car on them.
+
+## Bat model (draw 0x404d62)
+
+pad.x holds every look of the bat. The plain bat draws the frames Corpus
+(with its turbines and fans), L_Hand and R_Hand (with the springs) and
+Plashka, the plate. With the magnet (mode 2) Magnit is drawn instead of
+Plashka. The gun (mode 4) adds L/R_Pulemet, L/R_Priklad and L/R_Wing; the
+bazooka (8) L/R_Stvol, L/R_Derjatel and the wings; the cannon (0x10)
+For_Pushka and Pushka. The hands and plate are stretched in x by the bat's
+width / 3.
+
+## Drawing order (0x410d70)
+
+The original draws everything texture by texture, in the order the
+texture set registers them, setting each texture's states as it goes
+(alpha: blending on; zdisable: no depth writes, the depth test stays).
+Glass is tileset 4, so bricks from tilesets 5 and 6 drawn later cover
+glass in front of them, while tilesets 1 to 3 show through it.
 
 ## Lives and score
 
