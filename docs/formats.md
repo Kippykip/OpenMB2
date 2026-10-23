@@ -151,14 +151,32 @@ power-of-two sides, and OpenMB2 does the same. `tileset04.dds` is DXT5.
 Board files: shape flag `rect`, `round` or `compaund`; `halfwidth`,
 `halfheight`, `radius`, `batline`; `scalex` multiplies halfwidth and
 radius, `scalez` multiplies halfheight and batline; `camera: <look-at z>
-<distance>`; `skinmesh:` a model in `SkinMeshes/`; `randomizetexture`
-replaces the texture of the model's `Doska` frame with a random
-`Board/Square|Round|SemicircularNN.jpg` (NN = rand() % 10).
+<distance>`; `skinmesh:` a model in `SkinMeshes/`.
 
-Background files only have `skinmesh:` (the sky sphere `fon.x`) and an
-optional `randomizetexture`, which picks `BG/bgNN.jpg` (NN = rand() % 28).
-`bgnone.txt` has no `randomizetexture`, and `fon.x` names `01.jpg`, which
-isn't in `Textures/`. What the original shows then is still to be checked.
+The board model is drawn stretched by (scalex, 1, scalez). All three stock
+board models put the top of the `Doska` floor at y = −0.314, but bricks
+stand on y = −1, and the original shows the board that much lower, so the
+model is also moved down until the floor top is at −1 (checked against
+side-by-side screenshots of the first three levels).
+
+Background files only have `skinmesh:` (`fon.x`, a large box around the
+board). There is no sky: `fon.x` names `01.jpg`, which isn't shipped.
+
+`randomizetexture` is not a file key but a command the game sends when a
+level starts, and again on F8 (board) and F7 (background). For the board
+it gives the `Doska` frame a random `Board/Square|Round|SemicircularNN.jpg`
+(NN = rand() % 10, the shape from the board's shape flag); for the
+background a random `BG/bgNN.jpg` (NN = rand() % 28).
+
+## Drawing details (confirmed from screenshots)
+
+- Bricks are drawn without back-face culling. One-sided grass and leaf
+  models look dark otherwise, because their lit side faces away.
+- No mipmaps: Direct3D 8 doesn't make them for a plain texture load, and
+  with them the floor and water look blurred compared with the original.
+- Object type 0x18 is an invisible brick (texture 7, tile 0xF0), not drawn
+  (probably until hit). Type 0x10 bricks cycle colour (the level 3 stars); OpenMB2
+  doesn't animate them yet.
 
 ## Camera (confirmed)
 

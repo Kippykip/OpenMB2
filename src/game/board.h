@@ -13,10 +13,13 @@
  *     scalez: 1.3           scales halfheight and batline
  *     camera: 11. 44.       look-at z, camera distance
  *     skinmesh: boardrect.x model in SkinMeshes/
- *     randomizetexture      pick a random Board/<Shape>NN.jpg
  *
- * Backgrounds only have "skinmesh" and the optional "randomizetexture",
- * which picks a random Textures/BG/bgNN.jpg.
+ * Backgrounds only have "skinmesh".
+ *
+ * "randomizetexture" is not a file key but a command the game sends to
+ * the board and background: it gives the board floor (the model's "Doska"
+ * frame) a random Board/<Shape>NN.jpg and the background a random
+ * BG/bgNN.jpg. It runs when a level starts, and F8 / F7 run it again.
  */
 #ifndef OPENMB2_BOARD_H
 #define OPENMB2_BOARD_H
@@ -34,20 +37,19 @@ typedef struct Board {
     BoardShape shape;
     float half_width, half_height, radius; /* already scaled */
     float bat_line;                        /* already scaled */
+    float scale_x, scale_z; /* the board model is stretched by these too */
     float camera_look_z, camera_distance;
     char skinmesh[64];
-    bool randomize_texture;
 } Board;
 
 typedef struct Background {
     char skinmesh[64];
-    bool randomize_texture;
 } Background;
 
 bool board_load(Board *board, const char *game_path);
 bool background_load(Background *background, const char *game_path);
 
-/* The image randomizetexture picks for this board, from a random number. */
+/* The images randomizetexture picks, from a random number. */
 void board_random_texture(const Board *board, int random, char *out, int out_size);
 void background_random_texture(int random, char *out, int out_size);
 

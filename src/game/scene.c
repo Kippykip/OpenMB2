@@ -212,6 +212,29 @@ static void bake_brick(Scene *scene, ModelCache *cache, const Brick *b)
 
 /* ------------------------------------------------------------------------ */
 
+/*
+ * The board models put the top of their floor ("Doska") at y = -0.314,
+ * but bricks stand on y = -1, and the original shows the board that much
+ * lower. Find the floor top and return how far to move the board.
+ */
+static float board_floor_offset(const XModel *model)
+{
+    float top = -1e30f;
+    int i, j;
+
+    for (i = 0; i < model->part_count; i++) {
+        const XPart *part = &model->parts[i];
+        if (strcmp(part->frame, "Doska") != 0)
+            continue;
+        for (j = 0; j < part->vertex_count; j++) {
+            float y = model->vertices[part->first_vertex + j].pos[1];
+            if (y > top)
+                top = y;
+        }
+    }
+    return top > -1e29f ? -1.0f - top : 0.0f;
+}
+
 static bool load_skinmesh(XModel *model, const char *name)
 {
     char path[128];
@@ -238,26 +261,28 @@ bool scene_load(Scene *scene, const char *level_path, int random)
         log_warn("%s: can't load texture set %s", level_path, textureset_path);
 
     if (board_load(&scene->board, scene->level.slots[LEVEL_SLOT_BOARD])) {
-        load_skinmesh(&scene->board_model, scene->board.skinmesh);
-        if (scene->board.randomize_texture)
-            board_random_texture(&scene->board, random, scene->board_texture,
-                                 sizeof(scene->board_texture));
+        if (load_skinmesh(&scene->board_model, scene->board.skinmesh))
+            scene->board_y = board_floor_offset(&scene->board_model);
+        scene_randomize_board(scene, random);
     } else {
         log_warn("%s: can't load board %s", level_path, scene->level.slots[LEVEL_SLOT_BOARD]);
     }
 
     if (background_load(&scene->background, scene->level.slots[LEVEL_SLOT_BACKGROUND])) {
         load_skinmesh(&scene->background_model, scene->background.skinmesh);
-        if (scene->background.randomize_texture)
-            background_random_texture(random / 10, scene->background_texture,
-                                      sizeof(scene->background_texture));
+        scene_randomize_background(scene, random / 10);
     }
 
     for (i = 0; i < scene->level.object_count; i++) {
         const LevelObject *object = &scene->level.objects[i];
         if (level_object_is_brick(object)) {
             Brick brick = decode_brick(object);
-            bake_brick(scene, &cache, &brick);
+            /*
+             * Type 0x18 bricks don't show in the original until (we
+             * think) they are hit: invisible bricks. Not drawn for now.
+             */
+            if (object->type != 0x18)
+                bake_brick(scene, &cache, &brick);
             scene->brick_count++;
         } else {
             scene->other_count++;
@@ -266,6 +291,18 @@ bool scene_load(Scene *scene, const char *level_path, int random)
 
     cache_free(&cache);
     return true;
+}
+
+void scene_randomize_board(Scene *scene, int random)
+{
+    board_random_texture(&scene->board, random, scene->board_texture,
+                         sizeof(scene->board_texture));
+}
+
+void scene_randomize_background(Scene *scene, int random)
+{
+    background_random_texture(random, scene->background_texture,
+                              sizeof(scene->background_texture));
 }
 
 void scene_free(Scene *scene)

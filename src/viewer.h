@@ -11,6 +11,7 @@
  *   Page Up / Down      previous / next level pack
  *   mouse drag, wheel   turn and zoom the camera
  *   Space               reset the camera
+ *   F7 / F8             random background / board floor, as in the game
  */
 #ifndef OPENMB2_VIEWER_H
 #define OPENMB2_VIEWER_H

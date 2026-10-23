@@ -32,14 +32,20 @@ typedef struct Scene {
     Background background;
     XModel board_model;
     XModel background_model;
-    /* Set by randomizetexture: replaces the "Doska" frame's / whole background's image. */
+    /* From randomizetexture: the board floor's ("Doska") and the background's image. */
     char board_texture[128];
     char background_texture[128];
+    /* Height the board model is moved by so its floor top sits at y = -1. */
+    float board_y;
     BrickBatch *batches;
     int batch_count;
     int brick_count;
     int other_count; /* objects that aren't bricks, not drawn yet */
 } Scene;
+
+/* What randomizetexture does: pick new board floor and background images. */
+void scene_randomize_board(Scene *scene, int random);
+void scene_randomize_background(Scene *scene, int random);
 
 /* random picks the randomizetexture images, as rand() does in the original. */
 bool scene_load(Scene *scene, const char *level_path, int random);

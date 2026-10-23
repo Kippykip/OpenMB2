@@ -177,9 +177,13 @@ static void build_brick_mesh(void)
         part.first_vertex = at;
         part.vertex_count = s->batches[i].vertex_count;
         part.diffuse[0] = part.diffuse[1] = part.diffuse[2] = part.diffuse[3] = 1.0f;
+        /*
+         * Bricks are drawn without back-face culling: single-sided parts
+         * such as grass blades show from both sides in the original.
+         */
+        part.flags = RENDER_TWO_SIDED;
         if (script != NULL) {
-            part.flags = script->flags & (RENDER_ALPHA | RENDER_Z_DISABLE | RENDER_TWO_SIDED |
-                                          RENDER_NOT_LIGHTED);
+            part.flags |= script->flags & (RENDER_ALPHA | RENDER_Z_DISABLE | RENDER_NOT_LIGHTED);
             part.texture = (script->flags & TEXFLAG_FAKE) ? render_texture(NULL)
                                                            : texture_for_name(script->image);
             /* Guess: movex/movey are UV units per frame at the original's ~60 fps. */
@@ -192,6 +196,20 @@ static void build_brick_mesh(void)
         render_mesh_add_part(&v.bricks, &part);
         at += part.vertex_count;
     }
+}
+
+/* The background is seen from inside, and isn't lit (a guess, to check). */
+static void build_background_mesh(void)
+{
+    render_mesh_destroy(&v.background);
+    build_model_mesh(&v.background, &v.scene.background_model,
+                     RENDER_TWO_SIDED | RENDER_NOT_LIGHTED, v.scene.background_texture, "");
+}
+
+static void build_board_mesh(void)
+{
+    render_mesh_destroy(&v.board);
+    build_model_mesh(&v.board, &v.scene.board_model, 0, v.scene.board_texture, "Doska");
 }
 
 static void reset_camera(void)
@@ -234,10 +252,8 @@ static void load_level(int pack, int level)
     }
     v.scene_loaded = true;
 
-    /* The background is seen from inside, and isn't lit (a guess, to check). */
-    build_model_mesh(&v.background, &v.scene.background_model,
-                     RENDER_TWO_SIDED | RENDER_NOT_LIGHTED, v.scene.background_texture, "");
-    build_model_mesh(&v.board, &v.scene.board_model, 0, v.scene.board_texture, "Doska");
+    build_background_mesh();
+    build_board_mesh();
     build_brick_mesh();
 
     ts = &v.scene.textures;
@@ -307,6 +323,18 @@ void viewer_handle_event(const SDL_Event *event)
         case SDLK_PAGEDOWN: load_level(v.pack + 1, 0); break;
         case SDLK_PAGEUP: load_level(v.pack - 1, 0); break;
         case SDLK_SPACE: reset_camera(); break;
+        case SDLK_F7: /* like the original: a new random background */
+            if (v.scene_loaded) {
+                scene_randomize_background(&v.scene, rand());
+                build_background_mesh();
+            }
+            break;
+        case SDLK_F8: /* and a new random board floor */
+            if (v.scene_loaded) {
+                scene_randomize_board(&v.scene, rand());
+                build_board_mesh();
+            }
+            break;
         default: break;
         }
         break;
@@ -348,14 +376,18 @@ void viewer_draw(int width, int height, float time_ms)
     float aspect = ((float)width / (float)(height > 0 ? height : 1)) / (4.0f / 3.0f);
     Mat4 projection = mat4_perspective_fov_lh(3.14159265f / 4.0f, aspect, 1.0f, 1000.0f);
     Mat4 identity = mat4_identity();
+    /* The board model is stretched by the board file's scalex / scalez, and
+       lowered so its floor is where the bricks stand. */
+    Mat4 board = mat4_multiply(mat4_scaling(v.scene.board.scale_x, 1.0f, v.scene.board.scale_z),
+                               mat4_translation(0.0f, v.scene.board_y, 0.0f));
 
     render_begin(width, height, view, projection, &v.light);
     if (!v.scene_loaded)
         return;
     render_draw(&v.background, identity, false, time_ms);
-    render_draw(&v.board, identity, false, time_ms);
+    render_draw(&v.board, board, false, time_ms);
     render_draw(&v.bricks, identity, false, time_ms);
     render_draw(&v.background, identity, true, time_ms);
-    render_draw(&v.board, identity, true, time_ms);
+    render_draw(&v.board, board, true, time_ms);
     render_draw(&v.bricks, identity, true, time_ms);
 }

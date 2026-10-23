@@ -70,6 +70,7 @@ static struct {
     TextureEntry *textures;
     int texture_count;
     Mat4 view_projection;
+    bool mipmaps; /* off, to match the original */
 } r;
 
 static GLuint compile_shader(GLenum type, const char *source)
@@ -167,12 +168,18 @@ static unsigned upload_image(Image *image)
     for (;;) {
         gl.TexImage2D(GL_TEXTURE_2D, level, GL_RGBA, image->width, image->height, 0, GL_RGBA,
                       GL_UNSIGNED_BYTE, image->pixels);
-        if (image->width == 1 && image->height == 1)
+        if (!r.mipmaps || (image->width == 1 && image->height == 1))
             break;
         halve_image(image);
         level++;
     }
-    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    /*
+     * The original never turns on mipmap filtering (Direct3D's default is
+     * off), and with it on, thin details such as grass blades blur into
+     * the dark edges of their tile and look too dark.
+     */
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
+                     r.mipmaps ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);

@@ -23,7 +23,9 @@
 
 #include <SDL.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -332,6 +334,7 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    srand((unsigned)time(NULL));
     if (!viewer_init(g_app.window, start_level)) {
         show_error("Couldn't start the level viewer. See the log for details.");
         shutdown_app();
