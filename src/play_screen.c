@@ -203,6 +203,9 @@ static void build_brick_mesh(void)
         part.flags = RENDER_TWO_SIDED;
         if (script != NULL) {
             part.flags |= script->flags & (RENDER_ALPHA | RENDER_Z_DISABLE | RENDER_NOT_LIGHTED);
+            /* Glass shows only its outside faces in the original. */
+            if (script->flags & TEXFLAG_ALPHA)
+                part.flags &= ~(uint32_t)RENDER_TWO_SIDED;
             part.texture = (script->flags & TEXFLAG_FAKE) ? render_texture(NULL)
                                                            : texture_for_name(script->image);
             /* Guess: movex/movey are UV units per frame at the original's ~60 fps. */
