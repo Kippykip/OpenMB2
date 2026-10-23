@@ -31,17 +31,13 @@
  *   byte 15  tile in the texture sheet: column in the high nibble, row low
  *   byte 16  overlay tile; the overlay uses texture script byte 14 + 1
  */
-typedef struct Brick {
-    Vec3 position;
-    uint8_t flags, rotation;
-    int model, height, texture, tile, overlay_tile;
-} Brick;
-
-static Brick decode_brick(const LevelObject *object)
+static SceneBrick decode_brick(const LevelObject *object)
 {
-    Brick b;
+    SceneBrick b;
     const uint8_t *raw = object->raw;
 
+    memset(&b, 0, sizeof(b));
+    b.object = object;
     /* The original nudges every brick 0.01 to the left. */
     b.position = vec3((float)object->x - 0.01f, (float)object->y, (float)object->z);
     b.flags = raw[8];
@@ -51,10 +47,15 @@ static Brick decode_brick(const LevelObject *object)
     b.texture = raw[14];
     b.tile = raw[15];
     b.overlay_tile = raw[16];
+    /* Glass always uses tile 0xF0 of texture 7, whatever the record says. */
+    if (object->type == 0x18) {
+        b.texture = 7;
+        b.tile = 0xF0;
+    }
     return b;
 }
 
-static Mat4 brick_matrix(const Brick *b)
+static Mat4 brick_matrix(const SceneBrick *b)
 {
     float rx = 0.0f, ry = 0.0f, rz = 0.0f;
 
@@ -82,10 +83,10 @@ typedef struct CachedModel {
     XModel model;
 } CachedModel;
 
-typedef struct ModelCache {
+struct ModelCache {
     CachedModel *items;
     int count;
-} ModelCache;
+};
 
 static const XModel *cache_get(ModelCache *cache, const char *path)
 {
@@ -109,11 +110,14 @@ static const XModel *cache_get(ModelCache *cache, const char *path)
 static void cache_free(ModelCache *cache)
 {
     int i;
+    if (cache == NULL)
+        return;
     for (i = 0; i < cache->count; i++) {
         if (cache->items[i].ok)
             xfile_free(&cache->items[i].model);
     }
     free(cache->items);
+    free(cache);
 }
 
 /* ------------------------------------------------------------------------ */
@@ -187,7 +191,7 @@ static void bake_model(Scene *scene, const XModel *model, Mat4 world, int textur
     }
 }
 
-static void bake_brick(Scene *scene, ModelCache *cache, const Brick *b)
+static void bake_brick(Scene *scene, ModelCache *cache, const SceneBrick *b)
 {
     char path[64];
     const XModel *model;
@@ -244,15 +248,34 @@ static bool load_skinmesh(XModel *model, const char *name)
     return xfile_load(model, path);
 }
 
+void scene_bake_bricks(Scene *scene)
+{
+    int i;
+
+    /* Keep each batch's memory, just empty it. */
+    for (i = 0; i < scene->batch_count; i++)
+        scene->batches[i].vertex_count = 0;
+    for (i = 0; i < scene->brick_count; i++) {
+        const SceneBrick *b = &scene->bricks[i];
+        if (!b->hidden && !b->removed)
+            bake_brick(scene, scene->models, b);
+    }
+}
+
 bool scene_load(Scene *scene, const char *level_path, int random)
 {
-    ModelCache cache = { NULL, 0 };
     const char *textureset_path, *background_path;
     int i;
 
     memset(scene, 0, sizeof(*scene));
     if (!level_load(&scene->level, level_path))
         return false;
+    scene->models = calloc(1, sizeof(*scene->models));
+    scene->bricks = calloc((size_t)(scene->level.object_count + 1), sizeof(*scene->bricks));
+    if (scene->models == NULL || scene->bricks == NULL) {
+        scene_free(scene);
+        return false;
+    }
 
     textureset_path = scene->level.slots[LEVEL_SLOT_TEXTURESET][0]
                           ? scene->level.slots[LEVEL_SLOT_TEXTURESET]
@@ -283,20 +306,15 @@ bool scene_load(Scene *scene, const char *level_path, int random)
     for (i = 0; i < scene->level.object_count; i++) {
         const LevelObject *object = &scene->level.objects[i];
         if (level_object_is_brick(object)) {
-            Brick brick = decode_brick(object);
-            /*
-             * Type 0x18 bricks don't show in the original until (we
-             * think) they are hit: invisible bricks. Not drawn for now.
-             */
-            if (object->type != 0x18)
-                bake_brick(scene, &cache, &brick);
-            scene->brick_count++;
+            SceneBrick *b = &scene->bricks[scene->brick_count++];
+            *b = decode_brick(object);
+            /* Glass (type 0x18) is invisible until the ball first hits it. */
+            b->hidden = object->type == 0x18;
         } else {
             scene->other_count++;
         }
     }
-
-    cache_free(&cache);
+    scene_bake_bricks(scene);
     return true;
 }
 
@@ -319,6 +337,8 @@ void scene_free(Scene *scene)
     for (i = 0; i < scene->batch_count; i++)
         free(scene->batches[i].vertices);
     free(scene->batches);
+    free(scene->bricks);
+    cache_free(scene->models);
     xfile_free(&scene->board_model);
     xfile_free(&scene->background_model);
     textureset_free(&scene->textures);

@@ -1,13 +1,17 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 /* Copyright (C) 2026 the OpenMB2 contributors */
 
-#include "viewer.h"
+#include "play_screen.h"
+#include "audio/audio.h"
+#include "core/config.h"
 #include "core/log.h"
 #include "core/matrix.h"
 #include "core/vfs.h"
+#include "game/play.h"
 #include "game/scene.h"
 #include "render/render.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -37,17 +41,27 @@ typedef struct Camera {
     float yaw, pitch, roll;
 } Camera;
 
+#define START_LIVES 3
+#define LEVEL_DONE_MS 2000 /* guess: how long before the next level */
+
 static struct {
     SDL_Window *window;
+    PlayScreenOptions options;
     Pack packs[PACK_FOLDER_COUNT];
     int pack_count;
     int pack, level; /* what's showing */
     Scene scene;
     bool scene_loaded;
-    RenderMesh background, board, bricks;
+    Play play;
+    bool playing;
+    int score, lives;  /* carried from level to level */
+    XModel bat_model, ball_model;
+    RenderMesh background, board, bricks, bat, ball;
     RenderLight light;
     Camera camera;
     bool dragging;
+    uint32_t time;     /* ms, for scrolling textures */
+    char title[320];
 } v;
 
 /* ------------------------------------------------------------------------ */
@@ -150,6 +164,7 @@ static void build_brick_mesh(void)
     XVertex *all;
     int total = 0, at = 0, i;
 
+    render_mesh_destroy(&v.bricks);
     for (i = 0; i < s->batch_count; i++)
         total += s->batches[i].vertex_count;
     if (total == 0)
@@ -222,20 +237,69 @@ static void reset_camera(void)
     v.camera.roll = 0.05f;
 }
 
+/* The bat model named by the level's pad file ("grdata"). */
+static void load_bat_model(void)
+{
+    char path[128];
+    const char *pad = v.scene.level.slots[LEVEL_SLOT_PAD];
+    Config cfg;
+
+    xfile_free(&v.bat_model);
+    render_mesh_destroy(&v.bat);
+    snprintf(path, sizeof(path), "SkinMeshes/pad.x");
+    if (config_load(&cfg, pad[0] ? pad : "Pads/common.txt")) {
+        snprintf(path, sizeof(path), "SkinMeshes/%s", config_get_string(&cfg, "grdata", "pad.x"));
+        config_free(&cfg);
+    }
+    if (xfile_load(&v.bat_model, path))
+        build_model_mesh(&v.bat, &v.bat_model, 0, "", "");
+    else
+        log_warn("can't load the bat model %s", path);
+}
+
 static void unload_level(void)
 {
     render_mesh_destroy(&v.background);
     render_mesh_destroy(&v.board);
     render_mesh_destroy(&v.bricks);
+    if (v.playing)
+        play_free(&v.play);
+    v.playing = false;
     if (v.scene_loaded)
         scene_free(&v.scene);
     v.scene_loaded = false;
 }
 
+static void play_sound(const char *name, int volume, int pan, void *user)
+{
+    (void)user;
+    audio_play(name, volume, pan);
+}
+
+static void update_title(void)
+{
+    char title[320];
+    const char *state = "";
+
+    if (!v.playing)
+        return;
+    switch (v.play.state) {
+    case PLAY_LEVEL_DONE: state = "  -  level complete!"; break;
+    case PLAY_GAME_OVER: state = "  -  game over (click to try again)"; break;
+    default: break;
+    }
+    snprintf(title, sizeof(title), "OpenMB2 - Score %d   Lives %d   Level %d   %s%s",
+             v.play.score, v.play.lives, v.level + 1, v.packs[v.pack].levels[v.level], state);
+    if (strcmp(title, v.title) != 0) {
+        snprintf(v.title, sizeof(v.title), "%s", title);
+        SDL_SetWindowTitle(v.window, title);
+    }
+}
+
 static void load_level(int pack, int level)
 {
     const Pack *p;
-    char path[256], title[320];
+    char path[256];
     const TextureSet *ts;
 
     unload_level();
@@ -255,6 +319,7 @@ static void load_level(int pack, int level)
     build_background_mesh();
     build_board_mesh();
     build_brick_mesh();
+    load_bat_model();
 
     ts = &v.scene.textures;
     memcpy(v.light.direction, ts->light_dir, sizeof(v.light.direction));
@@ -262,20 +327,27 @@ static void load_level(int pack, int level)
     memcpy(v.light.diffuse, ts->diffuse, sizeof(v.light.diffuse));
     reset_camera();
 
-    log_info("level %s: %d bricks, %d other objects, board %s", path, v.scene.brick_count,
-             v.scene.other_count, v.scene.level.slots[LEVEL_SLOT_BOARD]);
-    snprintf(title, sizeof(title), "OpenMB2 - %s (%d/%d)", path, v.level + 1, p->level_count);
-    SDL_SetWindowTitle(v.window, title);
+    if (play_start(&v.play, &v.scene, v.score, v.lives, v.options.mouse_sensitivity)) {
+        v.play.sound = play_sound;
+        v.playing = true;
+    }
+    log_info("level %s: %d bricks (%d to break), %d other objects, board %s", path,
+             v.scene.brick_count, v.play.bricks_left, v.scene.other_count,
+             v.scene.level.slots[LEVEL_SLOT_BOARD]);
+    update_title();
 }
 
 /* ------------------------------------------------------------------------ */
 
-bool viewer_init(SDL_Window *window, const char *start_level)
+bool play_screen_init(SDL_Window *window, const PlayScreenOptions *options)
 {
+    const char *start_level = options->start_level;
     int pack = 0, level = 0, i, j;
 
     memset(&v, 0, sizeof(v));
     v.window = window;
+    v.options = *options;
+    v.lives = START_LIVES;
     if (!render_init())
         return false;
     find_packs();
@@ -299,29 +371,45 @@ bool viewer_init(SDL_Window *window, const char *start_level)
             }
         }
     }
+    if (xfile_load(&v.ball_model, "SkinMeshes/s_ball.x"))
+        build_model_mesh(&v.ball, &v.ball_model, 0, "", "");
+    else
+        log_warn("can't load the ball model SkinMeshes/s_ball.x");
     load_level(pack, level);
     return true;
 }
 
-void viewer_shutdown(void)
+void play_screen_shutdown(void)
 {
     int i;
     unload_level();
+    render_mesh_destroy(&v.bat);
+    render_mesh_destroy(&v.ball);
+    xfile_free(&v.bat_model);
+    xfile_free(&v.ball_model);
     for (i = 0; i < v.pack_count; i++)
         free(v.packs[i].levels);
     render_shutdown();
     memset(&v, 0, sizeof(v));
 }
 
-void viewer_handle_event(const SDL_Event *event)
+/* Testing levels by hand: jump straight to another one, with a new game. */
+static void jump_to_level(int pack, int level)
+{
+    v.score = 0;
+    v.lives = START_LIVES;
+    load_level(pack, level);
+}
+
+void play_screen_handle_event(const SDL_Event *event)
 {
     switch (event->type) {
     case SDL_KEYDOWN:
         switch (event->key.keysym.sym) {
-        case SDLK_RIGHT: load_level(v.pack, v.level + 1); break;
-        case SDLK_LEFT: load_level(v.pack, v.level - 1); break;
-        case SDLK_PAGEDOWN: load_level(v.pack + 1, 0); break;
-        case SDLK_PAGEUP: load_level(v.pack - 1, 0); break;
+        case SDLK_RIGHT: jump_to_level(v.pack, v.level + 1); break;
+        case SDLK_LEFT: jump_to_level(v.pack, v.level - 1); break;
+        case SDLK_PAGEDOWN: jump_to_level(v.pack + 1, 0); break;
+        case SDLK_PAGEUP: jump_to_level(v.pack - 1, 0); break;
         case SDLK_SPACE: reset_camera(); break;
         case SDLK_F7: /* like the original: a new random background */
             if (v.scene_loaded) {
@@ -339,19 +427,28 @@ void viewer_handle_event(const SDL_Event *event)
         }
         break;
     case SDL_MOUSEBUTTONDOWN:
-        if (event->button.button == SDL_BUTTON_LEFT)
+        if (event->button.button == SDL_BUTTON_RIGHT) {
             v.dragging = true;
+        } else if (event->button.button == SDL_BUTTON_LEFT && v.playing) {
+            if (v.play.state == PLAY_GAME_OVER)
+                jump_to_level(v.pack, v.level);
+            else
+                play_click(&v.play);
+        }
         break;
     case SDL_MOUSEBUTTONUP:
-        if (event->button.button == SDL_BUTTON_LEFT)
+        if (event->button.button == SDL_BUTTON_RIGHT)
             v.dragging = false;
         break;
     case SDL_MOUSEMOTION:
         if (v.dragging) {
-            v.camera.yaw += (float)event->motion.xrel * 0.01f;
-            v.camera.pitch += (float)event->motion.yrel * 0.01f;
+            /* The original turns the camera by 0.005 per mouse step. */
+            v.camera.yaw += (float)event->motion.xrel * 0.005f;
+            v.camera.pitch += (float)event->motion.yrel * 0.005f;
             if (v.camera.pitch < 0.05f) v.camera.pitch = 0.05f;
             if (v.camera.pitch > 1.55f) v.camera.pitch = 1.55f;
+        } else if (v.playing) {
+            play_mouse_move(&v.play, event->motion.xrel);
         }
         break;
     case SDL_MOUSEWHEEL:
@@ -362,32 +459,89 @@ void viewer_handle_event(const SDL_Event *event)
     }
 }
 
-void viewer_draw(int width, int height, float time_ms)
+static void update(uint32_t ms)
+{
+    if (!v.playing)
+        return;
+    if (v.options.autoplay)
+        play_autopilot(&v.play);
+    play_update(&v.play, ms);
+    if (v.play.bricks_changed) {
+        scene_bake_bricks(&v.scene);
+        build_brick_mesh();
+        v.play.bricks_changed = false;
+    }
+    if (v.play.state == PLAY_LEVEL_DONE && v.play.state_time >= LEVEL_DONE_MS) {
+        /* Next level; lives carry over (no extra life: Lives stays the same in the original). */
+        v.score = v.play.score;
+        v.lives = v.play.lives;
+        load_level(v.pack, v.level + 1);
+        return;
+    }
+    update_title();
+}
+
+void play_screen_frame(int width, int height, uint32_t ms)
 {
     const Camera *c = &v.camera;
-    Mat4 orbit = mat4_yaw_pitch_roll(c->yaw, c->pitch, c->roll);
-    Vec3 eye = mat4_transform_point(orbit, vec3(0.0f, 0.0f, -c->distance * c->zoom));
-    Mat4 view = mat4_look_at_lh(eye, vec3(0.0f, 0.0f, c->look_z), vec3(0.0f, 1.0f, 0.0f));
+    Mat4 orbit, view, projection, identity, board;
+    Vec3 eye;
+    float aspect;
+    int i;
+
+    update(ms);
+    v.time += ms;
+
+    orbit = mat4_yaw_pitch_roll(c->yaw, c->pitch, c->roll);
+    eye = mat4_transform_point(orbit, vec3(0.0f, 0.0f, -c->distance * c->zoom));
+    view = mat4_look_at_lh(eye, vec3(0.0f, 0.0f, c->look_z), vec3(0.0f, 1.0f, 0.0f));
     /*
      * The game passes aspect 1.0 for its 4:3 modes, so the picture is
      * stretched to fill the screen. We keep that look at 4:3 and widen
      * the view on wider screens instead of stretching further.
      */
-    float aspect = ((float)width / (float)(height > 0 ? height : 1)) / (4.0f / 3.0f);
-    Mat4 projection = mat4_perspective_fov_lh(3.14159265f / 4.0f, aspect, 1.0f, 1000.0f);
-    Mat4 identity = mat4_identity();
+    aspect = ((float)width / (float)(height > 0 ? height : 1)) / (4.0f / 3.0f);
+    projection = mat4_perspective_fov_lh(3.14159265f / 4.0f, aspect, 1.0f, 1000.0f);
+    identity = mat4_identity();
     /* The board model is stretched by the board file's scalex / scalez, and
        lowered so its floor is where the bricks stand. */
-    Mat4 board = mat4_multiply(mat4_scaling(v.scene.board.scale_x, 1.0f, v.scene.board.scale_z),
-                               mat4_translation(0.0f, v.scene.board_y, 0.0f));
+    board = mat4_multiply(mat4_scaling(v.scene.board.scale_x, 1.0f, v.scene.board.scale_z),
+                          mat4_translation(0.0f, v.scene.board_y, 0.0f));
 
     render_begin(width, height, view, projection, &v.light);
     if (!v.scene_loaded)
         return;
-    render_draw(&v.background, identity, false, time_ms);
-    render_draw(&v.board, board, false, time_ms);
-    render_draw(&v.bricks, identity, false, time_ms);
-    render_draw(&v.background, identity, true, time_ms);
-    render_draw(&v.board, board, true, time_ms);
-    render_draw(&v.bricks, identity, true, time_ms);
+    {
+        float t = (float)v.time;
+        Mat4 bat_matrix = mat4_identity(), ball_matrices[PLAY_MAX_BALLS];
+        int pass;
+
+        if (v.playing) {
+            const Bat *bat = &v.play.bat;
+            /* The bat model sits 0.25 down and 1.25 back from the bat's point. */
+            bat_matrix = mat4_translation(bat->position.x, bat->position.y - 0.25f,
+                                          bat->position.z - 1.25f);
+            if (bat->tilt > 5 || bat->tilt < -5)
+                bat_matrix = mat4_multiply(mat4_rotation_z((float)bat->tilt * 0.00025f), bat_matrix);
+            /* Balls are drawn at 0.8 of the model's size. */
+            for (i = 0; i < v.play.ball_count; i++) {
+                const Ball *ball = &v.play.balls[i];
+                ball_matrices[i] = mat4_multiply(mat4_scaling(0.8f, 0.8f, 0.8f),
+                                                 mat4_translation(ball->position.x, ball->position.y,
+                                                                  ball->position.z));
+            }
+        }
+        for (pass = 0; pass < 2; pass++) {
+            bool alpha = pass == 1;
+            render_draw(&v.background, identity, alpha, t);
+            render_draw(&v.board, board, alpha, t);
+            render_draw(&v.bricks, identity, alpha, t);
+            if (v.playing) {
+                if (v.play.state != PLAY_BAT_LOST && v.play.state != PLAY_GAME_OVER)
+                    render_draw(&v.bat, bat_matrix, alpha, t);
+                for (i = 0; i < v.play.ball_count; i++)
+                    render_draw(&v.ball, ball_matrices[i], alpha, t);
+            }
+        }
+    }
 }

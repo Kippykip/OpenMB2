@@ -31,10 +31,11 @@ bool board_load(Board *board, const char *game_path)
     scale_z = config_get_float(&cfg, "scalez", 1.0f);
     board->scale_x = scale_x;
     board->scale_z = scale_z;
-    board->half_width = config_get_float(&cfg, "halfwidth", 12.0f) * scale_x;
-    board->radius = config_get_float(&cfg, "radius", 0.0f) * scale_x;
-    board->half_height = config_get_float(&cfg, "halfheight", 22.5f) * scale_z;
-    board->bat_line = config_get_float(&cfg, "batline", -2.5f) * scale_z;
+    /* The original's defaults; round boards rely on the radius one. */
+    board->half_width = config_get_float(&cfg, "halfwidth", 10.0f) * scale_x;
+    board->radius = config_get_float(&cfg, "radius", 16.0f) * scale_x;
+    board->half_height = config_get_float(&cfg, "halfheight", 10.0f) * scale_z;
+    board->bat_line = config_get_float(&cfg, "batline", 0.0f) * scale_z;
 
     if (config_get_floats(&cfg, "camera", camera, 2) == 2) {
         board->camera_look_z = camera[0];

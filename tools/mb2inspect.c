@@ -9,6 +9,8 @@
  *   mb2inspect <game folder> level <file>    print one level
  *   mb2inspect <game folder> mesh <file>     print one .x model
  *   mb2inspect <game folder> ls [folder]     list a folder
+ *   mb2inspect <game folder> play <file> [s] let a bot play a level for s
+ *                                            seconds (default 600) and report
  *
  * "scan" doubles as a test of the loaders: it reports every file that
  * fails to parse and every file reference that points at nothing.
@@ -18,6 +20,8 @@
 #include "../src/core/vfs.h"
 #include "../src/core/xfile.h"
 #include "../src/game/level.h"
+#include "../src/game/play.h"
+#include "../src/game/scene.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -297,6 +301,78 @@ static void print_child(const char *name, bool is_dir, void *user)
 
 /* ------------------------------------------------------------------------ */
 
+/* ------------------------------------------------------------------------ */
+/* play: the gameplay rules without a window                                */
+/* ------------------------------------------------------------------------ */
+
+typedef struct SoundCount {
+    char name[32];
+    int count;
+} SoundCount;
+
+static SoundCount g_sounds[32];
+
+static void count_sound(const char *name, int volume, int pan, void *user)
+{
+    int i;
+    (void)volume;
+    (void)pan;
+    (void)user;
+    for (i = 0; i < 32; i++) {
+        if (g_sounds[i].name[0] == '\0')
+            snprintf(g_sounds[i].name, sizeof(g_sounds[i].name), "%s", name);
+        if (strcmp(g_sounds[i].name, name) == 0) {
+            g_sounds[i].count++;
+            return;
+        }
+    }
+}
+
+static int command_play(const char *path, int seconds)
+{
+    Scene scene;
+    Play play;
+    int lives_lost = 0, last_lives, i;
+    uint32_t t;
+
+    if (!scene_load(&scene, path, 0)) {
+        fprintf(stderr, "can't load %s\n", path);
+        return 1;
+    }
+    if (!play_start(&play, &scene, 0, 3, 0.75f))
+        return 1;
+    play.sound = count_sound;
+    last_lives = play.lives;
+    printf("%s: %d bricks, %d to break\n", path, scene.brick_count, play.bricks_left);
+    for (t = 0; t < (uint32_t)seconds * 1000; t += 18) {
+        play_autopilot(&play);
+        play_update(&play, 18);
+        if (play.lives < last_lives)
+            lives_lost++;
+        last_lives = play.lives;
+        if (play.state == PLAY_LEVEL_DONE || play.state == PLAY_GAME_OVER)
+            break;
+        if (t % 30000 == 0)
+            printf("  %3us: %d left, score %d\n", t / 1000, play.bricks_left, play.score);
+    }
+    printf("%s after %.1f s: %d left, score %d, lives lost %d\n",
+           play.state == PLAY_LEVEL_DONE ? "done" : play.state == PLAY_GAME_OVER ? "game over" : "stopped",
+           t / 1000.0, play.bricks_left, play.score, lives_lost);
+    for (i = 0, last_lives = 0; i < scene.brick_count && last_lives < 12; i++) {
+        const SceneBrick *b = &scene.bricks[i];
+        if (!b->removed && play.bricks[i].counts) {
+            printf("  left: type 0x%02x at %.0f %.0f %.0f\n", b->object->type, b->position.x,
+                   b->position.y, b->position.z);
+            last_lives++;
+        }
+    }
+    for (i = 0; i < 32 && g_sounds[i].name[0]; i++)
+        printf("  %-14s %d\n", g_sounds[i].name, g_sounds[i].count);
+    play_free(&play);
+    scene_free(&scene);
+    return 0;
+}
+
 static void usage(void)
 {
     fprintf(stderr,
@@ -304,7 +380,8 @@ static void usage(void)
             "       mb2inspect <game folder> config <file>\n"
             "       mb2inspect <game folder> level <file>\n"
             "       mb2inspect <game folder> mesh <file>\n"
-            "       mb2inspect <game folder> ls [folder]\n");
+            "       mb2inspect <game folder> ls [folder]\n"
+            "       mb2inspect <game folder> play <file> [seconds]\n");
 }
 
 int main(int argc, char **argv)
@@ -328,6 +405,8 @@ int main(int argc, char **argv)
         result = command_level(argv[3]);
     } else if (strcmp(command, "mesh") == 0 && argc >= 4) {
         result = command_mesh(argv[3]);
+    } else if (strcmp(command, "play") == 0 && argc >= 4) {
+        result = command_play(argv[3], argc >= 5 ? atoi(argv[4]) : 600);
     } else if (strcmp(command, "ls") == 0) {
         result = vfs_list(argc >= 4 ? argv[3] : "", print_child, NULL) > 0 ? 0 : 1;
     } else {

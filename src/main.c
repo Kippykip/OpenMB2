@@ -5,21 +5,25 @@
  * main.c - OpenMB2 entry point.
  *
  * Finds the user's game folder, reads their settings, opens a window with
- * an OpenGL ES 2 context and runs the main loop. For now (milestone 2)
- * the loop runs the level viewer, see viewer.h.
+ * an OpenGL ES 2 context and runs the main loop. For now (milestone 3)
+ * the loop goes straight to playing a level, see play_screen.h.
  *
- * Usage: openmb2 [--game <folder>] [--level <file>] [--screenshot <file.bmp>] [--debug]
+ * Usage: openmb2 [--game <folder>] [--level <file>] [--debug]
+ *                [--screenshot <file.bmp>] [--run-ms <ms>] [--autoplay]
  *
  *   --level       start on this level, e.g. "Levels1/001_Vesi.mb2"
- *   --screenshot  draw one frame, save it as a .bmp and quit (for testing)
+ *   --screenshot  save a frame as a .bmp and quit (for testing); with
+ *                 --run-ms, after playing that long in steady 18 ms frames
+ *   --autoplay    the bat follows the ball by itself (for testing)
  */
+#include "audio/audio.h"
 #include "core/config.h"
 #include "core/log.h"
 #include "core/vfs.h"
 #include "game/level.h"
 #include "game/params.h"
 #include "platform/gl.h"
-#include "viewer.h"
+#include "play_screen.h"
 
 #include <SDL.h>
 #include <stdio.h>
@@ -44,6 +48,8 @@ typedef struct App {
     Params params;
     bool running;
     const char *screenshot_path;
+    int run_ms;          /* with screenshot_path: game time to play first */
+    uint32_t last_ticks;
 } App;
 
 static App g_app;
@@ -245,10 +251,17 @@ static void handle_event(const SDL_Event *event)
         else if (event->key.keysym.sym == SDLK_RETURN && (event->key.keysym.mod & KMOD_ALT))
             toggle_fullscreen();
         else
-            viewer_handle_event(event);
+            play_screen_handle_event(event);
+        break;
+    case SDL_WINDOWEVENT:
+        /* The bat takes the mouse while the window has focus. */
+        if (event->window.event == SDL_WINDOWEVENT_FOCUS_GAINED)
+            SDL_SetRelativeMouseMode(SDL_TRUE);
+        else if (event->window.event == SDL_WINDOWEVENT_FOCUS_LOST)
+            SDL_SetRelativeMouseMode(SDL_FALSE);
         break;
     default:
-        viewer_handle_event(event);
+        play_screen_handle_event(event);
         break;
     }
 }
@@ -262,10 +275,18 @@ static void run_frame(void)
         handle_event(&event);
 
     SDL_GL_GetDrawableSize(g_app.window, &width, &height);
-    viewer_draw(width, height, (float)SDL_GetTicks());
     if (g_app.screenshot_path != NULL) {
+        /* Testing: play in steady steps, then save the last frame. */
+        int frames = g_app.run_ms / 18, i;
+        for (i = 0; i < frames; i++)
+            play_screen_frame(width, height, 18);
+        play_screen_frame(width, height, 0);
         save_screenshot(g_app.screenshot_path, width, height);
         g_app.running = false;
+    } else {
+        Uint32 now = SDL_GetTicks();
+        play_screen_frame(width, height, now - g_app.last_ticks);
+        g_app.last_ticks = now;
     }
     SDL_GL_SwapWindow(g_app.window);
 
@@ -285,7 +306,8 @@ static void show_error(const char *message)
 
 static void shutdown_app(void)
 {
-    viewer_shutdown();
+    play_screen_shutdown();
+    audio_shutdown();
     if (g_app.gl_context != NULL)
         SDL_GL_DeleteContext(g_app.gl_context);
     if (g_app.window != NULL)
@@ -297,16 +319,21 @@ static void shutdown_app(void)
 int main(int argc, char **argv)
 {
     const char *game_folder = NULL;
-    const char *start_level = NULL;
+    PlayScreenOptions options;
     int i;
 
+    memset(&options, 0, sizeof(options));
     for (i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--game") == 0 && i + 1 < argc)
             game_folder = argv[++i];
         else if (strcmp(argv[i], "--level") == 0 && i + 1 < argc)
-            start_level = argv[++i];
+            options.start_level = argv[++i];
         else if (strcmp(argv[i], "--screenshot") == 0 && i + 1 < argc)
             g_app.screenshot_path = argv[++i];
+        else if (strcmp(argv[i], "--run-ms") == 0 && i + 1 < argc)
+            g_app.run_ms = atoi(argv[++i]);
+        else if (strcmp(argv[i], "--autoplay") == 0)
+            options.autoplay = true;
         else if (strcmp(argv[i], "--debug") == 0)
             log_set_level(LOG_DEBUG);
     }
@@ -335,13 +362,18 @@ int main(int argc, char **argv)
     }
 
     srand((unsigned)time(NULL));
-    if (!viewer_init(g_app.window, start_level)) {
-        show_error("Couldn't start the level viewer. See the log for details.");
+    audio_init(g_app.params.sound_volume);
+    options.mouse_sensitivity = g_app.params.mouse_sensitivity;
+    if (!play_screen_init(g_app.window, &options)) {
+        show_error("Couldn't start the game. See the log for details.");
         shutdown_app();
         return 1;
     }
 
     g_app.running = true;
+    g_app.last_ticks = SDL_GetTicks();
+    if (g_app.screenshot_path == NULL)
+        SDL_SetRelativeMouseMode(SDL_TRUE);
 #ifdef __EMSCRIPTEN__
     emscripten_set_main_loop(run_frame, 0, 1);
 #else

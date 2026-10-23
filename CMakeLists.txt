@@ -23,7 +23,10 @@ endfunction()
 # tools and tests can use it on their own.
 # ---------------------------------------------------------------------------
 # Vendored libraries, built without our warning flags.
-add_library(openmb2_third_party STATIC src/third_party/stb_image_impl.c)
+add_library(openmb2_third_party STATIC
+    src/third_party/stb_image_impl.c
+    src/third_party/stb_vorbis_impl.c
+)
 
 add_library(openmb2_core STATIC
     src/core/config.c
@@ -35,6 +38,7 @@ add_library(openmb2_core STATIC
     src/game/board.c
     src/game/level.c
     src/game/params.c
+    src/game/play.c
     src/game/scene.c
     src/game/textures.c
 )
@@ -86,7 +90,8 @@ endif()
 # ---------------------------------------------------------------------------
 add_executable(openmb2
     src/main.c
-    src/viewer.c
+    src/play_screen.c
+    src/audio/audio.c
     src/platform/gl.c
     src/render/render.c
 )
