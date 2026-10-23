@@ -69,7 +69,8 @@ static Mat4 brick_matrix(const SceneBrick *b)
     if (b->rotation & 0x80) rz += PI;
 
     Mat4 world = mat4_multiply(
-        mat4_multiply(mat4_multiply(mat4_rotation_x(rx), mat4_rotation_y(ry)), mat4_rotation_z(rz)),
+        mat4_multiply(mat4_multiply(mat4_multiply(mat4_rotation_x(rx), mat4_rotation_y(ry)), mat4_rotation_z(rz)),
+                      mat4_rotation_z(b->roll)),
         mat4_translation(b->position.x, b->position.y, b->position.z));
 
     /* The part of a tip done so far, about (x, y - 1, z) (0x402f36). */

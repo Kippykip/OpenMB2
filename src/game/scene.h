@@ -42,6 +42,7 @@ typedef struct SceneBrick {
      * the left, - to the right). It turns about its bottom edge's middle.
      */
     float tip;
+    float roll;    /* turns from earlier tips, about its centre: it stays tipped over */
 } SceneBrick;
 
 typedef struct ModelCache ModelCache;

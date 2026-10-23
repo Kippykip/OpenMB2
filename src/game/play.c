@@ -369,6 +369,7 @@ static void brick_move(Play *play, int index, uint32_t ms)
         b->tip -= turn;
         if (b->tip <= 0.0f) {
             b->tip = 0.0f;
+            b->roll += 1.5707964f;
             b->position.x -= 1.0f;
             b->position.y -= 1.0f;
         }
@@ -377,6 +378,7 @@ static void brick_move(Play *play, int index, uint32_t ms)
         b->tip += turn;
         if (b->tip >= 0.0f) {
             b->tip = 0.0f;
+            b->roll -= 1.5707964f;
             b->position.x += 1.0f;
             b->position.y -= 1.0f;
         }
