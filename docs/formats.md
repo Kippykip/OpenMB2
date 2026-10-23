@@ -161,6 +161,8 @@ side-by-side screenshots of the first three levels).
 
 Background files only have `skinmesh:` (`fon.x`, a large box around the
 board). There is no sky: `fon.x` names `01.jpg`, which isn't shipped.
+A level with an empty background slot (e.g. `030_Volkano`) still gets the
+usual box, so OpenMB2 falls back to `bgnone.txt`.
 
 `randomizetexture` is not a file key but a command the game sends when a
 level starts, and again on F8 (board) and F7 (background). For the board

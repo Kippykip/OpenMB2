@@ -247,7 +247,7 @@ static bool load_skinmesh(XModel *model, const char *name)
 bool scene_load(Scene *scene, const char *level_path, int random)
 {
     ModelCache cache = { NULL, 0 };
-    const char *textureset_path;
+    const char *textureset_path, *background_path;
     int i;
 
     memset(scene, 0, sizeof(*scene));
@@ -268,7 +268,14 @@ bool scene_load(Scene *scene, const char *level_path, int random)
         log_warn("%s: can't load board %s", level_path, scene->level.slots[LEVEL_SLOT_BOARD]);
     }
 
-    if (background_load(&scene->background, scene->level.slots[LEVEL_SLOT_BACKGROUND])) {
+    /*
+     * Some levels (e.g. 030_Volkano) leave the background slot empty; the
+     * original still shows the usual background box then.
+     */
+    background_path = scene->level.slots[LEVEL_SLOT_BACKGROUND][0]
+                          ? scene->level.slots[LEVEL_SLOT_BACKGROUND]
+                          : "Backgrounds/bgnone.txt";
+    if (background_load(&scene->background, background_path)) {
         load_skinmesh(&scene->background_model, scene->background.skinmesh);
         scene_randomize_background(scene, random / 10);
     }
