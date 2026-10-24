@@ -587,7 +587,8 @@ recoiling it plays br_cannon.ogg and fires Bullets/cannonbullet.txt
 record's rotation bits 0x04/0x08/0x10/0x20 (π/8, π/4, π/2, π), and the
 ball bounces. The shot waits 400 ms (0x408fc0: bullet flag 8 until its
 clock passes) before it moves. The recoil (slot 0x30, 0x4077b0) runs the
-model's animation at a third of the object clock from 1 until past 200,
+model's animation at a third of game time (ms / 3 a step; Kippykip saw it
+at that speed, not on the doubled object clock) from 1 until past 200,
 then the cannon can fire again; otherwise the model stands still. A shot
 that reaches a cannon (0x409267): a smallcannonbullet goes through, any
 other shot fires the cannon and is gone. Shots also check the ball list
@@ -596,7 +597,9 @@ other shot fires the cannon and is gone. Shots also check the ball list
 ## Objects placed in levels
 
 Only types 0x40 and 0xa8 of the factory's non-brick objects appear in the
-stock levels (0x48, 0x4c, 0x50 never do). A 0x40 record is the explosion
+stock levels (0x48, 0x4c, 0x50 never do: they are the effects the game
+makes itself, the 5 crumbs of a broken brick (0x403d20 → 0x425bd0), an
+animal's puff (0x408150, 0x4085f0 → 0x40e060) and the firework burst). A 0x40 record is the explosion
 flash (0x405fb0: explose.png, 75 ms a frame, 16 frames, then gone), so it
 flashes once as the level starts (021_Police, 070_Losi). A 0xa8 record is
 a firework rocket, which takes off at once (!12_Bomb).

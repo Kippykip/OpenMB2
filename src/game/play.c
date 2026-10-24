@@ -2050,11 +2050,12 @@ static void step(Play *play, uint32_t ms)
             train_update(play, i, ms, dt);
             continue;
         }
-        /* A cannon's recoil plays at a third of the object clock, which
-           runs twice as fast as the game while playing (0x4077b0). */
+        /* A cannon's recoil plays at a third of game time (0x4077b0; like
+           the animals, it shows at that speed although it is called on
+           the object clock). */
         if (play->scene->bricks[i].animal != NULL && play->scene->bricks[i].animal->kind == MODEL_CANNON &&
             play->scene->bricks[i].animation_ms != 0) {
-            play->scene->bricks[i].animation_ms += ms / 3 * 2;
+            play->scene->bricks[i].animation_ms += ms / 3;
             if (play->scene->bricks[i].animation_ms > 200)
                 play->scene->bricks[i].animation_ms = 0;
         }
