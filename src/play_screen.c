@@ -56,8 +56,8 @@ static struct {
     bool playing;
     int score, lives;  /* carried from level to level */
     int music;         /* which level tune is playing, 0-3 */
-    RenderMesh shadows, glows, prize_glows, trail, bullet_shadows, strings;
-    unsigned shadow_texture, glow_texture, particle_texture, rubber_texture;
+    RenderMesh shadows, glows, prize_glows, trail, bullet_shadows, strings, billboards;
+    unsigned shadow_texture, glow_texture, particle_texture, rubber_texture, billboard_texture;
     XModel bullet_models[WEAPON_COUNT];
     RenderMesh bullet_meshes[WEAPON_COUNT];
     XModel prize_models[PRIZE_KINDS];
@@ -611,6 +611,7 @@ bool play_screen_init(SDL_Window *window, const PlayScreenOptions *options)
     v.explosion_texture = texture_for_name("explose.png");
     v.shadow_texture = texture_for_name("bshadow.png");
     v.glow_texture = texture_for_name("infravis.png");
+    v.billboard_texture = texture_for_name("Billboards.png");
     load_level(pack, level);
     return true;
 }
@@ -630,6 +631,7 @@ void play_screen_shutdown(void)
     render_mesh_destroy(&v.trail);
     render_mesh_destroy(&v.bullet_shadows);
     render_mesh_destroy(&v.strings);
+    render_mesh_destroy(&v.billboards);
     for (i = 0; i < WEAPON_COUNT; i++) {
         render_mesh_destroy(&v.bullet_meshes[i]);
         xfile_free(&v.bullet_models[i]);
@@ -879,6 +881,50 @@ static void add_billboard(XVertex *out, Mat4 view, Vec3 p, float w, float h)
     c[2] = vec3_add(p, vec3_add(vec3_scale(right, w), vec3_scale(up, -h)));
     c[3] = vec3_add(p, vec3_add(vec3_scale(right, -w), vec3_scale(up, -h)));
     add_quad(out, c);
+}
+
+/*
+ * Fire and fountains (FireBrick / WaterBrick draw): an eight frame
+ * animation from Billboards.png, a 4x4 grid, fire in the left half and
+ * water in the right, one frame every 230 ms. Each faces the camera,
+ * 2 wide, from 1 above its cell to 1 below, and is blended without
+ * depth writes (t_billboard).
+ */
+static void build_billboards(Mat4 view)
+{
+    XVertex *quads;
+    Vec3 right = vec3(view.m[0][0], view.m[1][0], view.m[2][0]);
+    Vec3 up = vec3(view.m[0][1], view.m[1][1], view.m[2][1]);
+    unsigned frame = ((unsigned)v.time / 230u) & 7u;
+    int i, k, n = v.scene.billboard_count;
+
+    render_mesh_destroy(&v.billboards);
+    if (n == 0)
+        return;
+    quads = malloc(sizeof(*quads) * (size_t)n * 6);
+    if (!quads)
+        return;
+    for (i = 0; i < n; i++) {
+        const SceneBillboard *b = &v.scene.billboards[i];
+        Vec3 p = vec3(b->position.x, b->position.y - 0.5f, b->position.z), c[4];
+        float u0 = (float)(frame >> 2) * 0.25f + (b->water ? 0.5f : 0.0f);
+        float v0 = (float)(frame & 3) * 0.25f + 1.0f / 512.0f;
+        float u1 = u0 + 0.25f, v1 = v0 + 0.25f - 1.0f / 256.0f;
+        const float uv[4][2] = { { u0, v0 }, { u1, v0 }, { u1, v1 }, { u0, v1 } };
+        static const int order[6] = { 0, 1, 2, 0, 2, 3 };
+
+        c[0] = vec3_add(p, vec3_add(vec3_scale(right, -1.0f), vec3_scale(up, 1.5f)));
+        c[1] = vec3_add(p, vec3_add(vec3_scale(right, 1.0f), vec3_scale(up, 1.5f)));
+        c[2] = vec3_add(p, vec3_add(vec3_scale(right, 1.0f), vec3_scale(up, -0.5f)));
+        c[3] = vec3_add(p, vec3_add(vec3_scale(right, -1.0f), vec3_scale(up, -0.5f)));
+        add_quad(&quads[i * 6], c);
+        for (k = 0; k < 6; k++) {
+            quads[i * 6 + k].uv[0] = uv[order[k]][0];
+            quads[i * 6 + k].uv[1] = uv[order[k]][1];
+        }
+    }
+    make_overlay(&v.billboards, quads, n * 6, v.billboard_texture, 0);
+    free(quads);
 }
 
 /* A square of half size r lying on the floor under p, lifted 0.01 so it never loses the depth test. */
@@ -1190,6 +1236,8 @@ void play_screen_frame(int width, int height, uint32_t ms)
              */
             if (pass == 0) {
                 render_draw(&v.bricks, identity, RENDER_PASS_ALL, t);
+                build_billboards(view);
+                render_draw(&v.billboards, identity, RENDER_PASS_ALL, t);
                 if (v.playing) {
                     build_ball_overlays(view);
                     render_draw(&v.shadows, identity, RENDER_PASS_BLENDED, t);
@@ -1202,8 +1250,16 @@ void play_screen_frame(int width, int height, uint32_t ms)
                     render_draw_posed(&v.bat, bat_matrix, bat_pose, kind, t);
                 else if (pass == 1 && v.play.bat.pieces_ms > 0)
                     draw_bat_pieces(bat_matrix, bat_pose, t);
-                for (i = 0; i < v.play.ball_count; i++)
+                /* An explosive ball from the fire fades out over its last
+                   second, to 55 of 255. */
+                for (i = 0; i < v.play.ball_count; i++) {
+                    const Ball *ball = &v.play.balls[i];
+                    if ((ball->flags & BALL_EXPLOSIVE) && ball->explosive_end != PLAY_FOREVER &&
+                        ball->explosive_end - ball->age <= 1000)
+                        render_set_fade(((float)(ball->explosive_end - ball->age) / 5.0f + 55.0f) / 255.0f);
                     render_draw_posed(ball_meshes[i], ball_matrices[i], ball_poses[i], kind, t);
+                    render_set_fade(1.0f);
+                }
                 /* Shots spin about their length and point along their
                    climb or fall (0x4092e0). */
                 for (i = 0; i < v.play.bullet_count; i++) {

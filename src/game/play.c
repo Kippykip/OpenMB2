@@ -148,12 +148,13 @@ static void explode(Play *play, Vec3 at)
         { 0, 0, -2 }, { 1, 0, -2 }, { 0, 0, 2 }, { 1, 0, 2 }
     };
     int self = brick_at(play, at), i;
-    Vec3 p;
+    Vec3 p = at;
 
-    if (self < 0)
-        return;
-    p = play->scene->bricks[self].position;
-    brick_take(play, self);
+    /* (A cannon ball can burst on fire, which itself stays.) */
+    if (self >= 0) {
+        p = play->scene->bricks[self].position;
+        brick_take(play, self);
+    }
     for (i = 0; i < (int)(sizeof(offsets) / sizeof(offsets[0])); i++) {
         int n = brick_at(play, vec3(p.x + offsets[i][0], p.y + offsets[i][1], p.z + offsets[i][2]));
         if (n >= 0)
@@ -244,32 +245,94 @@ static bool brick_hit(Play *play, int index, const Ball *ball)
  * the brick's faces since the last step, that part of its velocity turns
  * round and it goes back to where it was.
  */
+static bool crossed_face(const Ball *ball, Vec3 at, Vec3 *v)
+{
+    Vec3 p = ball->position, prev = ball->previous;
+
+    *v = ball->velocity;
+    if (p.z < at.z + 1.0f && prev.z > at.z + 1.0f)
+        v->z = fabsf(v->z);
+    else if (p.z > at.z - 1.0f && prev.z < at.z - 1.0f)
+        v->z = -fabsf(v->z);
+    else if (p.x > at.x - 0.99f && prev.x < at.x - 0.99f)
+        v->x = -fabsf(v->x);
+    else if (p.x < at.x + 1.01f && prev.x > at.x + 1.01f)
+        v->x = fabsf(v->x);
+    else
+        return false;
+    /* Only the bottom layer is in the ball's way. */
+    return at.y <= 0.5f;
+}
+
+/* The fire or fountain in a point's cell, or -1. They stand in two cells, like bricks. */
+static int billboard_at(const Play *play, Vec3 p)
+{
+    Cell c = cell_of(p);
+    int i;
+
+    for (i = 0; i < play->scene->billboard_count; i++) {
+        Cell b = cell_of(play->scene->billboards[i].position);
+        if ((c.x == b.x || c.x == b.x + 1) && c.y == b.y && c.z == b.z)
+            return i;
+    }
+    return -1;
+}
+
+/*
+ * Making a ball explosive (0x401d30): for some ms, or for good when ms is
+ * 0; or plain again.
+ */
+static void ball_set_explosive(Ball *ball, bool on, uint32_t ms)
+{
+    if (on) {
+        ball->flags = (ball->flags & ~(uint32_t)BALL_HYPNOTIC) | BALL_EXPLOSIVE;
+        ball->explosive_end = ms != 0 ? ball->age + ms : PLAY_FOREVER;
+    } else {
+        ball->flags &= ~(uint32_t)(BALL_EXPLOSIVE | BALL_HYPNOTIC);
+        ball->explosive_end = 0;
+    }
+}
+
+/*
+ * A ball goes through fire or a fountain (0x405d70, 0x405f10). Fire makes
+ * it explosive for 5 s, unless it is explosive for good already; a
+ * fountain puts out any explosive ball, even for good, in half a second.
+ */
+static void ball_vs_billboard(Play *play, Ball *ball, int index)
+{
+    const SceneBillboard *bb = &play->scene->billboards[index];
+    Vec3 p = bb->position;
+    int volume = (int)(100.0f - fabsf(p.z + p.z));
+    const char *name;
+
+    if (bb->water) {
+        if (!(ball->flags & BALL_EXPLOSIVE))
+            return;
+        ball_set_explosive(ball, true, 500);
+        name = "WaterBrick2.ogg";
+    } else {
+        if ((ball->flags & BALL_EXPLOSIVE) && ball->explosive_end == PLAY_FOREVER)
+            return;
+        ball_set_explosive(ball, true, 5000);
+        name = "FireBrick2.ogg";
+    }
+    if (volume >= 0)
+        sound(play, name, volume, (int)(p.x / play->scene->board.half_width * 100.0f));
+}
+
 static void ball_vs_brick(Play *play, Ball *ball)
 {
     int index = brick_at(play, ball->position);
-    const SceneBrick *b;
-    Vec3 p, prev, v;
+    Vec3 v;
 
-    if (index < 0)
+    if (index < 0) {
+        /* Fire and fountains let the ball through. */
+        index = billboard_at(play, ball->position);
+        if (index >= 0 && crossed_face(ball, play->scene->billboards[index].position, &v))
+            ball_vs_billboard(play, ball, index);
         return;
-    b = &play->scene->bricks[index];
-    p = ball->position;
-    prev = ball->previous;
-    v = ball->velocity;
-
-    if (p.z < b->position.z + 1.0f && prev.z > b->position.z + 1.0f)
-        v.z = fabsf(v.z);
-    else if (p.z > b->position.z - 1.0f && prev.z < b->position.z - 1.0f)
-        v.z = -fabsf(v.z);
-    else if (p.x > b->position.x - 0.99f && prev.x < b->position.x - 0.99f)
-        v.x = -fabsf(v.x);
-    else if (p.x < b->position.x + 1.01f && prev.x > b->position.x + 1.01f)
-        v.x = fabsf(v.x);
-    else
-        return;
-
-    /* Only the bottom layer is in the ball's way. */
-    if (b->position.y > 0.5f)
+    }
+    if (!crossed_face(ball, play->scene->bricks[index].position, &v))
         return;
     if (brick_hit(play, index, ball)) {
         ball->position = ball->previous;
@@ -544,6 +607,10 @@ static void ball_update(Play *play, Ball *ball, uint32_t ms, float dt)
         ball->velocity = mat4_transform_point(mat4_rotation_y(sinf(ball->wobble) * 0.01f),
                                               ball->velocity);
     }
+    /* A fire's explosive wears off (0x402161). */
+    if ((ball->flags & BALL_EXPLOSIVE) && ball->explosive_end != PLAY_FOREVER &&
+        ball->age >= ball->explosive_end)
+        ball_set_explosive(ball, false, 0);
     ball_trail(play, ball);
     ball->previous = ball->position;
     if (ball->flags & BALL_STUCK) {
@@ -867,6 +934,7 @@ static void triple_balls(Play *play)
             ball_set_angle(ball, angle + (float)side * 2.0944f);
             /* It takes on the ball's powers (0x401f00). */
             ball->flags = from->flags & (BALL_POWER | BALL_EXPLOSIVE | BALL_HYPNOTIC);
+            ball->explosive_end = from->explosive_end;
         }
     }
 }
@@ -896,11 +964,8 @@ static void prize_apply(Play *play, const Prize *prize)
         break;
     case PRIZE_TOEXPLOSIVE:
     case PRIZE_TOSIMPLE:
-        for (i = 0; i < play->ball_count; i++) {
-            play->balls[i].flags &= ~(uint32_t)(BALL_EXPLOSIVE | BALL_HYPNOTIC);
-            if (prize->kind == PRIZE_TOEXPLOSIVE)
-                play->balls[i].flags |= BALL_EXPLOSIVE;
-        }
+        for (i = 0; i < play->ball_count; i++)
+            ball_set_explosive(&play->balls[i], prize->kind == PRIZE_TOEXPLOSIVE, 0);
         break;
     case PRIZE_SPEEDUP:
     case PRIZE_SPEEDDOWN:
@@ -1177,8 +1242,15 @@ static bool bullet_update(Play *play, Bullet *bullet, uint32_t ms, float dt)
     }
 
     index = brick_at(play, bullet->position);
-    if (index < 0)
-        return true;
+    if (index < 0) {
+        /* Fire and fountains stop bullets and cannon balls, not rockets. */
+        index = billboard_at(play, bullet->position);
+        if (index < 0 || info->kind == BULLET_ROCKET)
+            return true;
+        if (info->kind != BULLET_BULLET)
+            explode(play, play->scene->billboards[index].position);
+        return false;
+    }
     switch (info->kind) {
     case BULLET_ROCKET:
         brick_destroy(play, index);

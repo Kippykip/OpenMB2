@@ -320,7 +320,8 @@ bool scene_load(Scene *scene, const char *level_path, int random)
         return false;
     scene->models = calloc(1, sizeof(*scene->models));
     scene->bricks = calloc((size_t)(scene->level.object_count + 1), sizeof(*scene->bricks));
-    if (scene->models == NULL || scene->bricks == NULL) {
+    scene->billboards = calloc((size_t)(scene->level.object_count + 1), sizeof(*scene->billboards));
+    if (scene->models == NULL || scene->bricks == NULL || scene->billboards == NULL) {
         scene_free(scene);
         return false;
     }
@@ -358,6 +359,12 @@ bool scene_load(Scene *scene, const char *level_path, int random)
             *b = decode_brick(object);
             /* Glass (type 0x18) is invisible until the ball first hits it. */
             b->hidden = object->type == 0x18;
+        } else if (object->type == 0x64 || object->type == 0x90 || object->type == 0x68 ||
+                   object->type == 0x94) {
+            SceneBillboard *bb = &scene->billboards[scene->billboard_count++];
+            bb->object = object;
+            bb->position = vec3((float)object->x - 0.01f, (float)object->y, (float)object->z);
+            bb->water = object->type == 0x68 || object->type == 0x94;
         } else {
             scene->other_count++;
         }
@@ -496,6 +503,7 @@ void scene_free(Scene *scene)
         free(scene->batches[i].vertices);
     free(scene->batches);
     free(scene->bricks);
+    free(scene->billboards);
     cache_free(scene->models);
     xfile_free(&scene->board_model);
     xfile_free(&scene->background_model);

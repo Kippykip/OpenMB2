@@ -24,6 +24,7 @@
 #define PLAY_MAX_PRIZES 4   /* the original drops no more while 4 are falling */
 #define PLAY_MAX_TRAIL 256
 #define PLAY_MAX_BULLETS 64
+#define PLAY_FOREVER 0xffffffffu
 
 /* Ball flags, with the original's values. */
 enum {
@@ -44,6 +45,7 @@ typedef struct Ball {
     uint32_t trail_time;  /* a powerball leaves its next trail spot at this age */
     float spin;           /* turns 0.03 a step; the explosive ball is drawn turned by it */
     float wobble;         /* a hypnotic ball's swing, in radians of a sine */
+    uint32_t explosive_end; /* the age a fire's explosive wears off at; PLAY_FOREVER for a prize's */
 } Ball;
 
 /* The prizes, numbered as in the original. */

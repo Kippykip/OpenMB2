@@ -334,3 +334,28 @@ is 10 or more from the bat, its velocity gains (bat - ball) * distance * dt
 go and their speed put back within limits. The string is rubber.png from
 the bat model's origin (x, y - 0.25, z - 1.25) to the ball, half width
 0.25 / distance (distance held to 10-15).
+
+## Fire and fountains (FireBrick / WaterBrick)
+
+Brick types 0x64 and 0x90 are fire, 0x68 and 0x94 a fountain. They are
+not bricks to break: they hold no cell in the brick grid, the ball and
+rockets pass through them, bullets stop at them and a cannon ball
+explodes at them. Either one is matched when a ball enters its cell or
+the cell to its right, at the same height and row.
+
+- **Fire**: unless the ball is explosive from a prize, it becomes
+  explosive for 5000 ms and FireBrick2.ogg plays.
+- **Fountain**: an explosive ball, even one from a prize, is put out
+  500 ms later and WaterBrick2.ogg plays.
+
+Both sounds are at volume 100 − |2z|, panned x / half width × 100.
+Over the last 1000 ms of a timed explosive ball its alpha is
+(end − age) / 5 + 55 out of 255; when it runs out the ball loses both
+explosive and hypnotic.
+
+Each is drawn from Billboards.png, a 4×4 grid: fire in the left two
+columns, water in the right two. Frame f = (time / 230) & 7;
+u0 = (f >> 2) × 0.25 (+ 0.5 for water), v0 = (f & 3) × 0.25 + 1/512,
+each cell 0.25 across and 0.25 − 1/256 down. The quad faces the camera
+round (x, y − 0.5, z), from −1 to 1 across and −0.5 to 1.5 up, blended
+without depth writes (t_billboard).

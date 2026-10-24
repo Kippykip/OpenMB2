@@ -30,6 +30,17 @@ typedef struct BrickBatch {
  * One brick from the level, decoded (see scene.c). Gameplay hides bricks
  * and removes them; scene_bake_bricks() then rebuilds the batches.
  */
+/*
+ * Fire and fountains (types 0x64 / 0x90 and 0x68 / 0x94): animated
+ * pictures from billboards.png standing in the grid like bricks
+ * (0x405cc0, 0x405e50).
+ */
+typedef struct SceneBillboard {
+    const LevelObject *object;
+    Vec3 position;  /* (x - 0.01, y, z), as for bricks */
+    bool water;     /* a fountain; otherwise fire */
+} SceneBillboard;
+
 typedef struct SceneBrick {
     const LevelObject *object;
     Vec3 position; /* where the original places it: (x - 0.01, y, z) */
@@ -89,6 +100,8 @@ typedef struct Scene {
     float board_y;
     SceneBrick *bricks;
     int brick_count;
+    SceneBillboard *billboards;
+    int billboard_count;
     int other_count; /* objects that aren't bricks, not drawn yet */
     BrickBatch *batches;
     int batch_count;
