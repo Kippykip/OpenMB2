@@ -11,12 +11,22 @@
 #include <string.h>
 
 #define MAX_LANGUAGES 32
+#define LANG_SLOTS 512
 
 static struct {
     char *data;
-    char **lines;
-    int count;
+    const char *slots[LANG_SLOTS];
 } g_lang;
+
+/* Where each section's lines start (0x418950). */
+static const struct {
+    const char *header;
+    int slot;
+} k_sections[] = {
+    { "/// OPTIONS ///", 0x30 },  { "/// NAG-SCREEN ///", 0xc0 }, { "/// PACKS ///", 0xa0 },
+    { "/// INFO ///", 0x60 },     { "/// TRIAL ///", 0x70 },      { "/// CREDITS ///", 0xe0 },
+    { "/// RUNNINGSTRING ///", 0xd0 }, { "/// ENDGAME ///", 0x20 }, { "/// PRIZES ///", 0x80 },
+};
 
 typedef struct Names {
     char names[MAX_LANGUAGES][128];
@@ -53,7 +63,7 @@ bool lang_load(int index)
     Names list;
     char path[160];
     char *p;
-    int capacity = 0;
+    int slot = 0;
 
     lang_free();
     list.count = 0;
@@ -72,42 +82,42 @@ bool lang_load(int index)
         log_warn("lang: can't read %s", path);
         return false;
     }
-    /* Split into lines, dropping the first (the "/// SYSTEM ///" header). */
-    p = strchr(g_lang.data, '\n');
-    while (p != NULL) {
-        char *line = p + 1, *end;
+    /* Each line goes in the next slot; a section line, stored like any
+       other, sends the next line to its section's first slot. */
+    for (p = g_lang.data; p != NULL && *p != '\0' && slot < LANG_SLOTS;) {
+        char *line = p, *end = strchr(p, '\n');
+        size_t i;
+        bool section = false;
 
-        p = strchr(line, '\n');
-        end = p != NULL ? p : line + strlen(line);
+        p = end != NULL ? end + 1 : NULL;
+        if (end == NULL)
+            end = line + strlen(line);
         if (end > line && end[-1] == '\r')
             end--;
         *end = '\0';
-        if (p == NULL && line[0] == '\0')
-            break;
-        if (g_lang.count == capacity) {
-            char **grown;
-            capacity = capacity ? capacity * 2 : 64;
-            grown = realloc(g_lang.lines, (size_t)capacity * sizeof(*grown));
-            if (grown == NULL)
-                break;
-            g_lang.lines = grown;
+        g_lang.slots[slot] = line;
+        for (i = 0; i < sizeof(k_sections) / sizeof(k_sections[0]); i++) {
+            if (strcmp(line, k_sections[i].header) == 0) {
+                slot = k_sections[i].slot;
+                section = true;
+            }
         }
-        g_lang.lines[g_lang.count++] = line;
+        if (!section)
+            slot++;
     }
-    log_info("lang: %s, %d strings", path, g_lang.count);
+    log_info("lang: %s", path);
     return true;
 }
 
 void lang_free(void)
 {
-    free(g_lang.lines);
     free(g_lang.data);
     memset(&g_lang, 0, sizeof(g_lang));
 }
 
 const char *lang_text(int index, const char *fallback)
 {
-    if (index < 0 || index >= g_lang.count)
+    if (index < 0 || index >= LANG_SLOTS || g_lang.slots[index] == NULL)
         return fallback;
-    return g_lang.lines[index];
+    return g_lang.slots[index];
 }

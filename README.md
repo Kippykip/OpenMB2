@@ -42,7 +42,7 @@ it is a level viewer:
 | Space | reset the camera |
 | F10 | smooth motion on / off |
 | Alt+Enter | fullscreen |
-| Escape | quit |
+| Escape | pause; again to quit |
 
 `--level "Levels1/001_Vesi.mb2"` starts on a level, and
 `--screenshot shot.bmp` saves the first frame and quits.

@@ -4,10 +4,11 @@
 /*
  * lang.h - the game's text in the chosen language (Languages/<name>.txt).
  *
- * A language file is one string per line after a first "/// SYSTEM ///"
- * line; the game refers to them by number (12 is "Score %d"). The bytes
- * are the font's own codes (Windows-1252 for the shipped languages), so
- * they are kept as they are.
+ * A language file is one string per line, numbered from 0 (the first
+ * line, "/// SYSTEM ///"). A section line such as "/// PRIZES ///" moves
+ * the numbering on to a fixed place (0x418950), so the prize names are
+ * always 0x80 onwards. The bytes are the font's own codes (Windows-1252
+ * for the shipped languages), so they are kept as they are.
  */
 #ifndef OPENMB2_LANG_H
 #define OPENMB2_LANG_H
@@ -15,9 +16,15 @@
 #include <stdbool.h>
 
 enum {
-    LANG_SCORE = 12,
-    LANG_LIVES = 13,
-    LANG_LEVEL = 14
+    LANG_SCORE = 13,
+    LANG_LIVES = 14,
+    LANG_LEVEL = 15,
+    LANG_PAUSE = 16,           /* then 17-19, the lines under it */
+    LANG_HYPNOTIC_OVER = 20,
+    LANG_YOYO_OVER = 21,
+    LANG_FIRE_HINT = 24,       /* two lines */
+    LANG_WATER_HINT = 26,      /* two lines */
+    LANG_PRIZES = 0x80         /* + PrizeKind */
 };
 
 /*

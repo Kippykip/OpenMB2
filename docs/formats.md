@@ -256,8 +256,10 @@ single glyphs, in file order (0x4279f0):
 
 Text is placed in an 800x600 screen centred on 0, y up (0x4271f0). Bytes
 0xC0-0xD9 in a string resize or nudge the rest of the line and `|` starts
-a new line. Strings come from `Languages/<name>.txt` by line number after
-the first line; params.txt `language` picks the file by its place in the
+a new line. Strings come from `Languages/<name>.txt` by line number, from
+0 for the first line, except that a section line moves the numbering on
+(0x418950): ENDGAME 0x20, OPTIONS 0x30, INFO 0x60, TRIAL 0x70, PRIZES
+0x80, PACKS 0xA0, NAG-SCREEN 0xC0, RUNNINGSTRING 0xD0, CREDITS 0xE0; params.txt `language` picks the file by its place in the
 folder.
 
 The HUD (0x41b818, 0x404110), all white:
@@ -270,9 +272,25 @@ The HUD (0x41b818, 0x404110), all white:
 | bar E | service | (401, 278) | 0.85 | right |
 | weapon icon J/H/G/K/I | icons | (330/320/320/310/310, 284) | 0.95 | right |
 | shots, or yo-yo seconds | text | (350 gun, else 340, 286) | 0.95 | centre |
-| "Score %d" (string 12) | text | (-375, 286) | 0.85 | left |
-| "Lives %d" (13, never below 0) | text | (-375, -282) | 0.9 | left |
-| "Level %d" (14) | text | (375, -282) | 0.9 | right |
+| "Score %d" (string 13) | text | (-375, 286) | 0.85 | left |
+| "Lives %d" (14, never below 0) | text | (-375, -282) | 0.9 | left |
+| "Level %d" (15) | text | (375, -282) | 0.9 | right |
+
+Messages at the bottom (0x4262a0, 0x4263a0): text font, scale 0.65,
+centred at (0, -280); each new one pushes the others up 24, and a sixth
+is dropped. Each lasts 5 s, fading in over the first second (alpha =
+age / 4) and out over the last. They come from prizes (string 0x80 +
+prize kind, in the prize file's `messagecolor`), "Yo-Yo Time Over" and
+"Hypnotic Ball Time Over" (21 and 20, red; the second only if a ball was
+still hypnotic), and at level start strings 24-25 (0xFFFF4444) when the
+level has an object of type 0x64 (fire) and 26-27 (0xFF4444FF) for 0x68
+(fountain). The other fire and fountain types, 0x90 and 0x94, don't.
+
+Pause (0x41bee4): Escape while playing pauses, Escape while paused goes
+to the main menu, and any other key (or a click) goes on. Losing focus
+pauses too. The overlay is strings 16-19 at (0, 60) scale 1.5 in red,
+then (0, 0), (0, -40), (0, -80) in 0xFFFF4400, each over a black copy at
+(+2, -2).
 
 The original stretches this over any screen. OpenMB2 sizes it by the
 screen's height and keeps each piece its distance from its own side, so

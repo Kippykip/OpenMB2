@@ -35,6 +35,10 @@ typedef struct PlayScreenOptions {
 bool play_screen_init(SDL_Window *window, const PlayScreenOptions *options);
 void play_screen_shutdown(void);
 void play_screen_handle_event(const SDL_Event *event);
+/* Escape: pauses the game, or returns false when it should quit instead. */
+bool play_screen_escape(void);
+/* Pause if a level is being played (e.g. when the window loses focus). */
+void play_screen_pause(void);
 
 /* Advance the game by ms and draw it. */
 void play_screen_frame(int width, int height, uint32_t ms);

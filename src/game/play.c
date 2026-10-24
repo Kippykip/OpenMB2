@@ -2,6 +2,7 @@
 /* Copyright (C) 2026 the OpenMB2 contributors */
 
 #include "play.h"
+#include "lang.h"
 #include "../core/config.h"
 #include "../core/log.h"
 
@@ -56,7 +57,13 @@ static int brick_at(const Play *play, Vec3 p)
 static void sound(Play *play, const char *name, int volume, int pan)
 {
     if (play->sound != NULL)
-        play->sound(name, volume, pan, play->sound_user);
+        play->sound(name, volume, pan, play->user);
+}
+
+static void message(Play *play, int text, uint32_t color)
+{
+    if (play->message != NULL)
+        play->message(text, color, play->user);
 }
 
 /* Objects sound quieter further away, and are panned by x (0x403660). */
@@ -1426,6 +1433,8 @@ static void prize_apply(Play *play, const Prize *prize)
     default:
         break;
     }
+    /* Its name from the language file's prizes, in the prize file's messagecolor. */
+    message(play, LANG_PRIZES + (int)prize->kind, info->color);
 }
 
 /*
@@ -2031,14 +2040,21 @@ static void step(Play *play, uint32_t ms)
     if (play->trigger && play->state == PLAY_RUNNING && play->time >= play->bat.ready_time)
         bat_fire(play);
     if (play->bat.mode == BAT_RUBBER && play->time > play->bat.rubber_end) {
+        message(play, LANG_YOYO_OVER, 0xffff0000u); /* 0x404f2b */
         release_yoyo(play);
         play->bat.mode = BAT_NORMAL;
         play->bat.weapon_time = 0;
     }
     /* Hypnotic balls turn plain again, explosive ones too (0x40e790). */
     if (play->hypnotic_end != 0 && play->time > play->hypnotic_end) {
-        for (i = 0; i < play->ball_count; i++)
+        bool any = false;
+        for (i = 0; i < play->ball_count; i++) {
+            any |= (play->balls[i].flags & BALL_HYPNOTIC) != 0;
             play->balls[i].flags &= ~(uint32_t)(BALL_HYPNOTIC | BALL_EXPLOSIVE);
+        }
+        /* Said only if a ball was still hypnotic (0x410f0b). */
+        if (any)
+            message(play, LANG_HYPNOTIC_OVER, 0xffff0000u);
         play->hypnotic_end = 0;
     }
     for (i = 0, kept = 0; i < play->trail_count; i++) {

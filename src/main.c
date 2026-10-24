@@ -246,8 +246,10 @@ static void handle_event(const SDL_Event *event)
         g_app.running = false;
         break;
     case SDL_KEYDOWN:
-        if (event->key.keysym.sym == SDLK_ESCAPE)
-            g_app.running = false;
+        if (event->key.keysym.sym == SDLK_ESCAPE) {
+            if (!play_screen_escape())
+                g_app.running = false;
+        }
         else if (event->key.keysym.sym == SDLK_RETURN && (event->key.keysym.mod & KMOD_ALT))
             toggle_fullscreen();
         else
@@ -257,8 +259,10 @@ static void handle_event(const SDL_Event *event)
         /* The bat takes the mouse while the window has focus. */
         if (event->window.event == SDL_WINDOWEVENT_FOCUS_GAINED)
             SDL_SetRelativeMouseMode(SDL_TRUE);
-        else if (event->window.event == SDL_WINDOWEVENT_FOCUS_LOST)
+        else if (event->window.event == SDL_WINDOWEVENT_FOCUS_LOST) {
             SDL_SetRelativeMouseMode(SDL_FALSE);
+            play_screen_pause(); /* as the original does when it loses focus */
+        }
         break;
     default:
         play_screen_handle_event(event);

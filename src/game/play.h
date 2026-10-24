@@ -252,6 +252,9 @@ typedef enum PlayState {
 } PlayState;
 
 typedef void (*PlaySoundFn)(const char *name, int volume, int pan, void *user);
+/* A line for the bottom of the screen: string number text of the
+   language file, in an ARGB colour (0x4262a0). */
+typedef void (*PlayMessageFn)(int text, uint32_t color, void *user);
 
 typedef struct Play {
     Scene *scene;
@@ -292,7 +295,8 @@ typedef struct Play {
     bool trigger;                /* the fire button is held */
     bool bricks_changed;         /* the scene's bricks need rebaking */
     PlaySoundFn sound;
-    void *sound_user;
+    PlayMessageFn message;
+    void *user;                  /* passed to sound and message */
 } Play;
 
 /* Prize names as the files call them ("incbat"), "" for PRIZE_NONE. */

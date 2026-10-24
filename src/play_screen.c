@@ -101,6 +101,16 @@ static struct {
     Font text_font, service_font;
     unsigned font_texture, service_texture, icons_texture;
     RenderMesh hud;
+    /* Lines fading in and out at the bottom (0x4262a0): the newest at the
+       bottom, earlier ones pushed up. */
+    struct {
+        char text[256];
+        uint32_t color;
+        uint32_t age; /* ms; gone at 5000 */
+        float y;
+    } messages[5];
+    int message_count;
+    bool paused;
     uint32_t time;     /* ms, for scrolling textures */
     char title[320];
 } v;
@@ -838,11 +848,42 @@ static void play_level_music(int tune)
     audio_play_music(path);
 }
 
+/* 0x4262a0: at most five; a sixth is dropped. */
+static void add_message(int text, uint32_t color, void *user)
+{
+    int i;
+
+    (void)user;
+    if (v.message_count == 5)
+        return;
+    for (i = 0; i < v.message_count; i++)
+        v.messages[i].y += 24.0f;
+    i = v.message_count++;
+    snprintf(v.messages[i].text, sizeof(v.messages[i].text), "%s", lang_text(text, ""));
+    v.messages[i].color = color;
+    v.messages[i].age = 0;
+    v.messages[i].y = -280.0f;
+}
+
+/* 0x4263a0: each lasts 5 s. */
+static void age_messages(uint32_t ms)
+{
+    int i, kept = 0;
+
+    for (i = 0; i < v.message_count; i++) {
+        v.messages[i].age += ms;
+        if (v.messages[i].age < 5000)
+            v.messages[kept++] = v.messages[i];
+    }
+    v.message_count = kept;
+}
+
 static void load_level(int pack, int level)
 {
     const Pack *p;
     char path[256];
     const TextureSet *ts;
+    int i;
 
     unload_level();
     if (v.pack_count == 0)
@@ -875,6 +916,7 @@ static void load_level(int pack, int level)
 
     if (play_start(&v.play, &v.scene, v.score, v.lives, v.options.mouse_sensitivity)) {
         v.play.sound = play_sound;
+        v.play.message = add_message;
         v.playing = true;
         v.fade = 0.0f;
         if (v.options.intro)
@@ -883,6 +925,24 @@ static void load_level(int pack, int level)
         load_bullet_models();
         if (v.firework_mesh.buffer == 0)
             load_model("SkinMeshes/firework.x", &v.firework_model, &v.firework_mesh);
+    }
+    /* A level with fire or a fountain says what they do (0x4146ce). */
+    v.message_count = 0;
+    v.paused = false;
+    {
+        bool fire = false, water = false;
+        for (i = 0; i < v.scene.level.object_count; i++) {
+            fire |= v.scene.level.objects[i].type == 0x64;
+            water |= v.scene.level.objects[i].type == 0x68;
+        }
+        if (fire) {
+            add_message(LANG_FIRE_HINT, 0xffff4444u, NULL);
+            add_message(LANG_FIRE_HINT + 1, 0xffff4444u, NULL);
+        }
+        if (water) {
+            add_message(LANG_WATER_HINT, 0xff4444ffu, NULL);
+            add_message(LANG_WATER_HINT + 1, 0xff4444ffu, NULL);
+        }
     }
     log_info("level %s: %d bricks (%d to break), %d other objects, board %s", path,
              v.scene.brick_count, v.play.bricks_left, v.scene.other_count,
@@ -1000,8 +1060,42 @@ static void jump_to_level(int pack, int level)
     load_level(pack, level);
 }
 
+static bool can_pause(void)
+{
+    return v.playing && (v.play.state == PLAY_RUNNING || v.play.state == PLAY_BAT_LOST);
+}
+
+void play_screen_pause(void)
+{
+    if (can_pause())
+        v.paused = true;
+}
+
+bool play_screen_escape(void)
+{
+    /* Escape pauses; again, it leaves for the main menu (0x41bee4), which
+       for now means quitting. */
+    if (v.paused || !can_pause())
+        return false;
+    v.paused = true;
+    play_hold_trigger(&v.play, false);
+    return true;
+}
+
 void play_screen_handle_event(const SDL_Event *event)
 {
+    /* While paused, any other key goes on with the game, and is then
+       handled as usual; a mouse button only goes on. */
+    if (v.paused) {
+        if (event->type == SDL_KEYDOWN) {
+            v.paused = false;
+        } else if (event->type == SDL_MOUSEBUTTONDOWN && event->button.button == SDL_BUTTON_LEFT) {
+            v.paused = false;
+            return;
+        } else if (event->type == SDL_MOUSEMOTION && !v.dragging) {
+            return;
+        }
+    }
     switch (event->type) {
     case SDL_KEYDOWN:
         switch (event->key.keysym.sym) {
@@ -1128,7 +1222,7 @@ static bool flash_bricks(uint32_t object_ms)
 
 static void update(uint32_t ms)
 {
-    if (flash_bricks(v.playing ? ms * 2 : ms)) {
+    if (flash_bricks(v.playing && !v.paused ? ms * 2 : ms)) {
         if (v.playing) {
             v.play.bricks_changed = true;
         } else {
@@ -1136,6 +1230,8 @@ static void update(uint32_t ms)
             build_brick_mesh();
         }
     }
+    if (v.paused)
+        return;
     update_flight(ms);
     if (!v.playing)
         return;
@@ -1862,6 +1958,7 @@ static void draw_hud(int width, int height)
     int score = v.playing ? v.play.score : v.score;
     int lives = v.playing ? v.play.lives : v.lives;
     char text[256];
+    int i;
 
     /* Sized by the screen's height, or its width when narrower than 4:3. */
     if (width * 3 >= height * 4)
@@ -1881,12 +1978,44 @@ static void draw_hud(int width, int height)
     hud_text(&v.service_font, v.service_texture, HUD_RIGHT, 401.0f, 278.0f, 0.85f, FONT_RIGHT, "E", 0xffffffffu);
     if (v.playing)
         hud_weapon();
+    /* The lines at the bottom go first: the font draws them as it starts
+       (0x427680). In the middle 1 s of their 5 they keep their own
+       colour; they fade in over the first and out over the last. */
+    for (i = 0; i < v.message_count; i++) {
+        uint32_t age = v.messages[i].age, color = v.messages[i].color;
+        if (age < 1000)
+            color = (color & 0xffffffu) | ((age >> 2) << 24);
+        else if (age > 4000)
+            color = (color & 0xffffffu) | ((0xffu - ((age - 4000) >> 2)) << 24);
+        hud_text(&v.text_font, v.font_texture, HUD_MIDDLE, 0.0f, v.messages[i].y, 0.65f, FONT_CENTER,
+                 v.messages[i].text, color);
+    }
     snprintf(text, sizeof(text), lang_text(LANG_SCORE, "Score %d"), score);
     hud_text(&v.text_font, v.font_texture, HUD_LEFT, -375.0f, 286.0f, 0.85f, FONT_LEFT, text, 0xffffffffu);
     snprintf(text, sizeof(text), lang_text(LANG_LIVES, "Lives %d"), lives > 0 ? lives : 0);
     hud_text(&v.text_font, v.font_texture, HUD_LEFT, -375.0f, -282.0f, 0.9f, FONT_LEFT, text, 0xffffffffu);
     snprintf(text, sizeof(text), lang_text(LANG_LEVEL, "Level %d"), v.level + 1);
     hud_text(&v.text_font, v.font_texture, HUD_RIGHT, 375.0f, -282.0f, 0.9f, FONT_RIGHT, text, 0xffffffffu);
+    if (v.paused) {
+        /* 0x41b9db: each line over a black shadow 2 units right and down.
+           The save and load line (18) waits until there are saves. */
+        static const struct { int text; float y, scale; uint32_t color; } lines[] = {
+            { LANG_PAUSE, 60.0f, 1.5f, 0xffff0000u },
+            { LANG_PAUSE + 1, 0.0f, 1.0f, 0xffff4400u },
+            { LANG_PAUSE + 3, -80.0f, 1.0f, 0xffff4400u },
+        };
+        static const char *const fallback[] = { "Pause", "Press Escape for Main Menu",
+                                                 "Press any key or button to continue..." };
+        int pass;
+        for (pass = 0; pass < 2; pass++) {
+            for (i = 0; i < 3; i++) {
+                float d = pass == 0 ? 2.0f : 0.0f;
+                hud_text(&v.text_font, v.font_texture, HUD_MIDDLE, d, lines[i].y - d, lines[i].scale,
+                         FONT_CENTER, lang_text(lines[i].text, fallback[i]),
+                         pass == 0 ? 0xff000000u : lines[i].color);
+            }
+        }
+    }
 
     render_mesh_destroy(&v.hud);
     if (hud.vertex_count == 0 || !render_mesh_create(&v.hud, hud.vertices, hud.vertex_count))
@@ -1913,8 +2042,10 @@ void play_screen_frame(int width, int height, uint32_t ms)
        each time they are drawn; the game draws them twice a frame while
        playing and once when paused, so they animate twice as fast in play
        (0x406600, 0x407880). */
-    v.object_time += v.playing ? ms * 2 : ms;
+    v.object_time += v.playing && !v.paused ? ms * 2 : ms;
     update(ms);
+    if (v.playing && !v.paused)
+        age_messages(ms);
     v.time += ms;
 
     eye = camera_eye(c);
