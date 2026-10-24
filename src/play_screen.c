@@ -87,6 +87,9 @@ static struct {
     unsigned turbine_time; /* the turbines' animation time, XFRAME_REST at first */
     XModel bat_model, ball_model, explosive_model, hypnotic_model;
     RenderMesh background, board, bricks, bat, ball, explosive_ball, hypnotic_ball;
+    /* With sort_glass: each brick part's centre, to draw see-through ones
+       from the back. */
+    Vec3 *brick_centres;
     RenderMesh explosions;      /* rebuilt every frame */
     unsigned explosion_texture;
     RenderLight light;
@@ -221,6 +224,17 @@ static void build_model_mesh(RenderMesh *mesh, const XModel *model, uint32_t fla
 }
 
 /* All brick batches go in one buffer, one part per texture script. */
+static void add_brick_part(const RenderPart *part, Vec3 centre)
+{
+    Vec3 *grown = realloc(v.brick_centres, (size_t)(v.bricks.part_count + 1) * sizeof(*grown));
+
+    if (grown == NULL)
+        return;
+    v.brick_centres = grown;
+    v.brick_centres[v.bricks.part_count] = centre;
+    render_mesh_add_part(&v.bricks, part);
+}
+
 static void build_brick_mesh(void)
 {
     const Scene *s = &v.scene;
@@ -246,10 +260,14 @@ static void build_brick_mesh(void)
     }
     free(all);
 
+    free(v.brick_centres);
+    v.brick_centres = NULL;
     at = 0;
     for (i = 0; i < s->batch_count; i++) {
-        const TextureScript *script = textureset_get(&s->textures, s->batches[i].texture);
+        const BrickBatch *batch = &s->batches[i];
+        const TextureScript *script = textureset_get(&s->textures, batch->texture);
         RenderPart part;
+        int j;
 
         memset(&part, 0, sizeof(part));
         part.first_vertex = at;
@@ -278,8 +296,71 @@ static void build_brick_mesh(void)
             log_warn("brick texture index %d is not in the texture set", s->batches[i].texture);
             part.texture = render_texture(NULL);
         }
-        render_mesh_add_part(&v.bricks, &part);
-        at += part.vertex_count;
+        if (!v.options.sort_glass) {
+            render_mesh_add_part(&v.bricks, &part);
+        } else if (!(part.flags & RENDER_ALPHA)) {
+            add_brick_part(&part, vec3(0.0f, 0.0f, 0.0f));
+        } else {
+            /* See-through bricks one by one, so they can be sorted. */
+            for (j = 0; j < batch->span_count; j++) {
+                part.first_vertex = at + batch->spans[j].first;
+                part.vertex_count = batch->spans[j].count;
+                add_brick_part(&part, batch->spans[j].centre);
+            }
+        }
+        at += batch->vertex_count;
+    }
+}
+
+/*
+ * OpenMB2's own: the original draws bricks texture by texture, so glass
+ * (blended, no depth writes) can show over glass in front of it, or be
+ * painted over by a solid brick behind it. Instead, see-through bricks go
+ * after everything solid, the farthest first.
+ */
+static int compare_far_first(const void *a, const void *b)
+{
+    float da = ((const float *)a)[0], db = ((const float *)b)[0];
+    return da < db ? 1 : da > db ? -1 : 0;
+}
+
+static void sort_glass(Vec3 eye)
+{
+    static struct {
+        float distance;
+        RenderPart part;
+        Vec3 centre;
+    } *order;
+    static int capacity;
+    RenderMesh *mesh = &v.bricks;
+    int i, n = 0;
+
+    if (v.brick_centres == NULL)
+        return;
+    if (capacity < mesh->part_count) {
+        void *grown = realloc(order, (size_t)mesh->part_count * sizeof(*order));
+        if (grown == NULL)
+            return;
+        order = grown;
+        capacity = mesh->part_count;
+    }
+    for (i = 0; i < mesh->part_count; i++) {
+        if (mesh->parts[i].flags & RENDER_ALPHA) {
+            Vec3 d = vec3_sub(v.brick_centres[i], eye);
+            order[n].distance = vec3_dot(d, d);
+            order[n].part = mesh->parts[i];
+            order[n].centre = v.brick_centres[i];
+            n++;
+        }
+    }
+    qsort(order, (size_t)n, sizeof(*order), compare_far_first);
+    n = 0;
+    for (i = 0; i < mesh->part_count; i++) {
+        if (mesh->parts[i].flags & RENDER_ALPHA) {
+            mesh->parts[i] = order[n].part;
+            v.brick_centres[i] = order[n].centre;
+            n++;
+        }
     }
 }
 
@@ -882,6 +963,7 @@ void play_screen_shutdown(void)
     render_mesh_destroy(&v.strings);
     render_mesh_destroy(&v.billboards);
     render_mesh_destroy(&v.hud);
+    free(v.brick_centres);
     lang_free();
     free(unblended.bricks);
     memset(&unblended, 0, sizeof(unblended));
@@ -1926,10 +2008,17 @@ void play_screen_frame(int width, int height, uint32_t ms)
              * The original draws the bricks texture by texture, in the
              * texture set's order, blended or not. Glass (tileset 4, no depth
              * writes) so goes under bricks behind it drawn from a later
-             * tileset; copy that rather than sorting.
+             * tileset. --original-glass keeps that; by default solid bricks
+             * go first and see-through ones are sorted (sort_glass()).
              */
+            if (v.options.sort_glass) {
+                if (pass == 1)
+                    sort_glass(eye);
+                render_draw(&v.bricks, identity, kind, t);
+            }
             if (pass == 0) {
-                render_draw(&v.bricks, identity, RENDER_PASS_ALL, t);
+                if (!v.options.sort_glass)
+                    render_draw(&v.bricks, identity, RENDER_PASS_ALL, t);
                 build_billboards(view);
                 render_draw(&v.billboards, identity, RENDER_PASS_ALL, t);
                 if (v.playing) {

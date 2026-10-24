@@ -174,10 +174,20 @@ static void bake_model(Scene *scene, const XModel *model, Mat4 world, int textur
     float yfactor = script ? script->yfactor : 1.0f;
     float column = (float)(tile >> 4), row = (float)((tile & 15) + row_shift);
     BrickBatch *batch = batch_for_texture(scene, texture);
+    BrickSpan *span;
+    Vec3 sum = vec3(0.0f, 0.0f, 0.0f);
     int i;
 
-    if (batch == NULL)
+    if (batch == NULL || model->vertex_count == 0)
         return;
+    if (batch->span_count == batch->span_capacity) {
+        int capacity = batch->span_capacity ? batch->span_capacity * 2 : 64;
+        BrickSpan *grown = realloc(batch->spans, (size_t)capacity * sizeof(*grown));
+        if (grown == NULL)
+            return;
+        batch->spans = grown;
+        batch->span_capacity = capacity;
+    }
     if (batch->vertex_count + model->vertex_count > batch->capacity) {
         int capacity = batch->capacity ? batch->capacity : 1024;
         XVertex *grown;
@@ -190,6 +200,9 @@ static void bake_model(Scene *scene, const XModel *model, Mat4 world, int textur
         batch->capacity = capacity;
     }
 
+    span = &batch->spans[batch->span_count++];
+    span->first = batch->vertex_count;
+    span->count = model->vertex_count;
     for (i = 0; i < model->vertex_count; i++) {
         const XVertex *in = &model->vertices[i];
         XVertex *out = &batch->vertices[batch->vertex_count++];
@@ -207,7 +220,9 @@ static void bake_model(Scene *scene, const XModel *model, Mat4 world, int textur
         out->normal[2] = n.z;
         out->uv[0] = (u + column) * xfactor;
         out->uv[1] = (v + row) * yfactor;
+        sum = vec3_add(sum, p);
     }
+    span->centre = vec3_scale(sum, 1.0f / (float)model->vertex_count);
 }
 
 static void bake_brick_at(Scene *scene, ModelCache *cache, const SceneBrick *b, Mat4 world)
@@ -298,7 +313,7 @@ void scene_bake_bricks(Scene *scene)
 
     /* Keep each batch's memory, just empty it. */
     for (i = 0; i < scene->batch_count; i++)
-        scene->batches[i].vertex_count = 0;
+        scene->batches[i].vertex_count = scene->batches[i].span_count = 0;
     for (i = 0; i < scene->brick_count; i++) {
         const SceneBrick *b = &scene->bricks[i];
         if (!b->hidden && b->animal == NULL && (!b->removed || b->dying_ms > 0))
@@ -542,8 +557,10 @@ void scene_free(Scene *scene)
 {
     int i;
 
-    for (i = 0; i < scene->batch_count; i++)
+    for (i = 0; i < scene->batch_count; i++) {
         free(scene->batches[i].vertices);
+        free(scene->batches[i].spans);
+    }
     free(scene->batches);
     free(scene->bricks);
     free(scene->billboards);

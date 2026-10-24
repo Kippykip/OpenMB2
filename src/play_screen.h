@@ -29,6 +29,7 @@ typedef struct PlayScreenOptions {
     int language;            /* from params.txt: which file in Languages, by name */
     bool intro;              /* fly the camera in at the start of a level */
     bool smooth;             /* draw moving things between game steps (OpenMB2's own) */
+    bool sort_glass;         /* draw see-through bricks back to front (OpenMB2's own) */
 } PlayScreenOptions;
 
 bool play_screen_init(SDL_Window *window, const PlayScreenOptions *options);

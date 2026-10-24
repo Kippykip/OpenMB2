@@ -19,11 +19,19 @@
 #include "../core/matrix.h"
 #include "../core/xfile.h"
 
+/* One model's vertices in a batch, for drawing see-through bricks one by one. */
+typedef struct BrickSpan {
+    int first, count;
+    Vec3 centre;
+} BrickSpan;
+
 /* All bricks drawn with one texture script. */
 typedef struct BrickBatch {
     int texture; /* index into the texture set */
     XVertex *vertices;
     int vertex_count, capacity;
+    BrickSpan *spans;
+    int span_count, span_capacity;
 } BrickBatch;
 
 /*

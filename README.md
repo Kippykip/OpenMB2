@@ -56,6 +56,11 @@ them, like the original.
 
 Each level opens with the original's camera fly-in; `--no-intro` skips it.
 
+The original draws bricks texture by texture, so from some angles glass
+shows over glass in front of it, or a solid brick behind shows through.
+OpenMB2 draws solid bricks first and glass from the back forwards;
+`--original-glass` goes back to the original's order.
+
 `mb2inspect` looks inside a game folder:
 
 ```

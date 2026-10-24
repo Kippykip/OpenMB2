@@ -326,6 +326,7 @@ int main(int argc, char **argv)
     memset(&options, 0, sizeof(options));
     options.smooth = true;
     options.intro = true;
+    options.sort_glass = true;
     for (i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--game") == 0 && i + 1 < argc)
             game_folder = argv[++i];
@@ -339,6 +340,8 @@ int main(int argc, char **argv)
             options.smooth = false;
         else if (strcmp(argv[i], "--no-intro") == 0)
             options.intro = false;
+        else if (strcmp(argv[i], "--original-glass") == 0)
+            options.sort_glass = false;
         else if (strcmp(argv[i], "--autoplay") == 0)
             options.autoplay = true;
         else if (strcmp(argv[i], "--seed") == 0 && i + 1 < argc)
