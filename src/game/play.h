@@ -25,6 +25,7 @@
 #define PLAY_MAX_TRAIL 256
 #define PLAY_MAX_BULLETS 64
 #define PLAY_MAX_PARTICLES 512
+#define PLAY_MAX_SMOKE 2048     /* 0x800, as the original's smoke list */
 #define PLAY_FOREVER 0xffffffffu
 
 /* Ball flags, with the original's values. */
@@ -97,12 +98,16 @@ typedef struct Prize {
     uint32_t age;          /* ms, for its animation */
 } Prize;
 
-/* A puff thrown up where an animal was blown up, falling and shrinking (0x41f250). */
+/*
+ * A puff thrown up where an animal was blown up, falling and shrinking
+ * (0x41f250), or a puff of smoke rising from a fog brick (0x4242a0).
+ */
 typedef struct Particle {
     Vec3 position, velocity;
     Vec3 from;             /* where it was when the last step began */
-    uint32_t color;        /* ARGB */
+    uint32_t color;        /* ARGB; smoke's alpha follows its life */
     float size;
+    int life;              /* smoke only: ms left */
 } Particle;
 
 /* A spot of a powerball's or a rocket's trail, fading over 250 ms. */
@@ -196,7 +201,8 @@ typedef struct PlayBrick {
     /* Its drawn place, turn and size when the last step began, to draw between steps. */
     Vec3 from;
     float tip_from, roll_from, scale_from;
-    /* An animal: its clock, when it next makes its sound, and once hit, its climb. */
+    /* An animal: its clock, when it next makes its sound, and once hit, its climb.
+       A fog brick: its clock, and when it next puffs smoke. */
     uint32_t idle_ms, call_ms;
     float climb;
 } PlayBrick;
@@ -229,6 +235,8 @@ typedef struct Play {
     int trail_count;
     Particle particles[PLAY_MAX_PARTICLES];
     int particle_count;
+    Particle smoke[PLAY_MAX_SMOKE];
+    int smoke_count;
     Bullet bullets[PLAY_MAX_BULLETS];
     int bullet_count;
     BulletInfo bullet_info[WEAPON_COUNT];

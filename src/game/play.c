@@ -138,6 +138,32 @@ static void particle_burst(Play *play, Vec3 at, uint32_t color)
 }
 
 /*
+ * A fog brick (0x41f1a0) puffs smoke in its record's colour from just
+ * above itself every 25 ms of its own clock (0x4242a0): drifting a little,
+ * rising, 1 to 1.5 across, for 2 s.
+ */
+static void fog_update(Play *play, int index, uint32_t ms)
+{
+    const SceneBrick *b = &play->scene->bricks[index];
+    PlayBrick *pb = &play->bricks[index];
+    const uint8_t *raw = b->object->raw;
+    Particle *p;
+
+    pb->idle_ms += ms;
+    if (pb->idle_ms <= pb->call_ms)
+        return;
+    pb->call_ms = pb->idle_ms + 25u;
+    if (play->smoke_count >= PLAY_MAX_SMOKE)
+        return;
+    p = &play->smoke[play->smoke_count++];
+    p->position = p->from = vec3_add(b->position, vec3(0.0f, 1.0f, 0.0f));
+    p->velocity = vec3(random_range(-0.05f, 0.1f), random_range(0.1f, 0.15f), random_range(-0.05f, 0.1f));
+    p->color = ((uint32_t)raw[4] | (uint32_t)raw[5] << 8 | (uint32_t)raw[6] << 16) & 0xffffffu;
+    p->life = 2000;
+    p->size = random_range(1.0f, 0.5f);
+}
+
+/*
  * An animal hit (0x407eb0) leaves the grid, counts as broken and cries
  * out, then flies up rolling over. Blown up (0x408150) it also scores,
  * may drop a prize and leaves a burst of puffs in its record's colour.
@@ -1453,6 +1479,8 @@ static void remember_positions(Play *play)
         play->bat.pieces[i].from = play->bat.pieces[i].position;
     for (i = 0; i < play->particle_count; i++)
         play->particles[i].from = play->particles[i].position;
+    for (i = 0; i < play->smoke_count; i++)
+        play->smoke[i].from = play->smoke[i].position;
     for (i = 0; i < play->scene->brick_count; i++) {
         const SceneBrick *b = &play->scene->bricks[i];
         PlayBrick *pb = &play->bricks[i];
@@ -1622,6 +1650,8 @@ static void step(Play *play, uint32_t ms)
         brick_move(play, i, ms);
         if (play->scene->bricks[i].animal != NULL)
             animal_update(play, i, ms, dt);
+        else if (play->scene->bricks[i].object->type == 0x38 && !play->scene->bricks[i].removed)
+            fog_update(play, i, ms);
     }
 
     /* Puffs fly, fall 0.05 a step, shrink 0.01 and bounce off the floor (0x41f3f0). */
@@ -1636,6 +1666,23 @@ static void step(Play *play, uint32_t ms)
             play->particles[kept++] = *p;
     }
     play->particle_count = kept;
+
+    /* Smoke drifts, rises ever faster and grows, fading in over its first
+       second and out over its last (0x4243a0). */
+    for (i = 0, kept = 0; i < play->smoke_count; i++) {
+        Particle *p = &play->smoke[i];
+        int alpha;
+        p->position = vec3_add(p->position, vec3_scale(p->velocity, dt));
+        p->velocity.y += 0.05f * dt;
+        p->size += 0.05f * dt;
+        p->life -= (int)ms;
+        if (p->life < 0)
+            continue;
+        alpha = p->life < 1000 ? p->life / 4 : 250 - (p->life - 1000) / 4;
+        p->color = (p->color & 0xffffffu) | (uint32_t)(alpha & 0xff) << 24;
+        play->smoke[kept++] = *p;
+    }
+    play->smoke_count = kept;
 
     for (i = 0; i < play->ball_count; i++)
         ball_update(play, &play->balls[i], ms, dt);

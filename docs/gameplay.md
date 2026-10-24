@@ -430,3 +430,23 @@ Puffs (0x41f250, update 0x41f3f0): velocity (±0.15, 0..0.15, ±0.15),
 size 0.5..0.75; each step they move by velocity × dt, fall 0.05 × dt,
 shrink 0.01 × dt, bounce at y < −0.75 with 0.75 of their speed, and are
 gone below size 0.25. Drawn like trail spots, in their colour.
+
+## Fog bricks (type 0x38, class 0x41f120)
+
+An ordinary brick (5 points, counts toward the level end) whose update
+(0x41f1a0) keeps its own clock of update milliseconds and, each time the
+clock passes its next-puff time, sets that 25 ms later and puffs one smoke
+particle at (x, y + 1, z) in the colour of record bytes 4..7 (ARGB, alpha
+dropped). Levels use it for chimneys (034_Stop, 038_Zavod, 067_Bombovoz...).
+
+Smoke (list 0x4e3408, 0x800 slots; add 0x4242a0, update 0x4243a0):
+
+| | |
+|---|---|
+| velocity | x −0.05..0.05, y 0.1..0.25, z −0.05..0.05 |
+| size | 1.0..1.5 |
+| life | 2000 ms |
+| each step | position += velocity·dt; velocity.y += 0.05·dt; size += 0.05·dt; life −= ms |
+| alpha | life ≥ 1000: 250 − (life − 1000)/4; below: life/4 (fades in, then out) |
+
+It is gone once life is below 0, and is drawn like puffs and trail spots.

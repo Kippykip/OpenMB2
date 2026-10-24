@@ -140,6 +140,7 @@ static struct {
     Vec3 pieces[BAT_PIECES];
     float spins[PLAY_MAX_BALLS];
     Vec3 particles[PLAY_MAX_PARTICLES];
+    Vec3 smoke[PLAY_MAX_SMOKE];
     UnblendedBrick *bricks;     /* one per scene brick */
     int brick_capacity;
     bool bricks_saved;          /* bricks[] holds this frame's bricks */
@@ -1118,6 +1119,10 @@ static void blend_positions(void)
         unblended.particles[i] = play->particles[i].position;
         play->particles[i].position = vec3_lerp(play->particles[i].from, play->particles[i].position, t);
     }
+    for (i = 0; i < play->smoke_count; i++) {
+        unblended.smoke[i] = play->smoke[i].position;
+        play->smoke[i].position = vec3_lerp(play->smoke[i].from, play->smoke[i].position, t);
+    }
     blend_bricks(t);
 }
 
@@ -1138,6 +1143,8 @@ static void unblend_positions(void)
         play->bat.pieces[i].position = unblended.pieces[i];
     for (i = 0; i < play->particle_count; i++)
         play->particles[i].position = unblended.particles[i];
+    for (i = 0; i < play->smoke_count; i++)
+        play->smoke[i].position = unblended.smoke[i];
     for (i = 0; unblended.bricks_saved && i < v.scene.brick_count; i++) {
         v.scene.bricks[i].position = unblended.bricks[i].position;
         v.scene.bricks[i].tip = unblended.bricks[i].tip;
@@ -1367,24 +1374,25 @@ static void build_strings(void)
 /*
  * A powerball's trail: a camera-facing triangle of particle.png per spot,
  * 2.5 across, in the ball's colour, fading out as its 250 ms run out
- * (0x41f4e0). Puffs are drawn the same way, in their own colour.
+ * (0x41f4e0). Puffs and smoke are drawn the same way, in their own colour.
  */
 static void build_trail(Mat4 view)
 {
-    static XVertex tris[(PLAY_MAX_TRAIL + PLAY_MAX_PARTICLES) * 3];
+    static XVertex tris[(PLAY_MAX_TRAIL + PLAY_MAX_PARTICLES + PLAY_MAX_SMOKE) * 3];
     static const float corner[3][4] = {
         { 0.0f, 1.0f, 0.5f, 0.0f }, { 1.0f, -0.5f, 1.0f, 1.0f }, { -1.0f, -0.5f, 0.0f, 1.0f }
     };
     Vec3 right = vec3(view.m[0][0], view.m[1][0], view.m[2][0]);
     Vec3 up = vec3(view.m[0][1], view.m[1][1], view.m[2][1]);
-    int spots = v.play.trail_count, n = spots + v.play.particle_count;
+    int spots = v.play.trail_count, puffs = spots + v.play.particle_count, n = puffs + v.play.smoke_count;
     RenderPart part;
     int i, k;
 
     render_mesh_destroy(&v.trail);
     for (i = 0; i < n; i++) {
-        Vec3 at = i < spots ? v.play.trail[i].position : v.play.particles[i - spots].position;
-        float size = i < spots ? v.play.trail[i].size : v.play.particles[i - spots].size;
+        const Particle *puff = i < spots ? NULL : i < puffs ? &v.play.particles[i - spots] : &v.play.smoke[i - puffs];
+        Vec3 at = puff == NULL ? v.play.trail[i].position : puff->position;
+        float size = puff == NULL ? v.play.trail[i].size : puff->size;
         for (k = 0; k < 3; k++) {
             XVertex *t = &tris[i * 3 + k];
             Vec3 p = vec3_add(at, vec3_add(vec3_scale(right, size * corner[k][0]),
@@ -1409,8 +1417,10 @@ static void build_trail(Mat4 view)
         if (i < spots) { /* a trail spot's alpha is its life left in ms */
             const TrailSpot *spot = &v.play.trail[i];
             set_color(part.diffuse, (spot->color & 0xffffffu) | ((uint32_t)spot->life << 24));
-        } else {
+        } else if (i < puffs) {
             set_color(part.diffuse, v.play.particles[i - spots].color);
+        } else {
+            set_color(part.diffuse, v.play.smoke[i - puffs].color);
         }
         part.flags = RENDER_ALPHA | RENDER_Z_DISABLE | RENDER_TINT | RENDER_TWO_SIDED;
         part.pose = -1;
