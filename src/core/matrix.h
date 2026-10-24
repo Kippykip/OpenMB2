@@ -49,6 +49,11 @@ Mat4 mat4_rotation_z(float radians);
 /* D3DXMatrixRotationAxis; axis must be normalized. */
 Mat4 mat4_rotation_axis(Vec3 axis, float radians);
 /* D3DXMatrixRotationYawPitchRoll: roll about z, then pitch about x, then yaw about y. */
+/* D3DXMatrixRotationQuaternion. */
+Mat4 mat4_rotation_quaternion(float x, float y, float z, float w);
+/* Inverse of a matrix whose last column is (0, 0, 0, 1). */
+Mat4 mat4_inverse_affine(Mat4 m);
+
 Mat4 mat4_yaw_pitch_roll(float yaw, float pitch, float roll);
 /* D3DXMatrixLookAtLH */
 Mat4 mat4_look_at_lh(Vec3 eye, Vec3 at, Vec3 up);

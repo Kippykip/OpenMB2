@@ -167,12 +167,12 @@ static BrickBatch *batch_for_texture(Scene *scene, int texture)
  *     u' = (u + column) * xfactor,  v' = (v + row) * yfactor
  */
 static void bake_model(Scene *scene, const XModel *model, Mat4 world, int texture, int tile,
-                       bool mirror_u, bool mirror_v)
+                       int row_shift, bool mirror_u, bool mirror_v)
 {
     const TextureScript *script = textureset_get(&scene->textures, texture);
     float xfactor = script ? script->xfactor : 1.0f;
     float yfactor = script ? script->yfactor : 1.0f;
-    float column = (float)(tile >> 4), row = (float)(tile & 15);
+    float column = (float)(tile >> 4), row = (float)((tile & 15) + row_shift);
     BrickBatch *batch = batch_for_texture(scene, texture);
     int i;
 
@@ -221,13 +221,13 @@ static void bake_brick_at(Scene *scene, ModelCache *cache, const SceneBrick *b, 
         snprintf(path, sizeof(path), "Meshes/%dheight%d.x", b->model, b->height);
     model = cache_get(cache, path);
     if (model != NULL)
-        bake_model(scene, model, world, b->texture, b->tile, false, false);
+        bake_model(scene, model, world, b->texture, b->tile, b->cracks, false, false);
 
     if (b->flags & 0x80) {
         snprintf(path, sizeof(path), "Meshes/%ddophgt%d.x", b->model, b->height < 1 ? 1 : b->height);
         model = cache_get(cache, path);
         if (model != NULL)
-            bake_model(scene, model, world, b->texture + 1, b->overlay_tile, (b->flags & 0x20) != 0,
+            bake_model(scene, model, world, b->texture + 1, b->overlay_tile, 0, (b->flags & 0x20) != 0,
                        (b->flags & 0x40) != 0);
     }
 }

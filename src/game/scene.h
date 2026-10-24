@@ -46,6 +46,9 @@ typedef struct SceneBrick {
     /* A broken brick shrinks away for a while before it's gone. */
     uint32_t dying_ms; /* time left, 0 = not dying */
     float scale;       /* about its centre; 1 normally */
+    /* Hits taken by a strong brick: each moves its texture down one tile,
+       to the next crack picture (0x4033c0). */
+    int cracks;
 } SceneBrick;
 
 /*

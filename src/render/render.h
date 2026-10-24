@@ -24,7 +24,8 @@ enum {
     RENDER_ALPHA = 1 << 0,
     RENDER_Z_DISABLE = 1 << 4,
     RENDER_TWO_SIDED = 1 << 5,
-    RENDER_NOT_LIGHTED = 1 << 6
+    RENDER_NOT_LIGHTED = 1 << 6,
+    RENDER_NO_DEPTH_TEST = 1 << 16 /* drawn over everything */
 };
 
 typedef struct RenderPart {
@@ -33,6 +34,7 @@ typedef struct RenderPart {
     float diffuse[4];
     uint32_t flags;
     float uv_speed[2]; /* texture scrolling, UV units per millisecond */
+    int pose;          /* index into render_draw_posed()'s matrices, -1 for none */
 } RenderPart;
 
 typedef struct RenderMesh {
@@ -76,5 +78,8 @@ typedef enum RenderPass {
  * solid.
  */
 void render_draw(const RenderMesh *mesh, Mat4 model, RenderPass pass, float time_ms);
+/* The same, moving each part with a pose >= 0 by pose[part.pose] first. */
+void render_draw_posed(const RenderMesh *mesh, Mat4 model, const Mat4 *pose, RenderPass pass,
+                       float time_ms);
 
 #endif

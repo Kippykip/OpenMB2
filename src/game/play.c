@@ -216,6 +216,10 @@ static bool brick_hit(Play *play, int index, const Ball *ball)
         }
         if (--pb->hits_left > 0) {
             brick_sound(play, index, b->object->type == 0x28 ? "Strong1.ogg" : "Stone.ogg");
+            if (b->object->type == 0x28) { /* shows the next crack (0x40854b) */
+                b->cracks++;
+                play->bricks_changed = true;
+            }
             return true;
         }
         brick_destroy(play, index);

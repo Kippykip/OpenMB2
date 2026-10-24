@@ -179,3 +179,30 @@ Each crumb starts with velocity ((r*0.02-1)*0.35, (r*0.01+0.5)*0.35,
 (r*0.02-1)*0.35), r = rand()%100, falls at 0.1*dt, bounces off y = -0.75
 keeping 75% while the bounce is above 0.05, spins about a random axis and
 shrinks by 0.98 a frame (0x425a00). OpenMB2 skips the crumbs' wall test.
+
+## Animated models
+
+Models in SkinMeshes carry AnimationSets of matrix keys, about one a
+millisecond. Setting a frame's time (0x421a90 by name, 0x421090) poses it
+and all its children; the time loops at the last key, and a frame that was
+never set keeps its FrameTransformMatrix. Objects set their whole model to
+their age in ms (0x401960), so the ball spins on its own 1000 ms loop.
+
+The bat (0x40514d) sets R_Fan and L_Fan to its clock every frame. While its
+tilt is beyond ±5 it then sets L_Turbine and R_Turbine to |tilt| + 200
+(tilt < 0) or |tilt| + 600, which leans them and, as children, the fans
+too. Otherwise the turbines keep their last pose.
+
+## Shadows and infravision
+
+Every ball has a shadow (0x40ec70): bshadow.png on a square of half size
+1.5 lying at y = -1 under it, blended, without depth writes. With
+infravision on in params.txt, infravis.png is also drawn facing the camera
+at the ball's centre, half size 0.25, with depth testing off (0x4111b0), so
+the ball shows through bricks.
+
+## Cracks
+
+A strong brick (0x28) that survives a hit moves its texture coordinates
+down by its texture's yfactor (0x4033c0), so the sheet's next row shows
+the next crack. Stone (0x30) bricks show nothing.

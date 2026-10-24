@@ -23,6 +23,7 @@
 #include "../src/game/play.h"
 #include "../src/game/scene.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -289,6 +290,39 @@ static int command_mesh(const char *path)
     for (i = 0; i < model.part_count; i++)
         printf("part %d: frame '%s' (%s), material %d, %d triangles\n", i, model.parts[i].frame, model.parts[i].path,
                model.parts[i].material, model.parts[i].vertex_count / 3);
+    for (i = 0; i < model.frame_count; i++) {
+        const XFrame *f = &model.frames[i];
+        const XKeys *k[4] = { &f->rotation, &f->scale, &f->position, &f->matrix };
+        const char *kind[4] = { "rotation", "scale", "position", "matrix" };
+        int j;
+        if (f->rotation.count + f->scale.count + f->position.count + f->matrix.count == 0)
+            continue;
+        printf("frame %d '%s' (parent %d):", i, f->name, f->parent);
+        for (j = 0; j < 4; j++)
+            if (k[j]->count > 0)
+                printf(" %s %d keys %u..%u", kind[j], k[j]->count, k[j]->keys[0].time,
+                       k[j]->keys[k[j]->count - 1].time);
+        printf("\n");
+    }
+    if (model.frame_count > 0) {
+        /* How far each part moves at time 0, to check the key decoding. */
+        unsigned *times = calloc((size_t)model.frame_count, sizeof(*times));
+        for (i = 0; times != NULL && i < model.frame_count; i++)
+            times[i] = 0;
+        Mat4 *parts = calloc((size_t)(model.part_count + 1), sizeof(*parts));
+        for (i = 0; times != NULL && parts != NULL && i < model.part_count; i++) {
+            float off = 0.0f;
+            int r, c;
+            xmodel_pose(&model, times, parts);
+            for (r = 0; r < 4; r++)
+                for (c = 0; c < 4; c++)
+                    off += fabsf(parts[i].m[r][c] - (r == c ? 1.0f : 0.0f));
+            if (off > 0.01f)
+                printf("part %d '%s' moves at time 0 by %g\n", i, model.parts[i].frame, off);
+        }
+        free(times);
+        free(parts);
+    }
     xfile_free(&model);
     return 0;
 }

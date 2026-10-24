@@ -122,6 +122,45 @@ Mat4 mat4_rotation_axis(Vec3 a, float radians)
     return r;
 }
 
+Mat4 mat4_rotation_quaternion(float x, float y, float z, float w)
+{
+    Mat4 r = mat4_identity();
+
+    r.m[0][0] = 1.0f - 2.0f * (y * y + z * z);
+    r.m[0][1] = 2.0f * (x * y + z * w);
+    r.m[0][2] = 2.0f * (x * z - y * w);
+    r.m[1][0] = 2.0f * (x * y - z * w);
+    r.m[1][1] = 1.0f - 2.0f * (x * x + z * z);
+    r.m[1][2] = 2.0f * (y * z + x * w);
+    r.m[2][0] = 2.0f * (x * z + y * w);
+    r.m[2][1] = 2.0f * (y * z - x * w);
+    r.m[2][2] = 1.0f - 2.0f * (x * x + y * y);
+    return r;
+}
+
+Mat4 mat4_inverse_affine(Mat4 m)
+{
+    Mat4 r = mat4_identity();
+    float det = m.m[0][0] * (m.m[1][1] * m.m[2][2] - m.m[1][2] * m.m[2][1]) -
+                m.m[0][1] * (m.m[1][0] * m.m[2][2] - m.m[1][2] * m.m[2][0]) +
+                m.m[0][2] * (m.m[1][0] * m.m[2][1] - m.m[1][1] * m.m[2][0]);
+    float inv = det != 0.0f ? 1.0f / det : 0.0f;
+    int i;
+
+    r.m[0][0] = (m.m[1][1] * m.m[2][2] - m.m[1][2] * m.m[2][1]) * inv;
+    r.m[0][1] = (m.m[0][2] * m.m[2][1] - m.m[0][1] * m.m[2][2]) * inv;
+    r.m[0][2] = (m.m[0][1] * m.m[1][2] - m.m[0][2] * m.m[1][1]) * inv;
+    r.m[1][0] = (m.m[1][2] * m.m[2][0] - m.m[1][0] * m.m[2][2]) * inv;
+    r.m[1][1] = (m.m[0][0] * m.m[2][2] - m.m[0][2] * m.m[2][0]) * inv;
+    r.m[1][2] = (m.m[0][2] * m.m[1][0] - m.m[0][0] * m.m[1][2]) * inv;
+    r.m[2][0] = (m.m[1][0] * m.m[2][1] - m.m[1][1] * m.m[2][0]) * inv;
+    r.m[2][1] = (m.m[0][1] * m.m[2][0] - m.m[0][0] * m.m[2][1]) * inv;
+    r.m[2][2] = (m.m[0][0] * m.m[1][1] - m.m[0][1] * m.m[1][0]) * inv;
+    for (i = 0; i < 3; i++)
+        r.m[3][i] = -(m.m[3][0] * r.m[0][i] + m.m[3][1] * r.m[1][i] + m.m[3][2] * r.m[2][i]);
+    return r;
+}
+
 Mat4 mat4_yaw_pitch_roll(float yaw, float pitch, float roll)
 {
     return mat4_multiply(mat4_multiply(mat4_rotation_z(roll), mat4_rotation_x(pitch)),

@@ -23,6 +23,7 @@
 #include "matrix.h"
 #include "vfs.h"
 
+#include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -351,7 +352,8 @@ typedef struct NamedMaterial {
 typedef struct Parser {
     Reader r;
     XModel *model;
-    int vertex_capacity, material_capacity, part_capacity;
+    int vertex_capacity, material_capacity, part_capacity, frame_capacity;
+    int frame_index; /* the frame being read, -1 for none */
     NamedMaterial *library; /* top-level materials, used by reference */
     int library_count;
     char frame[32]; /* the frame being read */
@@ -664,6 +666,7 @@ static void flatten_mesh(Parser *ps, const RawMesh *mesh, Mat4 world)
             model->parts = grown;
             snprintf(model->parts[model->part_count].frame, sizeof(grown->frame), "%s", ps->frame);
             snprintf(model->parts[model->part_count].path, sizeof(grown->path), "%s", ps->path);
+            model->parts[model->part_count].frame_index = ps->frame_index;
             model->parts[model->part_count].material =
                 mesh->material_count > 0 ? mesh->materials[slot] : -1;
             model->parts[model->part_count].first_vertex = first;
@@ -723,6 +726,100 @@ static void parse_mesh(Parser *ps, Mat4 world)
     free_raw_mesh(&mesh);
 }
 
+/* AnimationKey { type; count; time; n; values;; ... } */
+static void parse_animation_key(Parser *ps, XFrame *frame)
+{
+    Reader *r = &ps->r;
+    int type = (int)read_number(r);
+    int count = read_count(r);
+    XKeys *keys = NULL;
+    XKeys ignored = { NULL, 0 };
+    int i, k;
+
+    if (frame != NULL) {
+        if (type == 0)
+            keys = &frame->rotation;
+        else if (type == 1)
+            keys = &frame->scale;
+        else if (type == 2)
+            keys = &frame->position;
+        else if (type == 3 || type == 4)
+            keys = &frame->matrix;
+    }
+    if (keys == NULL)
+        keys = &ignored;
+    free(keys->keys);
+    keys->keys = calloc((size_t)(count ? count : 1), sizeof(XKey));
+    keys->count = keys->keys != NULL ? count : 0;
+    for (i = 0; i < count && !r->failed; i++) {
+        unsigned time = (unsigned)read_number(r);
+        int n = read_count(r);
+        for (k = 0; k < n && !r->failed; k++) {
+            float v = (float)read_number(r);
+            if (keys->keys != NULL && k < 16)
+                keys->keys[i].value[k] = v;
+        }
+        if (keys->keys != NULL)
+            keys->keys[i].time = time;
+    }
+    free(ignored.keys);
+    skip_block(r);
+}
+
+/* Animation { {FrameName} AnimationKey {...} ... } */
+static void parse_animation(Parser *ps)
+{
+    Reader *r = &ps->r;
+    XFrame *frame = NULL;
+    Token t;
+
+    while (!r->failed) {
+        char name[64];
+        next_token(r, &t);
+        if (t.type == TOK_CBRACE || t.type == TOK_EOF)
+            return;
+        if (t.type == TOK_OBRACE) { /* {FrameName} */
+            next_token(r, &t);
+            if (t.type == TOK_NAME || t.type == TOK_NUMBER) {
+                int f = xmodel_find_frame(ps->model, t.text);
+                frame = f >= 0 ? &ps->model->frames[f] : NULL;
+            }
+            if (t.type != TOK_CBRACE)
+                skip_block(r);
+            continue;
+        }
+        if (t.type != TOK_NAME || !open_block(r, name, sizeof(name)))
+            continue;
+        if (strcmp(t.text, "AnimationKey") == 0)
+            parse_animation_key(ps, frame);
+        else
+            skip_block(r); /* AnimationOptions */
+    }
+}
+
+static void parse_animation_set(Parser *ps)
+{
+    Reader *r = &ps->r;
+    Token t;
+
+    while (!r->failed) {
+        char name[64];
+        next_token(r, &t);
+        if (t.type == TOK_CBRACE || t.type == TOK_EOF)
+            return;
+        if (t.type == TOK_OBRACE) {
+            skip_block(r);
+            continue;
+        }
+        if (t.type != TOK_NAME || !open_block(r, name, sizeof(name)))
+            continue;
+        if (strcmp(t.text, "Animation") == 0)
+            parse_animation(ps);
+        else
+            skip_block(r);
+    }
+}
+
 static void parse_object(Parser *ps, const char *type, Mat4 parent);
 
 static void parse_frame(Parser *ps, Mat4 parent)
@@ -753,6 +850,10 @@ static void parse_frame(Parser *ps, Mat4 parent)
                     local.m[row][col] = (float)read_number(r);
             skip_block(r);
             world = mat4_multiply(local, parent);
+            if (ps->frame_index >= 0) {
+                ps->model->frames[ps->frame_index].local = local;
+                ps->model->frames[ps->frame_index].bind = world;
+            }
         } else {
             parse_object(ps, t.text, world);
         }
@@ -771,6 +872,21 @@ static void parse_object(Parser *ps, const char *type, Mat4 parent)
     if (strcmp(type, "Frame") == 0) {
         char outer[sizeof(ps->frame)];
         size_t outer_path = strlen(ps->path);
+        int outer_index = ps->frame_index;
+        XModel *model = ps->model;
+        XFrame *grown = grow(model->frames, &ps->frame_capacity, model->frame_count + 1,
+                             sizeof(*grown));
+        if (grown == NULL) {
+            r->failed = true;
+            return;
+        }
+        model->frames = grown;
+        memset(&grown[model->frame_count], 0, sizeof(*grown));
+        snprintf(grown[model->frame_count].name, sizeof(grown->name), "%.31s", name);
+        grown[model->frame_count].parent = outer_index;
+        grown[model->frame_count].local = mat4_identity();
+        grown[model->frame_count].bind = parent;
+        ps->frame_index = model->frame_count++;
         memcpy(outer, ps->frame, sizeof(outer));
         if (name[0] != '\0') { /* unnamed frames belong to the named one around them */
             snprintf(ps->frame, sizeof(ps->frame), "%.31s", name);
@@ -779,6 +895,7 @@ static void parse_object(Parser *ps, const char *type, Mat4 parent)
             snprintf(ps->path + strlen(ps->path), sizeof(ps->path) - strlen(ps->path), "%.31s/", name);
         }
         parse_frame(ps, parent);
+        ps->frame_index = outer_index;
         memcpy(ps->frame, outer, sizeof(outer));
         ps->path[outer_path] = '\0';
     } else if (strcmp(type, "Mesh") == 0) {
@@ -794,8 +911,10 @@ static void parse_object(Parser *ps, const char *type, Mat4 parent)
         snprintf(ps->library[ps->library_count].name, sizeof(grown->name), "%s", name);
         parse_material(ps, &ps->library[ps->library_count].material);
         ps->library_count++;
+    } else if (strcmp(type, "AnimationSet") == 0) {
+        parse_animation_set(ps);
     } else {
-        skip_block(r); /* templates, animation sets, headers */
+        skip_block(r); /* templates, headers */
     }
 }
 
@@ -816,6 +935,128 @@ static void compute_bounds(XModel *model)
                 model->max[axis] = v;
         }
     }
+}
+
+int xmodel_find_frame(const XModel *model, const char *name)
+{
+    int i;
+    for (i = 0; i < model->frame_count; i++) {
+        if (model->frames[i].name[0] != '\0' && strcmp(model->frames[i].name, name) == 0)
+            return i;
+    }
+    return -1;
+}
+
+/*
+ * The two keys around a time, and how far between them it is. The time
+ * loops at the last key's time; past the last key, the last key holds.
+ */
+static void find_keys(const XKeys *keys, unsigned time, int *a, int *b, float *t)
+{
+    unsigned last = keys->keys[keys->count - 1].time;
+    int i;
+
+    if (last > 0)
+        time %= last;
+    *a = *b = keys->count - 1;
+    *t = 0.0f;
+    for (i = 0; i < keys->count; i++) {
+        if (keys->keys[i].time > time) {
+            *b = i;
+            *a = i > 0 ? i - 1 : 0;
+            break;
+        }
+    }
+    if (keys->keys[*b].time != keys->keys[*a].time)
+        *t = (float)(time - keys->keys[*a].time) /
+             (float)(keys->keys[*b].time - keys->keys[*a].time);
+}
+
+static void lerp_key(const XKeys *keys, unsigned time, int n, float *out)
+{
+    int a, b, i;
+    float t;
+
+    find_keys(keys, time, &a, &b, &t);
+    for (i = 0; i < n; i++)
+        out[i] = keys->keys[a].value[i] + (keys->keys[b].value[i] - keys->keys[a].value[i]) * t;
+}
+
+/* The frame's local matrix at a time, like the DirectX 8 SkinnedMesh sample. */
+static Mat4 animated_local(const XFrame *f, unsigned time)
+{
+    Mat4 m = mat4_identity();
+    float v[16];
+
+    if (f->matrix.count > 0 && time != XFRAME_REST) {
+        int a, b, i;
+        float t;
+        find_keys(&f->matrix, time, &a, &b, &t);
+        for (i = 0; i < 16; i++)
+            m.m[i / 4][i % 4] = f->matrix.keys[t < 0.5f ? a : b].value[i];
+        return m;
+    }
+    if (time == XFRAME_REST || (f->rotation.count == 0 && f->scale.count == 0 &&
+                                f->position.count == 0))
+        return f->local;
+    if (f->scale.count > 0) {
+        lerp_key(&f->scale, time, 3, v);
+        m = mat4_multiply(m, mat4_scaling(v[0], v[1], v[2]));
+    }
+    if (f->rotation.count > 0) {
+        /* Slerp, then the conjugate: the file stores the inverse rotation. */
+        int a, b, i;
+        float t, qa[4], qb[4], dot = 0.0f, wa, wb, len = 0.0f;
+        find_keys(&f->rotation, time, &a, &b, &t);
+        memcpy(qa, f->rotation.keys[a].value, sizeof(qa));
+        memcpy(qb, f->rotation.keys[b].value, sizeof(qb));
+        for (i = 0; i < 4; i++)
+            dot += qa[i] * qb[i];
+        if (dot < 0.0f) {
+            dot = -dot;
+            for (i = 0; i < 4; i++)
+                qb[i] = -qb[i];
+        }
+        if (dot > 0.9999f) {
+            wa = 1.0f - t;
+            wb = t;
+        } else {
+            float angle = acosf(dot), s = sinf(angle);
+            wa = sinf((1.0f - t) * angle) / s;
+            wb = sinf(t * angle) / s;
+        }
+        for (i = 0; i < 4; i++) {
+            v[i] = qa[i] * wa + qb[i] * wb;
+            len += v[i] * v[i];
+        }
+        len = len > 0.0f ? 1.0f / sqrtf(len) : 1.0f;
+        m = mat4_multiply(m, mat4_rotation_quaternion(-v[1] * len, -v[2] * len, -v[3] * len,
+                                                      v[0] * len));
+    }
+    if (f->position.count > 0) {
+        lerp_key(&f->position, time, 3, v);
+        m = mat4_multiply(m, mat4_translation(v[0], v[1], v[2]));
+    }
+    return m;
+}
+
+void xmodel_pose(const XModel *model, const unsigned *times, Mat4 *parts)
+{
+    Mat4 *world = malloc((size_t)(model->frame_count ? model->frame_count : 1) * sizeof(*world));
+    int i;
+
+    for (i = 0; i < model->frame_count && world != NULL; i++) {
+        const XFrame *f = &model->frames[i];
+        Mat4 local = animated_local(f, times[i]);
+        world[i] = f->parent >= 0 ? mat4_multiply(local, world[f->parent]) : local;
+    }
+    for (i = 0; i < model->part_count; i++) {
+        int f = model->parts[i].frame_index;
+        parts[i] = mat4_identity();
+        if (f >= 0 && world != NULL)
+            parts[i] = mat4_multiply(mat4_inverse_affine(model->frames[f].bind), world[f]);
+    }
+    free(world);
 }
 
 bool xpart_in_frame(const XPart *part, const char *frame)
@@ -843,6 +1084,7 @@ bool xfile_parse(XModel *model, const void *data, size_t size, const char *name)
 
     memset(&ps, 0, sizeof(ps));
     ps.model = model;
+    ps.frame_index = -1;
     ps.r.p = (const uint8_t *)data + 16;
     ps.r.end = (const uint8_t *)data + size;
     ps.r.binary = memcmp(header + 8, "bin ", 4) == 0;
@@ -886,6 +1128,14 @@ bool xfile_load(XModel *model, const char *game_path)
 
 void xfile_free(XModel *model)
 {
+    int i;
+    for (i = 0; i < model->frame_count; i++) {
+        free(model->frames[i].rotation.keys);
+        free(model->frames[i].scale.keys);
+        free(model->frames[i].position.keys);
+        free(model->frames[i].matrix.keys);
+    }
+    free(model->frames);
     free(model->vertices);
     free(model->materials);
     free(model->parts);

@@ -25,6 +25,7 @@ typedef struct PlayScreenOptions {
     const char *start_level; /* NULL = first level of the first pack */
     float mouse_sensitivity; /* from params.txt */
     bool autoplay;           /* the bat follows the ball, for testing */
+    bool infravision;        /* from params.txt: show balls through walls */
 } PlayScreenOptions;
 
 bool play_screen_init(SDL_Window *window, const PlayScreenOptions *options);

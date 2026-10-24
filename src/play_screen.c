@@ -56,6 +56,9 @@ static struct {
     bool playing;
     int score, lives;  /* carried from level to level */
     int music;         /* which level tune is playing, 0-3 */
+    RenderMesh shadows, glows;
+    unsigned shadow_texture, glow_texture;
+    unsigned turbine_time; /* the turbines' animation time, XFRAME_REST at first */
     XModel bat_model, ball_model;
     RenderMesh background, board, bricks, bat, ball;
     RenderMesh explosions;      /* rebuilt every frame */
@@ -153,6 +156,7 @@ static void build_model_mesh(RenderMesh *mesh, const XModel *model, uint32_t fla
         part.first_vertex = xpart->first_vertex;
         part.vertex_count = xpart->vertex_count;
         part.flags = flags;
+        part.pose = i;
         if (material != NULL) {
             memcpy(part.diffuse, material->diffuse, sizeof(part.diffuse));
             part.texture = texture_for_name(overridden ? override : material->texture);
@@ -260,6 +264,75 @@ static bool plain_bat_part(const XPart *part)
 }
 
 /* The bat model named by the level's pad file ("grdata"). */
+/* Pose every frame of a model at one time, as objects do with their age (0x401960). */
+static Mat4 *pose_model(const XModel *m, unsigned time)
+{
+    unsigned *times = malloc((size_t)(m->frame_count + 1) * sizeof(*times));
+    Mat4 *pose = malloc((size_t)(m->part_count + 1) * sizeof(*pose));
+    int i;
+
+    if (times == NULL || pose == NULL) {
+        free(times);
+        free(pose);
+        return NULL;
+    }
+    for (i = 0; i < m->frame_count; i++)
+        times[i] = time;
+    xmodel_pose(m, times, pose);
+    free(times);
+    return pose;
+}
+
+/* Set a frame's animation time and its children's, as 0x421a90 does. */
+static void set_frame_time(const XModel *m, unsigned *times, const char *name, unsigned time)
+{
+    int frame = xmodel_find_frame(m, name), i;
+
+    if (frame < 0)
+        return;
+    for (i = frame; i < m->frame_count; i++) {
+        int up = i;
+        while (up > frame)
+            up = m->frames[up].parent;
+        if (up == frame)
+            times[i] = time;
+    }
+}
+
+/*
+ * The fans spin on the game clock. While the bat leans, the turbines are
+ * set after them, and that sets the fans inside them to the lean's time
+ * too, just as in the original (0x40514d).
+ */
+static Mat4 *pose_bat(bool leaning)
+{
+    const XModel *m = &v.bat_model;
+    unsigned *times = malloc((size_t)(m->frame_count + 1) * sizeof(*times));
+    Mat4 *pose = malloc((size_t)(m->part_count + 1) * sizeof(*pose));
+    int i;
+
+    if (times == NULL || pose == NULL) {
+        free(times);
+        free(pose);
+        return NULL;
+    }
+    for (i = 0; i < m->frame_count; i++)
+        times[i] = XFRAME_REST;
+    if (v.turbine_time != XFRAME_REST) {
+        set_frame_time(m, times, "L_Turbine", v.turbine_time);
+        set_frame_time(m, times, "R_Turbine", v.turbine_time);
+    }
+    set_frame_time(m, times, "R_Fan", (unsigned)v.time);
+    set_frame_time(m, times, "L_Fan", (unsigned)v.time);
+    if (leaning) {
+        set_frame_time(m, times, "L_Turbine", v.turbine_time);
+        set_frame_time(m, times, "R_Turbine", v.turbine_time);
+    }
+    xmodel_pose(m, times, pose);
+    free(times);
+    return pose;
+}
+
 static void load_bat_model(void)
 {
     char path[128];
@@ -273,6 +346,7 @@ static void load_bat_model(void)
         snprintf(path, sizeof(path), "SkinMeshes/%s", config_get_string(&cfg, "grdata", "pad.x"));
         config_free(&cfg);
     }
+    v.turbine_time = XFRAME_REST;
     if (xfile_load(&v.bat_model, path))
         build_model_mesh(&v.bat, &v.bat_model, 0, "", "", plain_bat_part);
     else
@@ -409,6 +483,8 @@ bool play_screen_init(SDL_Window *window, const PlayScreenOptions *options)
     else
         log_warn("can't load the ball model SkinMeshes/s_ball.x");
     v.explosion_texture = texture_for_name("explose.png");
+    v.shadow_texture = texture_for_name("bshadow.png");
+    v.glow_texture = texture_for_name("infravis.png");
     load_level(pack, level);
     return true;
 }
@@ -420,6 +496,8 @@ void play_screen_shutdown(void)
     render_mesh_destroy(&v.bat);
     render_mesh_destroy(&v.explosions);
     render_mesh_destroy(&v.ball);
+    render_mesh_destroy(&v.shadows);
+    render_mesh_destroy(&v.glows);
     xfile_free(&v.bat_model);
     xfile_free(&v.ball_model);
     for (i = 0; i < v.pack_count; i++)
@@ -567,6 +645,74 @@ static void build_explosion_mesh(Mat4 view)
     render_mesh_add_part(&v.explosions, &part);
 }
 
+/* One quad as two triangles, from four corners in order around it. */
+static void add_quad(XVertex *out, const Vec3 *corner)
+{
+    static const int order[6] = { 0, 1, 2, 0, 2, 3 };
+    static const float uv[4][2] = { { 0, 0 }, { 1, 0 }, { 1, 1 }, { 0, 1 } };
+    int k;
+
+    for (k = 0; k < 6; k++) {
+        XVertex *q = &out[k];
+        q->pos[0] = corner[order[k]].x;
+        q->pos[1] = corner[order[k]].y;
+        q->pos[2] = corner[order[k]].z;
+        q->normal[0] = 0.0f;
+        q->normal[1] = 1.0f;
+        q->normal[2] = 0.0f;
+        q->uv[0] = uv[order[k]][0];
+        q->uv[1] = uv[order[k]][1];
+    }
+}
+
+static void make_overlay(RenderMesh *mesh, const XVertex *quads, int n, unsigned texture,
+                         uint32_t flags)
+{
+    RenderPart part;
+
+    render_mesh_destroy(mesh);
+    if (n == 0 || !render_mesh_create(mesh, quads, n))
+        return;
+    memset(&part, 0, sizeof(part));
+    part.vertex_count = n;
+    part.texture = texture;
+    part.diffuse[0] = part.diffuse[1] = part.diffuse[2] = part.diffuse[3] = 1.0f;
+    part.flags = flags | RENDER_ALPHA | RENDER_Z_DISABLE | RENDER_NOT_LIGHTED | RENDER_TWO_SIDED;
+    part.pose = -1;
+    render_mesh_add_part(mesh, &part);
+}
+
+/*
+ * Each ball's shadow is bshadow.png on a 3 x 3 square lying on the floor
+ * under it, lifted 0.01 off the floor so it never loses the depth test (0x40ec70, size 1.5 from the ball's constructor at 0x4024a5).
+ * Infravision puts infravis.png, half size 0.25, facing the camera at the
+ * ball's centre and drawn over everything (0x40f0d0).
+ */
+static void build_ball_overlays(Mat4 view)
+{
+    XVertex shadows[PLAY_MAX_BALLS * 6], glows[PLAY_MAX_BALLS * 6];
+    Vec3 right = vec3(view.m[0][0], view.m[1][0], view.m[2][0]);
+    Vec3 up = vec3(view.m[0][1], view.m[1][1], view.m[2][1]);
+    int i, n = 0;
+
+    for (i = 0; i < v.play.ball_count; i++) {
+        Vec3 p = v.play.balls[i].position, c[4];
+        c[0] = vec3(p.x - 1.5f, -0.99f, p.z + 1.5f);
+        c[1] = vec3(p.x + 1.5f, -0.99f, p.z + 1.5f);
+        c[2] = vec3(p.x + 1.5f, -0.99f, p.z - 1.5f);
+        c[3] = vec3(p.x - 1.5f, -0.99f, p.z - 1.5f);
+        add_quad(&shadows[n], c);
+        c[0] = vec3_add(p, vec3_add(vec3_scale(right, -0.25f), vec3_scale(up, 0.25f)));
+        c[1] = vec3_add(p, vec3_add(vec3_scale(right, 0.25f), vec3_scale(up, 0.25f)));
+        c[2] = vec3_add(p, vec3_add(vec3_scale(right, 0.25f), vec3_scale(up, -0.25f)));
+        c[3] = vec3_add(p, vec3_add(vec3_scale(right, -0.25f), vec3_scale(up, -0.25f)));
+        add_quad(&glows[n], c);
+        n += 6;
+    }
+    make_overlay(&v.shadows, shadows, n, v.shadow_texture, 0);
+    make_overlay(&v.glows, glows, v.options.infravision ? n : 0, v.glow_texture, RENDER_NO_DEPTH_TEST);
+}
+
 void play_screen_frame(int width, int height, uint32_t ms)
 {
     const Camera *c = &v.camera;
@@ -600,6 +746,7 @@ void play_screen_frame(int width, int height, uint32_t ms)
     {
         float t = (float)v.time;
         Mat4 bat_matrix = mat4_identity(), ball_matrices[PLAY_MAX_BALLS];
+        Mat4 *bat_pose = NULL, *ball_pose = pose_model(&v.ball_model, (unsigned)v.time);
         int pass;
 
         if (v.playing) {
@@ -607,8 +754,14 @@ void play_screen_frame(int width, int height, uint32_t ms)
             /* The bat model sits 0.25 down and 1.25 back from the bat's point. */
             bat_matrix = mat4_translation(bat->position.x, bat->position.y - 0.25f,
                                           bat->position.z - 1.25f);
-            if (bat->tilt > 5 || bat->tilt < -5)
+            bool leaning = bat->tilt > 5 || bat->tilt < -5;
+            if (leaning) {
                 bat_matrix = mat4_multiply(mat4_rotation_z((float)bat->tilt * 0.00025f), bat_matrix);
+                /* The turbines lean with the tilt: their keys from 200 lean
+                   one way and from 600 the other (0x405178). */
+                v.turbine_time = (unsigned)(abs(bat->tilt) + (bat->tilt < 0 ? 200 : 600));
+            }
+            bat_pose = pose_bat(leaning);
             /* Balls are drawn at 0.8 of the model's size. */
             for (i = 0; i < v.play.ball_count; i++) {
                 const Ball *ball = &v.play.balls[i];
@@ -627,16 +780,25 @@ void play_screen_frame(int width, int height, uint32_t ms)
              * writes) so goes under bricks behind it drawn from a later
              * tileset; copy that rather than sorting.
              */
-            if (pass == 0)
+            if (pass == 0) {
                 render_draw(&v.bricks, identity, RENDER_PASS_ALL, t);
+                if (v.playing) {
+                    build_ball_overlays(view);
+                    render_draw(&v.shadows, identity, RENDER_PASS_BLENDED, t);
+                }
+            }
             if (v.playing) {
                 if (v.play.state != PLAY_BAT_LOST && v.play.state != PLAY_GAME_OVER)
-                    render_draw(&v.bat, bat_matrix, kind, t);
+                    render_draw_posed(&v.bat, bat_matrix, bat_pose, kind, t);
                 for (i = 0; i < v.play.ball_count; i++)
-                    render_draw(&v.ball, ball_matrices[i], kind, t);
+                    render_draw_posed(&v.ball, ball_matrices[i], ball_pose, kind, t);
             }
         }
+        free(bat_pose);
+        free(ball_pose);
         build_explosion_mesh(view);
         render_draw(&v.explosions, identity, RENDER_PASS_BLENDED, t);
+        if (v.playing)
+            render_draw(&v.glows, identity, RENDER_PASS_BLENDED, t);
     }
 }

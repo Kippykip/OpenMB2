@@ -314,15 +314,27 @@ void render_begin(int width, int height, Mat4 view, Mat4 projection, const Rende
     gl.ActiveTexture(GL_TEXTURE0);
 }
 
-void render_draw(const RenderMesh *mesh, Mat4 model, RenderPass pass, float time_ms)
+static void set_model(Mat4 model)
 {
     Mat4 mvp = mat4_multiply(model, r.view_projection);
+    gl.UniformMatrix4fv(r.u_mvp, 1, GL_FALSE, &mvp.m[0][0]);
+    gl.UniformMatrix4fv(r.u_model, 1, GL_FALSE, &model.m[0][0]);
+}
+
+void render_draw(const RenderMesh *mesh, Mat4 model, RenderPass pass, float time_ms)
+{
+    render_draw_posed(mesh, model, NULL, pass, time_ms);
+}
+
+void render_draw_posed(const RenderMesh *mesh, Mat4 model, const Mat4 *pose, RenderPass pass,
+                       float time_ms)
+{
     int i;
+    bool posed = false;
 
     if (mesh->buffer == 0)
         return;
-    gl.UniformMatrix4fv(r.u_mvp, 1, GL_FALSE, &mvp.m[0][0]);
-    gl.UniformMatrix4fv(r.u_model, 1, GL_FALSE, &model.m[0][0]);
+    set_model(model);
 
     gl.BindBuffer(GL_ARRAY_BUFFER, mesh->buffer);
     gl.VertexAttribPointer(ATTRIB_POSITION, 3, GL_FLOAT, GL_FALSE, sizeof(XVertex),
@@ -343,6 +355,13 @@ void render_draw(const RenderMesh *mesh, Mat4 model, RenderPass pass, float time
         if (pass != RENDER_PASS_ALL && blended != (pass == RENDER_PASS_BLENDED))
             continue;
 
+        if (pose != NULL && part->pose >= 0) {
+            set_model(mat4_multiply(pose[part->pose], model));
+            posed = true;
+        } else if (posed) {
+            set_model(model);
+            posed = false;
+        }
         if (blended)
             gl.Enable(GL_BLEND);
         else
@@ -352,6 +371,10 @@ void render_draw(const RenderMesh *mesh, Mat4 model, RenderPass pass, float time
         else
             gl.Enable(GL_CULL_FACE);
         gl.DepthMask((part->flags & RENDER_Z_DISABLE) ? GL_FALSE : GL_TRUE);
+        if (part->flags & RENDER_NO_DEPTH_TEST)
+            gl.Disable(GL_DEPTH_TEST);
+        else
+            gl.Enable(GL_DEPTH_TEST);
 
         gl.Uniform4fv(r.u_material, 1, part->diffuse);
         gl.Uniform1f(r.u_lighted, (part->flags & RENDER_NOT_LIGHTED) ? 0.0f : 1.0f);
@@ -361,4 +384,5 @@ void render_draw(const RenderMesh *mesh, Mat4 model, RenderPass pass, float time
         gl.DrawArrays(GL_TRIANGLES, part->first_vertex, part->vertex_count);
     }
     gl.DepthMask(GL_TRUE);
+    gl.Enable(GL_DEPTH_TEST);
 }
