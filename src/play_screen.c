@@ -56,8 +56,10 @@ static struct {
     bool playing;
     int score, lives;  /* carried from level to level */
     int music;         /* which level tune is playing, 0-3 */
-    RenderMesh shadows, glows, prize_glows, trail;
-    unsigned shadow_texture, glow_texture, particle_texture;
+    RenderMesh shadows, glows, prize_glows, trail, bullet_shadows, strings;
+    unsigned shadow_texture, glow_texture, particle_texture, rubber_texture;
+    XModel bullet_models[WEAPON_COUNT];
+    RenderMesh bullet_meshes[WEAPON_COUNT];
     XModel prize_models[PRIZE_KINDS];
     RenderMesh prize_meshes[PRIZE_KINDS];
     bool prize_loaded[PRIZE_KINDS]; /* tried to load: models stay for every level */
@@ -264,8 +266,44 @@ static void reset_camera(void)
 static bool plain_bat_part(const XPart *part)
 {
     return xpart_in_frame(part, "Corpus") || xpart_in_frame(part, "L_Hand") ||
-           xpart_in_frame(part, "R_Hand") || xpart_in_frame(part, "Plashka") ||
-           xpart_in_frame(part, "Magnit");
+           xpart_in_frame(part, "R_Hand") || xpart_in_frame(part, "Plashka");
+}
+
+static bool in_any_frame(const XPart *part, const char *const *frames)
+{
+    for (; *frames != NULL; frames++)
+        if (xpart_in_frame(part, *frames))
+            return true;
+    return false;
+}
+
+static const char *const k_gun_frames[] = { "L_Pulemet", "L_Priklad", "L_Wing", "R_Pulemet",
+                                            "R_Priklad", "R_Wing", NULL };
+static const char *const k_bazooka_frames[] = { "L_Stvol", "L_Derjatel", "L_Wing", "R_Stvol",
+                                                "R_Derjatel", "R_Wing", NULL };
+static const char *const k_cannon_frames[] = { "For_Pushka", "Pushka", NULL };
+
+/* The frames a weapon adds to the bat, NULL for none. */
+static const char *const *weapon_frames(BatMode mode)
+{
+    switch (mode) {
+    case BAT_GUN: return k_gun_frames;
+    case BAT_BAZOOKA: return k_bazooka_frames;
+    case BAT_CANNON: return k_cannon_frames;
+    default: return NULL;
+    }
+}
+
+/* Is this part of the bat drawn now? The magnet takes the plate's place. */
+static bool bat_part_shown(const XPart *part, BatMode mode)
+{
+    const char *const *weapon = weapon_frames(mode);
+
+    if (xpart_in_frame(part, "Magnit"))
+        return mode == BAT_MAGNET;
+    if (xpart_in_frame(part, "Plashka"))
+        return mode != BAT_MAGNET;
+    return plain_bat_part(part) || (weapon != NULL && in_any_frame(part, weapon));
 }
 
 /* The bat model named by the level's pad file ("grdata"). */
@@ -313,12 +351,11 @@ static void shape_bat(Mat4 *pose)
 {
     const XModel *m = &v.bat_model;
     float stretch = v.play.bat.half_width / 3.0f;
-    bool magnet = v.play.bat.mode == BAT_MAGNET;
     int p;
 
     for (p = 0; p < m->part_count; p++) {
         const XPart *part = &m->parts[p];
-        if (xpart_in_frame(part, magnet ? "Plashka" : "Magnit"))
+        if (!bat_part_shown(part, v.play.bat.mode))
             pose[p] = mat4_scaling(0.0f, 0.0f, 0.0f);
         else if (xpart_in_frame(part, "Plashka") || xpart_in_frame(part, "Magnit") ||
                  (stretch < 1.0f && (xpart_in_frame(part, "L_Hand") || xpart_in_frame(part, "R_Hand"))))
@@ -364,6 +401,12 @@ static Mat4 *pose_bat(void)
         set_frame_time(m, times, "L_Ressore", bounce);
         set_frame_time(m, times, "R_Ressore", bounce);
     }
+    /* The weapon's frames come out and recoil (0x4052a7). */
+    {
+        const char *const *weapon = weapon_frames(v.play.bat.mode);
+        for (; weapon != NULL && *weapon != NULL; weapon++)
+            set_frame_time(m, times, *weapon, v.play.bat.weapon_time);
+    }
     xmodel_pose(m, times, pose);
     free(times);
     shape_bat(pose);
@@ -395,6 +438,23 @@ static void load_prize_models(void)
     }
 }
 
+/* What the bat's weapons fire, as the level's pad file says. */
+static void load_bullet_models(void)
+{
+    int w;
+
+    for (w = 0; w < WEAPON_COUNT; w++) {
+        char path[96];
+
+        render_mesh_destroy(&v.bullet_meshes[w]);
+        xfile_free(&v.bullet_models[w]);
+        if (v.play.bullet_info[w].model[0] == '\0')
+            continue;
+        snprintf(path, sizeof(path), "SkinMeshes/%s", v.play.bullet_info[w].model);
+        load_model(path, &v.bullet_models[w], &v.bullet_meshes[w]);
+    }
+}
+
 static void load_bat_model(void)
 {
     char path[128];
@@ -410,7 +470,7 @@ static void load_bat_model(void)
     }
     v.turbine_time = XFRAME_REST;
     if (xfile_load(&v.bat_model, path))
-        build_model_mesh(&v.bat, &v.bat_model, 0, "", "", plain_bat_part);
+        build_model_mesh(&v.bat, &v.bat_model, 0, "", "", NULL);
     else
         log_warn("can't load the bat model %s", path);
 }
@@ -500,6 +560,7 @@ static void load_level(int pack, int level)
         v.play.sound = play_sound;
         v.playing = true;
         load_prize_models();
+        load_bullet_models();
     }
     log_info("level %s: %d bricks (%d to break), %d other objects, board %s", path,
              v.scene.brick_count, v.play.bricks_left, v.scene.other_count,
@@ -546,6 +607,7 @@ bool play_screen_init(SDL_Window *window, const PlayScreenOptions *options)
     load_model("SkinMeshes/s_gipnoz.x", &v.hypnotic_model, &v.hypnotic_ball);
     v.test_prize = PRIZE_NONE + 1;
     v.particle_texture = texture_for_name("particle.png");
+    v.rubber_texture = texture_for_name("rubber.png");
     v.explosion_texture = texture_for_name("explose.png");
     v.shadow_texture = texture_for_name("bshadow.png");
     v.glow_texture = texture_for_name("infravis.png");
@@ -566,6 +628,12 @@ void play_screen_shutdown(void)
     render_mesh_destroy(&v.glows);
     render_mesh_destroy(&v.prize_glows);
     render_mesh_destroy(&v.trail);
+    render_mesh_destroy(&v.bullet_shadows);
+    render_mesh_destroy(&v.strings);
+    for (i = 0; i < WEAPON_COUNT; i++) {
+        render_mesh_destroy(&v.bullet_meshes[i]);
+        xfile_free(&v.bullet_models[i]);
+    }
     xfile_free(&v.bat_model);
     xfile_free(&v.ball_model);
     xfile_free(&v.explosive_model);
@@ -894,6 +962,86 @@ static void build_prize_glows(Mat4 view)
     }
 }
 
+/* A mesh of quads, each its own part tinted its own colour. */
+static void make_tinted_quads(RenderMesh *mesh, const XVertex *quads, const uint32_t *colors, int count,
+                              unsigned texture, uint32_t flags)
+{
+    RenderPart part;
+    int i;
+
+    render_mesh_destroy(mesh);
+    if (count == 0 || !render_mesh_create(mesh, quads, count * 6))
+        return;
+    for (i = 0; i < count; i++) {
+        memset(&part, 0, sizeof(part));
+        part.first_vertex = i * 6;
+        part.vertex_count = 6;
+        part.texture = texture;
+        set_color(part.diffuse, colors[i]);
+        part.flags = flags | RENDER_ALPHA | RENDER_Z_DISABLE | RENDER_TINT | RENDER_TWO_SIDED;
+        part.pose = -1;
+        render_mesh_add_part(mesh, &part);
+    }
+}
+
+/*
+ * Shots' shadows (0x40ec70): bshadow.png on the floor, half size x and z
+ * from the bullet file's shadowsize, in its shadowcolor.
+ */
+static void build_bullet_shadows(void)
+{
+    XVertex quads[PLAY_MAX_BULLETS * 6];
+    uint32_t colors[PLAY_MAX_BULLETS];
+    int i;
+
+    for (i = 0; i < v.play.bullet_count; i++) {
+        const Bullet *bullet = &v.play.bullets[i];
+        const BulletInfo *info = &v.play.bullet_info[bullet->weapon];
+        Vec3 p = bullet->position, c[4];
+        float sx = info->shadow_size[0], sz = info->shadow_size[2];
+
+        c[0] = vec3(p.x - sx, -0.99f, p.z + sz);
+        c[1] = vec3(p.x + sx, -0.99f, p.z + sz);
+        c[2] = vec3(p.x + sx, -0.99f, p.z - sz);
+        c[3] = vec3(p.x - sx, -0.99f, p.z - sz);
+        add_quad(&quads[i * 6], c);
+        colors[i] = info->shadow_color;
+    }
+    make_tinted_quads(&v.bullet_shadows, quads, colors, v.play.bullet_count, v.shadow_texture, 0);
+}
+
+/*
+ * The rubber bat's strings (0x40e7f0): a strip of rubber.png from the bat
+ * model's origin to each ball on it, thinner the longer it is.
+ */
+static void build_strings(void)
+{
+    XVertex quads[PLAY_MAX_BALLS * 6];
+    uint32_t colors[PLAY_MAX_BALLS];
+    const Bat *bat = &v.play.bat;
+    Vec3 anchor = vec3(bat->position.x, bat->position.y - 0.25f, bat->position.z - 1.25f);
+    int i, n = 0;
+
+    for (i = 0; i < v.play.ball_count; i++) {
+        const Ball *ball = &v.play.balls[i];
+        Vec3 p = ball->position, d = vec3_sub(anchor, p), c[4];
+        float length = sqrtf(vec3_dot(d, d)), w;
+
+        if (!(ball->flags & BALL_YOYO))
+            continue;
+        if (length < 10.0f) length = 10.0f;
+        if (length > 15.0f) length = 15.0f;
+        w = 0.25f / length;
+        c[0] = vec3(p.x - w, p.y, p.z);
+        c[1] = vec3(p.x + w, p.y, p.z);
+        c[2] = vec3(anchor.x + w, anchor.y, anchor.z);
+        c[3] = vec3(anchor.x - w, anchor.y, anchor.z);
+        add_quad(&quads[n * 6], c);
+        colors[n++] = 0xffffffffu;
+    }
+    make_tinted_quads(&v.strings, quads, colors, n, v.rubber_texture, 0);
+}
+
 /*
  * A powerball's trail: a camera-facing triangle of particle.png per spot,
  * 2.5 across, in the ball's colour, fading out as its 250 ms run out
@@ -915,8 +1063,8 @@ static void build_trail(Mat4 view)
         for (k = 0; k < 3; k++) {
             XVertex *t = &tris[i * 3 + k];
             Vec3 p = vec3_add(v.play.trail[i].position,
-                              vec3_add(vec3_scale(right, 1.25f * corner[k][0]),
-                                       vec3_scale(up, 1.25f * corner[k][1])));
+                              vec3_add(vec3_scale(right, v.play.trail[i].size * corner[k][0]),
+                                       vec3_scale(up, v.play.trail[i].size * corner[k][1])));
             t->pos[0] = p.x;
             t->pos[1] = p.y;
             t->pos[2] = p.z;
@@ -1045,6 +1193,8 @@ void play_screen_frame(int width, int height, uint32_t ms)
                 if (v.playing) {
                     build_ball_overlays(view);
                     render_draw(&v.shadows, identity, RENDER_PASS_BLENDED, t);
+                    build_bullet_shadows();
+                    render_draw(&v.bullet_shadows, identity, RENDER_PASS_BLENDED, t);
                 }
             }
             if (v.playing) {
@@ -1054,6 +1204,16 @@ void play_screen_frame(int width, int height, uint32_t ms)
                     draw_bat_pieces(bat_matrix, bat_pose, t);
                 for (i = 0; i < v.play.ball_count; i++)
                     render_draw_posed(ball_meshes[i], ball_matrices[i], ball_poses[i], kind, t);
+                /* Shots spin about their length and point along their
+                   climb or fall (0x4092e0). */
+                for (i = 0; i < v.play.bullet_count; i++) {
+                    const Bullet *b = &v.play.bullets[i];
+                    float ahead = sqrtf(b->velocity.x * b->velocity.x + b->velocity.z * b->velocity.z);
+                    Mat4 world = mat4_multiply(
+                        mat4_multiply(mat4_rotation_z(b->spin), mat4_rotation_x(-atan2f(b->velocity.y, ahead))),
+                        mat4_translation(b->position.x, b->position.y, b->position.z));
+                    render_draw(&v.bullet_meshes[b->weapon], world, kind, t);
+                }
                 /* A prize's glow goes first, without depth writes, so the
                    model covers it. */
                 if (pass == 0) {
@@ -1072,6 +1232,8 @@ void play_screen_frame(int width, int height, uint32_t ms)
         if (v.playing) {
             for (i = 0; i < v.play.prize_count; i++)
                 free(prize_poses[i]);
+            build_strings();
+            render_draw(&v.strings, identity, RENDER_PASS_BLENDED, t);
             build_trail(view);
             render_draw(&v.trail, identity, RENDER_PASS_BLENDED, t);
         }

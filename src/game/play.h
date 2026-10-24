@@ -23,10 +23,12 @@
 #define PLAY_MAX_BALLS 32
 #define PLAY_MAX_PRIZES 4   /* the original drops no more while 4 are falling */
 #define PLAY_MAX_TRAIL 256
+#define PLAY_MAX_BULLETS 64
 
 /* Ball flags, with the original's values. */
 enum {
     BALL_STUCK = 0x02,     /* waiting on the bat */
+    BALL_YOYO = 0x04,      /* on the rubber bat's string */
     BALL_POWER = 0x10,     /* goes through bricks */
     BALL_EXPLOSIVE = 0x20, /* blows bricks up */
     BALL_HYPNOTIC = 0x40,
@@ -41,6 +43,7 @@ typedef struct Ball {
     uint32_t age;         /* ms since it was made */
     uint32_t trail_time;  /* a powerball leaves its next trail spot at this age */
     float spin;           /* turns 0.03 a step; the explosive ball is drawn turned by it */
+    float wobble;         /* a hypnotic ball's swing, in radians of a sine */
 } Ball;
 
 /* The prizes, numbered as in the original. */
@@ -88,12 +91,42 @@ typedef struct Prize {
     uint32_t age;          /* ms, for its animation */
 } Prize;
 
-/* A spot of a powerball's trail, fading over 250 ms. */
+/* A spot of a powerball's or a rocket's trail, fading over 250 ms. */
 typedef struct TrailSpot {
     Vec3 position;
-    uint32_t color;        /* ARGB, the ball's colour */
+    uint32_t color;        /* ARGB */
+    float size;
     int life;              /* ms left */
 } TrailSpot;
+
+/* What the bat's weapons fire: the pad file names a Bullets/ file for each. */
+typedef enum Weapon { WEAPON_GUN, WEAPON_BAZOOKA, WEAPON_CANNON, WEAPON_COUNT } Weapon;
+
+typedef enum BulletKind {
+    BULLET_BULLET = 1,     /* breaks or hits the brick it reaches */
+    BULLET_ROCKET,         /* breaks every brick in its way */
+    BULLET_YADRO,          /* a cannon ball: blows up the brick it reaches */
+    BULLET_SMALL_CANNON
+} BulletKind;
+
+typedef struct BulletInfo {
+    bool loaded;
+    BulletKind kind;
+    Vec3 velocity, bounce; /* as fired straight ahead */
+    float gravity;
+    float shadow_size[3];
+    uint32_t shadow_color;
+    char model[64];
+    int delay;             /* ms before the bat can fire again */
+} BulletInfo;
+
+typedef struct Bullet {
+    Weapon weapon;
+    Vec3 position, velocity, bounce;
+    uint32_t age;
+    uint32_t trail_time;
+    float spin;            /* about its own length, 0.01 a ms */
+} Bullet;
 
 /* A piece of a bat blown apart: one of the model's frames, flying off. */
 #define BAT_PIECES 10
@@ -120,6 +153,9 @@ typedef struct Bat {
     float target_width;   /* the half width it is growing or shrinking to */
     BatMode mode;
     int ammo;
+    unsigned weapon_time; /* the weapon frames' animation: 0-250 coming out, 250-500 firing */
+    uint32_t ready_time;  /* the weapon can fire again at this time */
+    uint32_t rubber_end;  /* the rubber bat turns back at this time */
     int tilt;             /* the model leans while it moves, ±299 */
     /*
      * The bounce the model plays when a ball hits it: the time into the
@@ -169,6 +205,10 @@ typedef struct Play {
     int medal_timer;             /* ms to the next next-level medal */
     TrailSpot trail[PLAY_MAX_TRAIL];
     int trail_count;
+    Bullet bullets[PLAY_MAX_BULLETS];
+    int bullet_count;
+    BulletInfo bullet_info[WEAPON_COUNT];
+    uint32_t hypnotic_end;       /* hypnotic balls turn back at this time, 0 = none */
     PlayState state;
     uint32_t state_time;         /* ms in the current state */
     uint32_t time;               /* ms since the level started */

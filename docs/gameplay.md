@@ -280,7 +280,10 @@ the score, then:
   -0.625), with alpha = ms left.
 - toexplosive / tosimple: explosive flag 0x20 on (clearing hypnotic 0x40,
   red, s_explosive.x) or both off (blue, s_ball.x).
-- togipnoz: hypnotic, yellow, s_gipnoz.x, for 15 s.
+- togipnoz: hypnotic (clearing explosive), yellow, s_gipnoz.x, for 15 s; then
+  hypnotic and explosive both go (0x40e790). Each step a hypnotic ball's
+  phase grows by 0.35 * dt and its velocity turns about y by
+  sin(phase) * 0.01 (0x402092), so it sways.
 - speedup / speeddown: every ball's speed +-0.25 within [0.85, 2] x scalex.
 - trippleball: each ball adds two more at 120 degrees either side, same
   speed and powers.
@@ -293,3 +296,41 @@ the score, then:
   through.
 - life: a life, up to 9.
 - nextlevel: the level is finished.
+
+## Weapons (fire 0x4055e0, bullets 0x408fe0, update 0x409050, config 0x4094f0)
+
+The pad file names a Bullets/ file and a delay for each weapon: bullets /
+bulletdelay (gun), rockets / rocketdelay (bazooka), torpedos / torpedodelay
+(cannon). A bullet file's keys act in file order on a velocity starting at
+(0, 0, 0.5): "speed" scales its x and z so the whole is that long,
+"vertspeed" sets its y. gravity (default 0.1), shadowsize and shadowcolor
+(the generic shadow: half size x and z, tinted), type (bullet 1, rocket 2,
+yadro 3, smallcannonbullet 4) and grdata. Fired straight ahead, the
+velocity becomes (0, y, its whole length).
+
+A click does nothing until the weapon is ready (time + delay since the
+last shot). Then it lets go of held balls and fires: gun at (x +-2.35,
+y + 0.55, z), bazooka at (x +-2.2, y + 0.5, z + 1), each taking 2 of its 18
+or 8 shots; cannon once at (x, y + 2, z + 1) of 5. gunshoot.ogg,
+bazukashoot.ogg or cannonshoot.ogg plays. The weapon frames' time goes to
+251 and plays to 500, then rests at 250; on taking the weapon it plays up
+from 0 (ms / 3 a frame). With no shots left the bat is plain again.
+
+A shot lives 5 s, moves by velocity * dt, falls by gravity * dt, and
+bounces on the floor (y <= -0.75, put at -0.74) like a prize, while its
+bounce velocity is at least 0.05 up. Rockets leave a red trail spot of
+size 0.75 every 20 ms; cannon balls one scattered by random(-0.1, 0.1) in x
+and y, of size random(0.8, 1.2). In a brick's cell a bullet hits it (as a
+ball would, so strong bricks crack) and is gone; a rocket breaks it
+outright and flies on; a cannon ball explodes there and is gone. A shot is
+drawn spun about z by 0.01 a ms and turned about x by -atan2(vy, speed).
+
+## Rubber bat (yo-yo)
+
+For 30 s the bat is rubber: a ball it hits gets flag 4 and rubbered.ogg
+plays. Such a ball is never pushed off flat angles, and each step, while it
+is 10 or more from the bat, its velocity gains (bat - ball) * distance * dt
+* 0.00025 with y zeroed (0x401b80). When the rubber goes the balls are let
+go and their speed put back within limits. The string is rubber.png from
+the bat model's origin (x, y - 0.25, z - 1.25) to the ball, half width
+0.25 / distance (distance held to 10-15).

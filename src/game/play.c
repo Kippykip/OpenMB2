@@ -5,6 +5,7 @@
 #include "../core/config.h"
 #include "../core/log.h"
 
+#include <ctype.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -416,6 +417,11 @@ static float speed_of(Vec3 v)
 /* Set the velocity, keeping it from going too flat (0x401f90). */
 static void ball_set_velocity(Ball *ball, Vec3 v)
 {
+    /* A ball on the rubber bat's string may go as flat as it likes. */
+    if (ball->flags & BALL_YOYO) {
+        ball->velocity = v;
+        return;
+    }
     if (v.z >= 0.0f) {
         if (v.z < MIN_SPEED_Z)
             v.z = MIN_SPEED_Z;
@@ -508,7 +514,23 @@ static void ball_trail(Play *play, Ball *ball)
     spot = &play->trail[play->trail_count++];
     spot->position = p;
     spot->color = ball_color(ball);
+    spot->size = 1.25f;
     spot->life = 250;
+}
+
+/*
+ * The rubber bat's string pulls a ball more than 10 away back towards the
+ * bat, harder the further it is (0x401b80).
+ */
+static void yoyo_pull(const Play *play, Ball *ball, float dt)
+{
+    Vec3 d = vec3_sub(play->bat.position, ball->position);
+    float distance = sqrtf(d.x * d.x + d.y * d.y + d.z * d.z);
+
+    if (distance < 10.0f)
+        return;
+    ball->velocity = vec3_add(ball->velocity, vec3_scale(d, distance * dt * 0.00025f));
+    ball->velocity.y = 0.0f;
 }
 
 /* One step of a ball's own movement (0x402060). */
@@ -516,6 +538,12 @@ static void ball_update(Play *play, Ball *ball, uint32_t ms, float dt)
 {
     ball->age += ms;
     ball->spin += 0.03f;
+    /* A hypnotic ball sways from side to side (0x402092). */
+    if (ball->flags & BALL_HYPNOTIC) {
+        ball->wobble += 0.35f * dt;
+        ball->velocity = mat4_transform_point(mat4_rotation_y(sinf(ball->wobble) * 0.01f),
+                                              ball->velocity);
+    }
     ball_trail(play, ball);
     ball->previous = ball->position;
     if (ball->flags & BALL_STUCK) {
@@ -523,6 +551,8 @@ static void ball_update(Play *play, Ball *ball, uint32_t ms, float dt)
         ball->position.y = BALL_Y;
         return;
     }
+    if (ball->flags & BALL_YOYO)
+        yoyo_pull(play, ball, dt);
     ball->position = vec3_add(ball->position, vec3_scale(ball->velocity, dt));
     ball->position.y = BALL_Y;
     ball_vs_brick(play, ball);
@@ -559,9 +589,10 @@ static void bat_explode(Play *play)
 
     for (i = 0; i < 10; i++) {
         /* The factory gets whole-number positions. */
+        /* Around the model's origin, 0.25 down and 1.25 back from the bat's point. */
         Vec3 p = vec3((float)(int)(bat->position.x + random_range(-bat->half_width, 2.0f * bat->half_width)),
-                      (float)(int)bat->position.y,
-                      (float)(int)(bat->position.z + random_range(-1.0f, 2.0f)));
+                      (float)(int)(bat->position.y - 0.25f),
+                      (float)(int)(bat->position.z - 1.25f + random_range(-1.0f, 2.0f)));
         scene_add_explosion(play->scene, p);
     }
     for (i = 0; i < BAT_PIECES; i++) {
@@ -591,6 +622,19 @@ static void release_balls(Play *play)
         play->balls[i].flags &= ~(uint32_t)BALL_STUCK;
 }
 
+/* The rubber bat lets its balls go, back within the usual speeds (0x40e6b0). */
+static void release_yoyo(Play *play)
+{
+    int i;
+    for (i = 0; i < play->ball_count; i++) {
+        Ball *ball = &play->balls[i];
+        if (ball->flags & BALL_YOYO) {
+            ball->flags &= ~(uint32_t)BALL_YOYO;
+            ball_speed_up(play, ball, 0.0f);
+        }
+    }
+}
+
 /* The bat dies, from losing the last ball or catching a bat killer (0x4043d0 with 0x40). */
 static void bat_kill(Play *play)
 {
@@ -616,14 +660,18 @@ static void bat_set_mode(Play *play, BatMode mode)
     }
     if (bat->mode == BAT_MAGNET && mode != BAT_MAGNET)
         release_balls(play);
+    if (bat->mode == BAT_RUBBER && mode != BAT_RUBBER)
+        release_yoyo(play);
     switch (mode) {
     case BAT_MAGNET: bat->ammo = 2; break; /* never used up */
-    case BAT_GUN: bat->ammo = 18; break;
+    case BAT_GUN: bat->ammo = 18; break;   /* two a shot */
     case BAT_BAZOOKA: bat->ammo = 8; break;
     case BAT_CANNON: bat->ammo = 5; break;
+    case BAT_RUBBER: bat->rubber_end = play->time + 30000; break;
     default: break;
     }
     bat->mode = mode;
+    bat->weapon_time = 0;
 }
 
 /* A prize grows or shrinks the bat by this much, within [2, 4.5] (0x403f90). */
@@ -688,6 +736,11 @@ static bool ball_vs_bat(Play *play, Ball *ball)
     ball_set_angle(ball, BAT_ANGLE / bat->half_width * d);
     ball_speed_up(play, ball, 0.01f);
     bat_sound(play, "ball2.ogg");
+    /* The rubber bat ties the ball to it on a string. */
+    if (bat->mode == BAT_RUBBER) {
+        ball->flags |= BALL_YOYO;
+        bat_sound(play, "rubbered.ogg");
+    }
     return true;
 }
 
@@ -855,7 +908,17 @@ static void prize_apply(Play *play, const Prize *prize)
             ball_speed_up(play, &play->balls[i], prize->kind == PRIZE_SPEEDUP ? 0.25f : -0.25f);
         break;
     case PRIZE_TRIPPLEBALL: triple_balls(play); break;
+    case PRIZE_TOGIPNOZ:
+        /* Hypnotic for 15 s, for every ball (0x40e750). */
+        for (i = 0; i < play->ball_count; i++)
+            play->balls[i].flags = (play->balls[i].flags & ~(uint32_t)BALL_EXPLOSIVE) | BALL_HYPNOTIC;
+        play->hypnotic_end = play->time + 15000;
+        break;
     case PRIZE_MAGNIT: bat_set_mode(play, BAT_MAGNET); break;
+    case PRIZE_GUN: bat_set_mode(play, BAT_GUN); break;
+    case PRIZE_BAZUKA: bat_set_mode(play, BAT_BAZOOKA); break;
+    case PRIZE_CANNON: bat_set_mode(play, BAT_CANNON); break;
+    case PRIZE_RUBBER: bat_set_mode(play, BAT_RUBBER); break;
     case PRIZE_KILLBAT: bat_set_mode(play, BAT_DEAD); break;
     case PRIZE_LIFE:
         if (play->lives < 9)
@@ -863,7 +926,6 @@ static void prize_apply(Play *play, const Prize *prize)
         break;
     case PRIZE_NEXTLEVEL: play->bricks_left = 0; break;
     default:
-        /* Hypnotic ball, gun, bazooka, cannon and rubber: still to come. */
         break;
     }
 }
@@ -915,6 +977,220 @@ void play_drop_prize(Play *play, PrizeKind kind, Vec3 at)
 {
     if (kind > PRIZE_NONE && kind < PRIZE_KINDS)
         prize_add(play, kind, at);
+}
+
+/* ------------------------------------------------------------------------ */
+/* The bat's weapons                                                        */
+/* ------------------------------------------------------------------------ */
+
+/* Compare two words ignoring case, like strcasecmp. */
+static int compare_words(const char *a, const char *b)
+{
+    while (*a != '\0' && tolower((unsigned char)*a) == tolower((unsigned char)*b)) {
+        a++;
+        b++;
+    }
+    return tolower((unsigned char)*a) - tolower((unsigned char)*b);
+}
+
+/*
+ * A Bullets/ file (0x4094f0). The keys act in the file's order: "speed"
+ * scales the velocity so far, starting at (0, 0, 0.5), and "vertspeed"
+ * sets its upward part.
+ */
+static void load_bullet_info(BulletInfo *info, const char *path)
+{
+    Config cfg;
+    int i;
+
+    memset(info, 0, sizeof(*info));
+    info->kind = BULLET_BULLET;
+    info->velocity = vec3(0.0f, 0.0f, 0.5f);
+    info->gravity = 0.1f;
+    info->shadow_size[0] = info->shadow_size[1] = info->shadow_size[2] = 1.0f;
+    info->shadow_color = 0xffffffffu;
+    if (!config_load(&cfg, path)) {
+        log_warn("can't load %s", path);
+        return;
+    }
+    info->loaded = true;
+    for (i = 0; i < cfg.count; i++) {
+        const char *key = cfg.entries[i].key, *value = cfg.entries[i].value;
+        float f[3] = { 0, 0, 0 };
+
+        if (value == NULL)
+            continue;
+        if (compare_words(key, "gravity") == 0) {
+            config_parse_floats(value, &info->gravity, 1);
+        } else if (compare_words(key, "vertspeed") == 0) {
+            config_parse_floats(value, f, 1);
+            info->velocity.y = f[0];
+        } else if (compare_words(key, "speed") == 0) {
+            float length = sqrtf(vec3_dot(info->velocity, info->velocity));
+            config_parse_floats(value, f, 1);
+            if (length > 0.0f) {
+                info->velocity.x *= f[0] / length;
+                info->velocity.z *= f[0] / length;
+            }
+        } else if (compare_words(key, "shadowsize") == 0) {
+            config_parse_floats(value, info->shadow_size, 3);
+        } else if (compare_words(key, "shadowcolor") == 0) {
+            info->shadow_color = (uint32_t)strtoul(value, NULL, 16);
+        } else if (compare_words(key, "type") == 0) {
+            if (compare_words(value, "rocket") == 0)
+                info->kind = BULLET_ROCKET;
+            else if (compare_words(value, "yadro") == 0)
+                info->kind = BULLET_YADRO;
+            else if (compare_words(value, "smallcannonbullet") == 0)
+                info->kind = BULLET_SMALL_CANNON;
+        } else if (compare_words(key, "grdata") == 0) {
+            snprintf(info->model, sizeof(info->model), "%s", value);
+        }
+    }
+    config_free(&cfg);
+}
+
+/* The pad file names what each weapon fires, and how often (0x405910). */
+static void load_weapons(Play *play)
+{
+    static const char *const keys[WEAPON_COUNT][2] = {
+        { "bullets", "bulletdelay" }, { "rockets", "rocketdelay" }, { "torpedos", "torpedodelay" }
+    };
+    const char *pad = play->scene->level.slots[LEVEL_SLOT_PAD];
+    Config cfg;
+    int w;
+
+    if (!config_load(&cfg, pad[0] ? pad : "Pads/common.txt"))
+        return;
+    for (w = 0; w < WEAPON_COUNT; w++) {
+        load_bullet_info(&play->bullet_info[w], config_get_string(&cfg, keys[w][0], ""));
+        play->bullet_info[w].delay = config_get_int(&cfg, keys[w][1], 0);
+    }
+    config_free(&cfg);
+}
+
+/* A shot leaves the bat straight ahead (0x411610, 0x409430). */
+static void fire(Play *play, Weapon weapon, Vec3 at)
+{
+    const BulletInfo *info = &play->bullet_info[weapon];
+    Bullet *bullet;
+    Vec3 v = info->velocity;
+
+    if (play->bullet_count >= PLAY_MAX_BULLETS)
+        return;
+    bullet = &play->bullets[play->bullet_count++];
+    memset(bullet, 0, sizeof(*bullet));
+    bullet->weapon = weapon;
+    bullet->position = at;
+    /* Turned to face ahead, keeping its whole speed. */
+    bullet->velocity = vec3(0.0f, v.y, sqrtf(vec3_dot(v, v)));
+    bullet->bounce = bullet->velocity;
+}
+
+/*
+ * A click with a weapon (0x4055e0): once it is ready again, both guns or
+ * both bazookas fire, or the cannon once. When the shots run out the bat
+ * is plain again.
+ */
+static void bat_fire(Play *play)
+{
+    Bat *bat = &play->bat;
+    Vec3 p = bat->position;
+    Weapon weapon;
+    const char *shot;
+
+    switch (bat->mode) {
+    case BAT_GUN:
+        weapon = WEAPON_GUN;
+        shot = "gunshoot.ogg";
+        fire(play, weapon, vec3(p.x + 2.35f, p.y + 0.55f, p.z));
+        fire(play, weapon, vec3(p.x - 2.35f, p.y + 0.55f, p.z));
+        bat->ammo -= 2;
+        break;
+    case BAT_BAZOOKA:
+        weapon = WEAPON_BAZOOKA;
+        shot = "bazukashoot.ogg";
+        fire(play, weapon, vec3(p.x + 2.2f, p.y + 0.5f, p.z + 1.0f));
+        fire(play, weapon, vec3(p.x - 2.2f, p.y + 0.5f, p.z + 1.0f));
+        bat->ammo -= 2;
+        break;
+    case BAT_CANNON:
+        weapon = WEAPON_CANNON;
+        shot = "cannonshoot.ogg";
+        fire(play, weapon, vec3(p.x, p.y + 2.0f, p.z + 1.0f));
+        bat->ammo--;
+        break;
+    default:
+        return;
+    }
+    bat->weapon_time = 251; /* the firing animation */
+    bat->ready_time = play->time + (uint32_t)play->bullet_info[weapon].delay;
+    if (bat->ammo <= 0) {
+        bat->mode = BAT_NORMAL;
+        bat->weapon_time = 0;
+    }
+    bat_sound(play, shot);
+}
+
+/*
+ * A shot's step (0x409050): it flies, bouncing on the floor like a prize,
+ * for 5 s. Rockets and cannon balls leave a red trail every 20 ms. A
+ * bullet hits the brick it reaches, a rocket breaks it and flies on, and
+ * a cannon ball blows it up. Returns false when it is gone.
+ */
+static bool bullet_update(Play *play, Bullet *bullet, uint32_t ms, float dt)
+{
+    const BulletInfo *info = &play->bullet_info[bullet->weapon];
+    int index;
+
+    bullet->age += ms;
+    bullet->spin += (float)ms * 0.01f;
+    if (bullet->age > 5000)
+        return false;
+    bullet->position = vec3_add(bullet->position, vec3_scale(bullet->velocity, dt));
+    if (bullet->position.y <= -0.75f) {
+        bullet->position.y = -0.74f;
+        if (bullet->bounce.y >= 0.05f) {
+            bullet->bounce = vec3_scale(bullet->bounce, 0.75f);
+            bullet->velocity = bullet->bounce;
+        } else {
+            bullet->velocity.y = 0.0f;
+        }
+    } else {
+        bullet->velocity.y -= dt * info->gravity;
+    }
+
+    if (bullet->age > bullet->trail_time && play->trail_count < PLAY_MAX_TRAIL &&
+        (info->kind == BULLET_ROCKET || info->kind == BULLET_YADRO)) {
+        TrailSpot *spot = &play->trail[play->trail_count++];
+        spot->position = bullet->position;
+        spot->color = 0xffff0000u;
+        spot->size = 0.75f;
+        spot->life = 250;
+        if (info->kind == BULLET_YADRO) {
+            float y = random_range(-0.1f, 0.2f);
+            spot->position.x += random_range(-0.1f, 0.2f);
+            spot->position.y += y;
+            spot->size = random_range(0.8f, 0.4f);
+        }
+        bullet->trail_time = bullet->age + 20;
+    }
+
+    index = brick_at(play, bullet->position);
+    if (index < 0)
+        return true;
+    switch (info->kind) {
+    case BULLET_ROCKET:
+        brick_destroy(play, index);
+        return true;
+    case BULLET_YADRO:
+    case BULLET_SMALL_CANNON:
+        explode(play, play->scene->bricks[index].position);
+        return false;
+    default:
+        brick_hit(play, index, NULL);
+        return false;
+    }
 }
 
 /* The board's walls and the bat, after everything has moved (0x406b80). */
@@ -1035,6 +1311,7 @@ bool play_start(Play *play, Scene *scene, int score, int lives, float mouse_sens
     play->bat.position = vec3(0.0f, 0.0f, scene->board.bat_line);
     new_ball(play);
     load_prize_info(play);
+    load_weapons(play);
     return true;
 }
 
@@ -1065,9 +1342,11 @@ void play_mouse_move(Play *play, int dx)
 
 void play_click(Play *play)
 {
-    if (play->state != PLAY_RUNNING || play->bat.mode == BAT_DEAD)
+    if (play->state != PLAY_RUNNING || play->bat.mode == BAT_DEAD ||
+        play->time < play->bat.ready_time)
         return;
     release_balls(play);
+    bat_fire(play);
 }
 
 static void step(Play *play, uint32_t ms)
@@ -1101,6 +1380,27 @@ static void step(Play *play, uint32_t ms)
         if (play->bat.half_width < play->bat.target_width)
             play->bat.half_width = play->bat.target_width;
     }
+    /* The weapons come out over 750 ms, and each shot plays 251-500 (0x404fb6). */
+    if (play->bat.weapon_time < 250) {
+        play->bat.weapon_time += ms / 3;
+        if (play->bat.weapon_time > 250)
+            play->bat.weapon_time = 250;
+    } else if (play->bat.weapon_time > 250) {
+        play->bat.weapon_time += ms / 3;
+        if (play->bat.weapon_time >= 500)
+            play->bat.weapon_time = 250;
+    }
+    if (play->bat.mode == BAT_RUBBER && play->time > play->bat.rubber_end) {
+        release_yoyo(play);
+        play->bat.mode = BAT_NORMAL;
+        play->bat.weapon_time = 0;
+    }
+    /* Hypnotic balls turn plain again, explosive ones too (0x40e790). */
+    if (play->hypnotic_end != 0 && play->time > play->hypnotic_end) {
+        for (i = 0; i < play->ball_count; i++)
+            play->balls[i].flags &= ~(uint32_t)(BALL_HYPNOTIC | BALL_EXPLOSIVE);
+        play->hypnotic_end = 0;
+    }
     for (i = 0, kept = 0; i < play->trail_count; i++) {
         play->trail[i].life -= (int)ms;
         if (play->trail[i].life >= 0)
@@ -1125,6 +1425,12 @@ static void step(Play *play, uint32_t ms)
             play->balls[kept++] = play->balls[i];
     }
     play->ball_count = kept;
+
+    for (i = 0, kept = 0; i < play->bullet_count; i++) {
+        if (bullet_update(play, &play->bullets[i], ms, dt))
+            play->bullets[kept++] = play->bullets[i];
+    }
+    play->bullet_count = kept;
 
     for (i = 0, kept = 0; i < play->prize_count; i++) {
         if (prize_update(play, &play->prizes[i], ms, dt))
