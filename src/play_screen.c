@@ -926,14 +926,16 @@ static void load_level(int pack, int level)
         if (v.firework_mesh.buffer == 0)
             load_model("SkinMeshes/firework.x", &v.firework_model, &v.firework_mesh);
     }
-    /* A level with fire or a fountain says what they do (0x4146ce). */
+    /* A level with fire or a fountain says what they do (0x4146ce). Both
+       kinds of each count (0x4126ea, and 0x412855 jumps there). */
     v.message_count = 0;
     v.paused = false;
     {
         bool fire = false, water = false;
         for (i = 0; i < v.scene.level.object_count; i++) {
-            fire |= v.scene.level.objects[i].type == 0x64;
-            water |= v.scene.level.objects[i].type == 0x68;
+            uint8_t type = v.scene.level.objects[i].type;
+            fire |= type == 0x64 || type == 0x90;
+            water |= type == 0x68 || type == 0x94;
         }
         if (fire) {
             add_message(LANG_FIRE_HINT, 0xffff4444u, NULL);
@@ -1223,7 +1225,7 @@ static bool flash_bricks(uint32_t object_ms)
 static void update(uint32_t ms)
 {
     if (flash_bricks(v.playing && !v.paused ? ms * 2 : ms)) {
-        if (v.playing) {
+        if (v.playing && !v.paused) {
             v.play.bricks_changed = true;
         } else {
             scene_bake_bricks(&v.scene);
@@ -2044,7 +2046,8 @@ void play_screen_frame(int width, int height, uint32_t ms)
        (0x406600, 0x407880). */
     v.object_time += v.playing && !v.paused ? ms * 2 : ms;
     update(ms);
-    if (v.playing && !v.paused)
+    /* They fade away while paused too. */
+    if (v.playing && (v.play.state == PLAY_RUNNING || v.play.state == PLAY_BAT_LOST))
         age_messages(ms);
     v.time += ms;
 

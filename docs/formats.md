@@ -283,8 +283,8 @@ age / 4) and out over the last. They come from prizes (string 0x80 +
 prize kind, in the prize file's `messagecolor`), "Yo-Yo Time Over" and
 "Hypnotic Ball Time Over" (21 and 20, red; the second only if a ball was
 still hypnotic), and at level start strings 24-25 (0xFFFF4444) when the
-level has an object of type 0x64 (fire) and 26-27 (0xFF4444FF) for 0x68
-(fountain). The other fire and fountain types, 0x90 and 0x94, don't.
+level has fire (type 0x64 or 0x90) and 26-27 (0xFF4444FF) for a fountain
+(0x68 or 0x94). They keep fading while the game is paused.
 
 Pause (0x41bee4): Escape while playing pauses, Escape while paused goes
 to the main menu, and any other key (or a click) goes on. Losing focus
