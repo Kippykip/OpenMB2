@@ -598,6 +598,16 @@ that reaches a cannon (0x409267): a smallcannonbullet goes through, any
 other shot fires the cannon and is gone. Shots also check the ball list
 (slot 1): one within 2 of a train removes it at once.
 
+### Which balls go through
+
+Only the plain, glass, strong and stone brick hit handlers (0x403c60,
+0x407c20, 0x408520, 0x4083b0) look at the ball's flags: explosive (0x20)
+blows up, powerball (0x10) carries on. Cannons (0x4076e0) and rockets
+(0x407990) always return 0, so every ball bounces off them and nothing
+explodes; animals (0x407e20) and the train (0x408ea0) let only a powerball
+through and don't explode either. Fire and fountains, and teleporters
+(0x40c6e0), let every ball through.
+
 ## Objects placed in levels
 
 Only types 0x40 and 0xa8 of the factory's non-brick objects appear in the

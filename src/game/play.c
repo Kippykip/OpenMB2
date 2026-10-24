@@ -422,17 +422,21 @@ static bool brick_hit(Play *play, int index, const Ball *ball)
     uint32_t flags = ball != NULL ? ball->flags : 0;
     bool through = (flags & BALL_POWER) != 0;
 
-    if (flags & BALL_EXPLOSIVE) {
-        explode(play, b->position);
-        return !through;
-    }
+    /* Cannons, rockets and animals have hit handlers of their own, which
+       never explode: a cannon (0x4076e0) and a rocket (0x407990) turn
+       every ball back, powerball or not, and only a powerball goes on
+       through an animal (0x407e20). */
     if (b->animal != NULL && b->animal->kind == MODEL_CANNON) {
         cannon_fire(play, index);
         return true;
     }
-    if (b->animal != NULL) { /* a powerball goes on through an animal (0x407e20), not a rocket (0x407990) */
+    if (b->animal != NULL) {
         animal_hit(play, index, false);
         return b->animal->kind == MODEL_ROCKET || !through;
+    }
+    if (flags & BALL_EXPLOSIVE) {
+        explode(play, b->position);
+        return !through;
     }
     switch (b->object->type) {
     case 0x18: /* glass: shows on the first hit, breaks on the second */
