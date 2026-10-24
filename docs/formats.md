@@ -296,6 +296,15 @@ The original stretches this over any screen. OpenMB2 sizes it by the
 screen's height and keeps each piece its distance from its own side, so
 4:3 is unchanged and wider screens move the corners outwards.
 
+## Saved games (confirmed)
+
+S saves to `default.save` and L loads it; Shift+1-3 save to
+`slot1-3.save` and 1-3 load (0x41c08a), all only during a level. A save
+keeps the score and lives the level started with, so loading plays that
+level again from the start (0x415040, 0x415da0). The layout is in
+`src/game/save.h`; files written by either game load in the other.
+Shift+F11 sets the bricks left to 0, finishing the level.
+
 ## Still to look at
 
 - Animation sets in `SkinMeshes/` (bats, animals, prizes).

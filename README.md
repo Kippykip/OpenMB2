@@ -43,6 +43,9 @@ it is a level viewer:
 | F10 | smooth motion on / off |
 | Alt+Enter | fullscreen |
 | Escape | pause; again to quit |
+| S / L | save / load the game (default.save, shared with the original) |
+| Shift+1-3 / 1-3 | save / load the hidden quick slots |
+| Shift+F11 | skip the level (a developers' cheat in the original) |
 
 `--level "Levels1/001_Vesi.mb2"` starts on a level, and
 `--screenshot shot.bmp` saves the first frame and quits.

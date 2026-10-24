@@ -10,6 +10,7 @@
 #include "game/font.h"
 #include "game/lang.h"
 #include "game/play.h"
+#include "game/save.h"
 #include "game/scene.h"
 #include "render/render.h"
 
@@ -954,6 +955,149 @@ static void load_level(int pack, int level)
 
 /* ------------------------------------------------------------------------ */
 
+/* ------------------------------------------------------------------------ */
+/* Saved games                                                              */
+/* ------------------------------------------------------------------------ */
+
+/* A file in the game folder, which may not exist yet. */
+static void game_file_path(const char *name, char *out, size_t size)
+{
+    const char *root = vfs_root();
+    size_t n = root != NULL ? strlen(root) : 0;
+
+    if (vfs_real_path(name, out, size))
+        return;
+    snprintf(out, size, "%s%s%s", root != NULL ? root : ".",
+             n > 0 && (root[n - 1] == '/' || root[n - 1] == '\\') ? "" : "/", name);
+}
+
+static unsigned char *read_game_file(const char *name, size_t *size)
+{
+    char path[1024];
+    SDL_RWops *rw;
+    Sint64 length;
+    unsigned char *data;
+
+    game_file_path(name, path, sizeof(path));
+    rw = SDL_RWFromFile(path, "rb");
+    if (rw == NULL)
+        return NULL;
+    length = SDL_RWsize(rw);
+    data = length > 0 ? malloc((size_t)length) : NULL;
+    if (data != NULL && SDL_RWread(rw, data, 1, (size_t)length) != (size_t)length) {
+        free(data);
+        data = NULL;
+    }
+    SDL_RWclose(rw);
+    *size = (size_t)length;
+    return data;
+}
+
+static bool write_game_file(const char *name, const unsigned char *data, size_t size)
+{
+    char path[1024];
+    SDL_RWops *rw;
+    bool ok;
+
+    game_file_path(name, path, sizeof(path));
+    rw = SDL_RWFromFile(path, "wb");
+    if (rw == NULL) {
+        log_warn("can't write %s: %s", path, SDL_GetError());
+        return false;
+    }
+    ok = SDL_RWwrite(rw, data, 1, size) == size;
+    SDL_RWclose(rw);
+    return ok;
+}
+
+static bool in_level(void)
+{
+    return v.playing && (v.play.state == PLAY_RUNNING || v.play.state == PLAY_BAT_LOST);
+}
+
+/*
+ * 0x415040: the level as it started, so loading plays it again from the
+ * start with the score and lives it began with.
+ */
+static void save_game(const char *name)
+{
+    const Pack *pack = &v.packs[v.pack];
+    SaveGame *save;
+    unsigned char *data;
+    size_t size;
+    int i;
+
+    if (!in_level() || (save = calloc(1, sizeof(*save))) == NULL)
+        return;
+    save->score = v.score;
+    save->lives = v.lives;
+    save->level = v.level;
+    snprintf(save->folder, sizeof(save->folder), "%s", pack->folder);
+    save->level_count = pack->level_count < SAVE_MAX_LEVELS ? pack->level_count : SAVE_MAX_LEVELS;
+    snprintf(save->progress_file, sizeof(save->progress_file), "s%s.sav", pack->folder);
+    for (i = 0; i < save->level_count; i++)
+        snprintf(save->names[i], sizeof(save->names[i]), "%s", pack->levels[i]);
+    /* Which levels are open: the original's own progress file if there is
+       one, and every level up to this one. */
+    data = read_game_file(save->progress_file, &size);
+    if (data != NULL)
+        save_decode_progress(data, size, save->progress);
+    free(data);
+    for (i = 0; i <= v.level && i < SAVE_MAX_LEVELS; i++)
+        save->progress[i][0] = 1;
+
+    data = save_encode(save, &size);
+    if (data != NULL && write_game_file(name, data, size))
+        log_info("saved %s: %s level %d, score %d, lives %d", name, pack->folder, v.level + 1, v.score,
+                 v.lives);
+    free(data);
+    free(save);
+}
+
+/* 0x415da0: start the saved level, with its score and lives. */
+static void load_game(const char *name)
+{
+    SaveGame *save;
+    unsigned char *data;
+    size_t size;
+    int pack = -1, level, i;
+
+    if (!in_level())
+        return;
+    data = read_game_file(name, &size);
+    if (data == NULL) {
+        log_info("no %s to load", name);
+        return;
+    }
+    save = calloc(1, sizeof(*save));
+    if (save == NULL || !save_decode(data, size, save)) {
+        log_warn("%s is not a saved game", name);
+        free(save);
+        free(data);
+        return;
+    }
+    free(data);
+    for (i = 0; i < v.pack_count; i++)
+        if (SDL_strcasecmp(v.packs[i].folder, save->folder) == 0)
+            pack = i;
+    if (pack < 0) {
+        log_warn("%s: no level pack %s", name, save->folder);
+        free(save);
+        return;
+    }
+    /* By its file name, in case the folder has changed; else by number. */
+    level = save->level;
+    if (save->level >= 0 && save->level < SAVE_MAX_LEVELS)
+        for (i = 0; i < v.packs[pack].level_count; i++)
+            if (SDL_strcasecmp(v.packs[pack].levels[i], save->names[save->level]) == 0)
+                level = i;
+    v.score = save->score;
+    v.lives = save->lives;
+    log_info("loaded %s: %s level %d", name, save->folder, level + 1);
+    free(save);
+    load_level(pack, level);
+}
+
 bool play_screen_init(SDL_Window *window, const PlayScreenOptions *options)
 {
     const char *start_level = options->start_level;
@@ -1064,7 +1208,7 @@ static void jump_to_level(int pack, int level)
 
 static bool can_pause(void)
 {
-    return v.playing && (v.play.state == PLAY_RUNNING || v.play.state == PLAY_BAT_LOST);
+    return in_level();
 }
 
 void play_screen_pause(void)
@@ -1106,6 +1250,26 @@ void play_screen_handle_event(const SDL_Event *event)
         case SDLK_PAGEDOWN: jump_to_level(v.pack + 1, 0); break;
         case SDLK_PAGEUP: jump_to_level(v.pack - 1, 0); break;
         case SDLK_SPACE: reset_camera(); break;
+        /* Like the original: S saves and L loads default.save; the
+           developers' quick slots are Shift+1-3 to save, 1-3 to load
+           (0x41c08a). */
+        case SDLK_s: save_game("default.save"); break;
+        case SDLK_l: load_game("default.save"); break;
+        case SDLK_1:
+        case SDLK_2:
+        case SDLK_3: {
+            char slot[32];
+            snprintf(slot, sizeof(slot), "slot%d.save", (int)(event->key.keysym.sym - SDLK_0));
+            if (event->key.keysym.mod & KMOD_SHIFT)
+                save_game(slot);
+            else
+                load_game(slot);
+            break;
+        }
+        case SDLK_F11: /* the developers' Shift+F11: no bricks left (0x41c065) */
+            if ((event->key.keysym.mod & KMOD_SHIFT) && in_level())
+                v.play.bricks_left = 0;
+            break;
         case SDLK_F9: /* testing: drop the next kind of prize in front of the bat */
             if (v.playing && v.play.state == PLAY_RUNNING) {
                 play_drop_prize(&v.play, (PrizeKind)v.test_prize,
@@ -1999,18 +2163,19 @@ static void draw_hud(int width, int height)
     snprintf(text, sizeof(text), lang_text(LANG_LEVEL, "Level %d"), v.level + 1);
     hud_text(&v.text_font, v.font_texture, HUD_RIGHT, 375.0f, -282.0f, 0.9f, FONT_RIGHT, text, 0xffffffffu);
     if (v.paused) {
-        /* 0x41b9db: each line over a black shadow 2 units right and down.
-           The save and load line (18) waits until there are saves. */
+        /* 0x41b9db: each line over a black shadow 2 units right and down. */
         static const struct { int text; float y, scale; uint32_t color; } lines[] = {
             { LANG_PAUSE, 60.0f, 1.5f, 0xffff0000u },
             { LANG_PAUSE + 1, 0.0f, 1.0f, 0xffff4400u },
+            { LANG_PAUSE + 2, -40.0f, 1.0f, 0xffff4400u },
             { LANG_PAUSE + 3, -80.0f, 1.0f, 0xffff4400u },
         };
         static const char *const fallback[] = { "Pause", "Press Escape for Main Menu",
+                                                 "Press S to Save the game|Press L to Load the game",
                                                  "Press any key or button to continue..." };
         int pass;
         for (pass = 0; pass < 2; pass++) {
-            for (i = 0; i < 3; i++) {
+            for (i = 0; i < 4; i++) {
                 float d = pass == 0 ? 2.0f : 0.0f;
                 hud_text(&v.text_font, v.font_texture, HUD_MIDDLE, d, lines[i].y - d, lines[i].scale,
                          FONT_CENTER, lang_text(lines[i].text, fallback[i]),
