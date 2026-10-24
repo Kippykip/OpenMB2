@@ -34,11 +34,14 @@ static const char *const k_vertex_shader =
     "uniform float u_normal_length;\n"
     "uniform vec2 u_uv_offset;\n"
     "uniform vec2 u_uv_scale;\n"
+    "uniform mat4 u_view;\n"
+    "uniform vec3 u_fog;\n" /* on (0 or 1), start, end */
     "attribute vec3 a_position;\n"
     "attribute vec3 a_normal;\n"
     "attribute vec2 a_uv;\n"
     "varying vec4 v_color;\n"
     "varying vec2 v_uv;\n"
+    "varying float v_fog;\n"
     "void main() {\n"
     "    vec3 n = normalize((u_model * vec4(a_normal, 0.0)).xyz);\n"
     "    float d = max(dot(n, -u_light_dir), 0.0) * u_normal_length;\n"
@@ -47,6 +50,8 @@ static const char *const k_vertex_shader =
     "    v_color = mix(v_color, u_material, u_tint);\n"
     "    v_uv = a_uv * u_uv_scale + u_uv_offset;\n"
     "    gl_Position = u_mvp * vec4(a_position, 1.0);\n"
+    "    float z = (u_view * (u_model * vec4(a_position, 1.0))).z;\n"
+    "    v_fog = mix(1.0, clamp((u_fog.z - z) / (u_fog.z - u_fog.y), 0.0, 1.0), u_fog.x);\n"
     "}\n";
 
 /*
@@ -70,10 +75,13 @@ static const char *const k_fragment_shader =
     "#endif\n"
     "uniform sampler2D u_texture;\n"
     "uniform float u_fade;\n"
+    "uniform vec3 u_fog_color;\n"
     "varying vec4 v_color;\n"
     "varying vec2 v_uv;\n"
+    "varying float v_fog;\n"
     "void main() {\n"
-    "    gl_FragColor = texture2D(u_texture, v_uv) * v_color * vec4(1.0, 1.0, 1.0, u_fade);\n"
+    "    vec4 c = texture2D(u_texture, v_uv) * v_color * vec4(1.0, 1.0, 1.0, u_fade);\n"
+    "    gl_FragColor = vec4(mix(u_fog_color, c.rgb, v_fog), c.a);\n"
     "}\n";
 
 enum { ATTRIB_POSITION, ATTRIB_NORMAL, ATTRIB_UV };
@@ -86,7 +94,8 @@ typedef struct TextureEntry {
 static struct {
     GLuint program;
     GLint u_mvp, u_model, u_light_dir, u_ambient, u_light_diffuse, u_material, u_lighted,
-        u_uv_offset, u_uv_scale, u_texture, u_fade, u_tint, u_normal_length;
+        u_uv_offset, u_uv_scale, u_texture, u_fade, u_tint, u_normal_length, u_view, u_fog,
+        u_fog_color;
     float fade; /* render_set_fade() */
     unsigned white_texture;
     TextureEntry *textures;
@@ -151,6 +160,9 @@ static bool create_program(void)
     r.u_uv_offset = gl.GetUniformLocation(r.program, "u_uv_offset");
     r.u_uv_scale = gl.GetUniformLocation(r.program, "u_uv_scale");
     r.u_texture = gl.GetUniformLocation(r.program, "u_texture");
+    r.u_view = gl.GetUniformLocation(r.program, "u_view");
+    r.u_fog = gl.GetUniformLocation(r.program, "u_fog");
+    r.u_fog_color = gl.GetUniformLocation(r.program, "u_fog_color");
     return true;
 }
 
@@ -335,6 +347,7 @@ void render_begin(int width, int height, Mat4 view, Mat4 projection, const Rende
     gl.CullFace(GL_BACK);
     gl.BlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     render_set_camera(view, projection, light);
+    render_set_fog(false, 0.0f, 1.0f, NULL);
 }
 
 void render_set_camera(Mat4 view, Mat4 projection, const RenderLight *light)
@@ -343,11 +356,20 @@ void render_set_camera(Mat4 view, Mat4 projection, const RenderLight *light)
 
     r.view_projection = mat4_multiply(view, mat4_d3d_to_gl_depth(projection));
     gl.UseProgram(r.program);
+    gl.UniformMatrix4fv(r.u_view, 1, GL_FALSE, &view.m[0][0]);
     gl.Uniform3f(r.u_light_dir, dir.x, dir.y, dir.z);
     gl.Uniform4fv(r.u_ambient, 1, light->ambient);
     gl.Uniform4fv(r.u_light_diffuse, 1, light->diffuse);
     gl.Uniform1i(r.u_texture, 0);
     gl.ActiveTexture(GL_TEXTURE0);
+}
+
+void render_set_fog(bool on, float start, float end, const float color[3])
+{
+    gl.UseProgram(r.program);
+    gl.Uniform3f(r.u_fog, on ? 1.0f : 0.0f, start, end > start ? end : start + 1.0f);
+    if (color != NULL)
+        gl.Uniform3f(r.u_fog_color, color[0], color[1], color[2]);
 }
 
 void render_viewport(int x, int y, int width, int height)
@@ -364,6 +386,7 @@ void render_clear_depth(void)
 void render_begin_2d(float width, float height)
 {
     r.view_projection = mat4_scaling(2.0f / width, 2.0f / height, 0.0f);
+    render_set_fog(false, 0.0f, 1.0f, NULL);
 }
 
 static void set_model(Mat4 model)

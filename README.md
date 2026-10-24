@@ -22,8 +22,7 @@ Milestone 2 of 6: a 3D level viewer.
 - [ ] Animated models, the sky background and non-brick objects
 - [ ] Milestone 3: playable core (bat, ball, bricks, score, sound, music)
 - [ ] Milestone 4: prizes, cannons, teleports, water/fire, animals
-- [ ] Milestone 5: menus, fonts, languages, options, saves (all but the
-      Alawar intro done)
+- [x] Milestone 5: menus, fonts, languages, options, saves
 - [ ] Milestone 6: web, Android and handheld builds, online scores
 
 ## Running
@@ -33,7 +32,8 @@ openmb2 --game "G:\Games\Magic Ball 2 Community Edition"
 ```
 
 or copy `openmb2.exe` into the game folder and run it from there. It
-starts like the original: the splash screen, then the main menu, with
+starts like the original: the splash screen, the Alawar logo (any key
+or click skips it), then the main menu, with
 the level packs, level pages, options, how to play and high scores. The
 settings, high scores (`score.dat`) and opened levels (`s<pack>.sav`)
 are the original's own files, so both games share them. In a level:

@@ -3,6 +3,7 @@
 
 #include "menu_screen.h"
 #include "assets.h"
+#include "intro.h"
 #include "play_screen.h"
 #include "userfile.h"
 #include "audio/audio.h"
@@ -356,6 +357,7 @@ static void navigate(const char *list)
 
 static void show_main(void)
 {
+    intro_stop();
     lang_load(m.params->language);
     load_page("Menu/lmainmenu.txt", PAGE_MENU);
     audio_play_music("Music/menu.txt");
@@ -1187,6 +1189,7 @@ void menu_screen_shutdown(void)
     int i;
 
     stop_screw();
+    intro_stop();
     render_mesh_destroy(&m.mesh);
     render_mesh_destroy(&m.menu_mesh);
     xfile_free(&m.menu_model);
@@ -1314,7 +1317,7 @@ static void draw_splash(uint32_t ms)
                alpha << 24 | 0xffffffu);
     batch_draw();
     if (alpha == 0) {
-        if (m.intro_enabled) {
+        if (m.intro_enabled && intro_start()) {
             m.page = PAGE_INTRO;
             m.page_time = 0;
             audio_play_music("Music/intro.txt");
@@ -1348,9 +1351,12 @@ MenuAction menu_screen_frame(int width, int height, uint32_t ms)
         return m.action;
     }
     if (m.page == PAGE_INTRO) {
-        /* Not there yet: straight on to the menu. */
-        show_main();
-        return m.action;
+        if (!intro_frame(width, height, ms, &m.light))
+            show_main();
+        else
+            return m.action;
+        render_begin(width, height, identity, identity, &m.light);
+        render_begin_2d(m.view_width, m.view_height);
     }
 
     m.page_time += ms;

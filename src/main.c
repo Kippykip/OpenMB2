@@ -468,7 +468,7 @@ int main(int argc, char **argv)
     options.mouse_sensitivity = g_app.params.mouse_sensitivity;
     options.infravision = g_app.params.infravision;
     if (!render_init() || !play_screen_init(g_app.window, &options) ||
-        !menu_screen_init(g_app.window, &g_app.params, false)) {
+        !menu_screen_init(g_app.window, &g_app.params, true)) {
         show_error("Couldn't start the game. See the log for details.");
         shutdown_app();
         return 1;

@@ -96,6 +96,7 @@ endif()
 # ---------------------------------------------------------------------------
 add_executable(openmb2
     src/assets.c
+    src/intro.c
     src/main.c
     src/menu_screen.c
     src/play_screen.c

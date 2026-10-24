@@ -75,6 +75,12 @@ void render_begin(int width, int height, Mat4 view, Mat4 projection, const Rende
 void render_set_camera(Mat4 view, Mat4 projection, const RenderLight *light);
 /* Draw into part of the screen only (pixels from the bottom left). */
 void render_viewport(int x, int y, int width, int height);
+/*
+ * Direct3D's linear fog: from start to end (distances along the view)
+ * everything drawn fades to color (r, g, b; NULL keeps the last). Off at
+ * the start of each frame and in render_begin_2d().
+ */
+void render_set_fog(bool on, float start, float end, const float color[3]);
 void render_clear_depth(void);
 
 /*
