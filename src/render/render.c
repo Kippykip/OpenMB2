@@ -7,6 +7,7 @@
 #include "../core/vfs.h"
 #include "../platform/gl.h"
 
+#include <math.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -32,6 +33,7 @@ static const char *const k_vertex_shader =
     "uniform float u_tint;\n"
     "uniform float u_normal_length;\n"
     "uniform vec2 u_uv_offset;\n"
+    "uniform vec2 u_uv_scale;\n"
     "attribute vec3 a_position;\n"
     "attribute vec3 a_normal;\n"
     "attribute vec2 a_uv;\n"
@@ -43,9 +45,24 @@ static const char *const k_vertex_shader =
     "    vec4 lit = u_material * min(u_ambient + u_light_diffuse * d, vec4(1.0));\n"
     "    v_color = mix(vec4(1.0), vec4(min(lit.rgb, vec3(1.0)), u_material.a), u_lighted);\n"
     "    v_color = mix(v_color, u_material, u_tint);\n"
-    "    v_uv = a_uv + u_uv_offset;\n"
+    "    v_uv = a_uv * u_uv_scale + u_uv_offset;\n"
     "    gl_Position = u_mvp * vec4(a_position, 1.0);\n"
     "}\n";
+
+/*
+ * A texture's scalex/scaley stretch it back and forth between 0.75 and
+ * 1.25 at a steady rate, turning round at each end (0x410110); it starts
+ * at 0.75. Speed is in scale units per millisecond; 0 leaves it at 1.
+ */
+static float uv_pulse(float speed, float time_ms)
+{
+    float p;
+
+    if (speed == 0.0f)
+        return 1.0f;
+    p = fmodf(fabsf(speed) * time_ms, 1.0f);
+    return p < 0.5f ? 0.75f + p : 1.75f - p;
+}
 
 static const char *const k_fragment_shader =
     "#ifdef GL_ES\n"
@@ -69,7 +86,7 @@ typedef struct TextureEntry {
 static struct {
     GLuint program;
     GLint u_mvp, u_model, u_light_dir, u_ambient, u_light_diffuse, u_material, u_lighted,
-        u_uv_offset, u_texture, u_fade, u_tint, u_normal_length;
+        u_uv_offset, u_uv_scale, u_texture, u_fade, u_tint, u_normal_length;
     float fade; /* render_set_fade() */
     unsigned white_texture;
     TextureEntry *textures;
@@ -132,6 +149,7 @@ static bool create_program(void)
     r.u_tint = gl.GetUniformLocation(r.program, "u_tint");
     r.u_normal_length = gl.GetUniformLocation(r.program, "u_normal_length");
     r.u_uv_offset = gl.GetUniformLocation(r.program, "u_uv_offset");
+    r.u_uv_scale = gl.GetUniformLocation(r.program, "u_uv_scale");
     r.u_texture = gl.GetUniformLocation(r.program, "u_texture");
     return true;
 }
@@ -397,6 +415,7 @@ void render_draw_posed(const RenderMesh *mesh, Mat4 model, const Mat4 *pose, Ren
         gl.Uniform1f(r.u_normal_length, part->normal_length > 0.0f ? part->normal_length : 1.0f);
         /* Keep the offset small so float precision holds up over time. */
         gl.Uniform2f(r.u_uv_offset, u - (float)(int)u, v - (float)(int)v);
+        gl.Uniform2f(r.u_uv_scale, uv_pulse(part->uv_pulse[0], time_ms), uv_pulse(part->uv_pulse[1], time_ms));
         gl.BindTexture(GL_TEXTURE_2D, part->texture);
         gl.DrawArrays(GL_TRIANGLES, part->first_vertex, part->vertex_count);
     }

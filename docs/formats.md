@@ -138,8 +138,11 @@ texture
 Flags seen: `alpha` (blended), `zdisable` (no depth writes, a guess),
 `twosided`, `notlighted`, `billboard`, `interface`, `bricktexture`,
 `deletedead`, `specular`, `faketexture` (no image), `updated` (drawn at
-runtime). `movex`/`movey` scroll the texture and `scalex`/`scaley`
-appear on the water texture; their units aren't confirmed yet.
+runtime). Each frame the texture is drawn (0x410110) `movex`/`movey`
+are added to its UV offset, and `scalex`/`scaley` to its UV scale, which
+turns round at 0.75 and 1.25 (starting at 0.75). Water (`scaley: 0.0025`,
+`movex: 0.005`) therefore drifts sideways while its ripples stretch one
+way and back, turning round every 200 frames (about 3.3 s at 60 fps).
 
 The original registers every file in `Textures/` (not subfolders) at
 startup. To load an image it strips the extension and tries `.png`,

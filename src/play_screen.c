@@ -254,9 +254,13 @@ static void build_brick_mesh(void)
                 part.flags &= ~(uint32_t)RENDER_TWO_SIDED;
             part.texture = (script->flags & TEXFLAG_FAKE) ? render_texture(NULL)
                                                            : texture_for_name(script->image);
-            /* Guess: movex/movey are UV units per frame at the original's ~60 fps. */
+            /* movex/movey and scalex/scaley are steps per frame drawn (0x410110),
+               taken at the original's ~60 fps. Water's scaley takes it from
+               0.75 to 1.25 in 200 frames, so its ripples turn round every 3.3 s. */
             part.uv_speed[0] = script->movex / 16.67f;
             part.uv_speed[1] = script->movey / 16.67f;
+            part.uv_pulse[0] = script->scalex / 16.67f;
+            part.uv_pulse[1] = script->scaley / 16.67f;
         } else {
             log_warn("brick texture index %d is not in the texture set", s->batches[i].texture);
             part.texture = render_texture(NULL);
