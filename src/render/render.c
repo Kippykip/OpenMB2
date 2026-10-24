@@ -29,6 +29,7 @@ static const char *const k_vertex_shader =
     "uniform vec4 u_light_diffuse;\n"
     "uniform vec4 u_material;\n"
     "uniform float u_lighted;\n"
+    "uniform float u_tint;\n"
     "uniform vec2 u_uv_offset;\n"
     "attribute vec3 a_position;\n"
     "attribute vec3 a_normal;\n"
@@ -40,6 +41,7 @@ static const char *const k_vertex_shader =
     "    float d = max(dot(n, -u_light_dir), 0.0);\n"
     "    vec4 lit = u_material * min(u_ambient + u_light_diffuse * d, vec4(1.0));\n"
     "    v_color = mix(vec4(1.0), vec4(min(lit.rgb, vec3(1.0)), u_material.a), u_lighted);\n"
+    "    v_color = mix(v_color, u_material, u_tint);\n"
     "    v_uv = a_uv + u_uv_offset;\n"
     "    gl_Position = u_mvp * vec4(a_position, 1.0);\n"
     "}\n";
@@ -66,7 +68,7 @@ typedef struct TextureEntry {
 static struct {
     GLuint program;
     GLint u_mvp, u_model, u_light_dir, u_ambient, u_light_diffuse, u_material, u_lighted,
-        u_uv_offset, u_texture, u_fade;
+        u_uv_offset, u_texture, u_fade, u_tint;
     float fade; /* render_set_fade() */
     unsigned white_texture;
     TextureEntry *textures;
@@ -126,6 +128,7 @@ static bool create_program(void)
     r.u_material = gl.GetUniformLocation(r.program, "u_material");
     r.u_lighted = gl.GetUniformLocation(r.program, "u_lighted");
     r.u_fade = gl.GetUniformLocation(r.program, "u_fade");
+    r.u_tint = gl.GetUniformLocation(r.program, "u_tint");
     r.u_uv_offset = gl.GetUniformLocation(r.program, "u_uv_offset");
     r.u_texture = gl.GetUniformLocation(r.program, "u_texture");
     return true;
@@ -388,6 +391,7 @@ void render_draw_posed(const RenderMesh *mesh, Mat4 model, const Mat4 *pose, Ren
 
         gl.Uniform4fv(r.u_material, 1, part->diffuse);
         gl.Uniform1f(r.u_lighted, (part->flags & RENDER_NOT_LIGHTED) ? 0.0f : 1.0f);
+        gl.Uniform1f(r.u_tint, (part->flags & RENDER_TINT) ? 1.0f : 0.0f);
         /* Keep the offset small so float precision holds up over time. */
         gl.Uniform2f(r.u_uv_offset, u - (float)(int)u, v - (float)(int)v);
         gl.BindTexture(GL_TEXTURE_2D, part->texture);

@@ -25,7 +25,8 @@ enum {
     RENDER_Z_DISABLE = 1 << 4,
     RENDER_TWO_SIDED = 1 << 5,
     RENDER_NOT_LIGHTED = 1 << 6,
-    RENDER_NO_DEPTH_TEST = 1 << 16 /* drawn over everything */
+    RENDER_NO_DEPTH_TEST = 1 << 16, /* drawn over everything */
+    RENDER_TINT = 1 << 17           /* not lit: the texture times the diffuse colour */
 };
 
 typedef struct RenderPart {

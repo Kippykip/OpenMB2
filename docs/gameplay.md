@@ -100,8 +100,8 @@ An explosion breaks the bricks next to the one it hits: left and right, and
 the ones above, below, in front and behind.
 
 The level is finished when the counted bricks are all gone (0x49fb50 reaches
-0). While 5 or fewer are left, the game also drops a random prize every 9 to
-14 seconds.
+0). While 5 or fewer are left, a next-level medal comes out of (0, 0, 10):
+at once, then every 9 to 14 seconds (0x4197fa).
 
 ## Falling bricks (0x402bb0, support 0x40de00, movement 0x402e40)
 
@@ -142,8 +142,10 @@ pad.x holds every look of the bat. The plain bat draws the frames Corpus
 Plashka, the plate. With the magnet (mode 2) Magnit is drawn instead of
 Plashka. The gun (mode 4) adds L/R_Pulemet, L/R_Priklad and L/R_Wing; the
 bazooka (8) L/R_Stvol, L/R_Derjatel and the wings; the cannon (0x10)
-For_Pushka and Pushka. The hands and plate are stretched in x by the bat's
-width / 3.
+For_Pushka and Pushka. The plate (or magnet) is stretched in x by the bat's
+half width / 3; the hands only when that is below 1, so a wide bat's plate
+reaches past its hands. With the magnet the hands, springs and magnet stay
+at time 0 instead of bouncing.
 
 ## Drawing order (0x410d70)
 
@@ -228,3 +230,66 @@ random(-0.3, 0.3)) and spin random(0.3, 0.6). Every frame: velocity.y -=
 drawn as rotation about its axis, then its offset, then the bat's matrix,
 blended at (time left) / 1500 for 1.5 s. random(a, b) here is
 a + (rand() % 10000) * 0.0001 * (b - a).
+
+## Prizes (roll 0x411890, prize 0x41f800, update 0x41f910, catch 0x404730, apply 0x41fae0)
+
+Every brick taken may drop a prize; each brick's byte 17 names the kind, and
+every level uses 0xff, which means roll for one. No prize comes within a
+second of the last one. If more than 3 s have passed since then the "last
+kind" is forgotten, and r = rand() % 8000, or % 4000 after 5 s. The kind is
+picked by r strictly between these bounds (anything else drops nothing):
+
+| r | prize | r | prize |
+| --- | --- | --- | --- |
+| 0-80 | incbat | 2000-2080 | speedup |
+| 100-170 | decbat | 2100-2170 | speeddown |
+| 200-260 | topowerfull | 2200-2260 | trippleball |
+| 300-360 | tonormal | 2900-2960 | rubber |
+| 400-450 | tosimple | 3000-3080 | gun |
+| 500-570 | toexplosive | 3100-3170 | bazuka |
+| 600-670 | togipnoz | 3200-3260 | cannon |
+| 700-710 | killbat | 3300-3370 | magnit |
+| 800-805 | life | | |
+
+The same kind never comes twice running, and none drops while 4 are
+falling. Each kind's file is Prizes/<kind>.txt: score, sound, grdata (the
+model), glowsize, glowoffset and messagecolor (the glow's tint).
+
+A prize starts with velocity (0, 0.75, -0.65), or (0, 0.5, -0.45) if it is
+less than 5 in front of the bat, times random(0.85, 1.15). Each step (dt =
+ms * 0.01) it moves by velocity * dt and falls by 0.1 * dt. On landing (y <=
+-0.5) it is put at -0.49; while its bounce velocity, starting at (0, 0.75,
+-0.65), is at least 0.1 up, that shrinks by 0.75 and becomes the velocity,
+with z at most -0.25; after that it slides. Behind the bat it shrinks by
+0.2 * dt and its glow by (1 - 0.3 * dt), and is gone below 0.25. The model
+plays its animation from its age, drawn scaled at its position, with a
+white shadow of half size 1 and an infravis.png glow.
+
+The bat catches a prize between 3 behind and 1 in front of its line, within
+its half width; one more than 3 behind is gone. Not while the bat is dead.
+Catching plays the sound panned by (int)(x / board half width) * 100, adds
+the score, then:
+
+- incbat / decbat: the bat's half width target +-0.5, within [2, 4.5]; the
+  width moves to it at 0.1 * dt.
+- topowerfull / tonormal: every ball's power flag 0x10 on or off. A
+  powerball is drawn full size (not 0.8), its shadow half size 2, and every
+  25 ms it leaves a 250 ms spot of its colour (0x401990), scattered by
+  random(-0.2, 0.2) on each axis when also explosive. A spot is a camera
+  facing triangle of particle.png, (0, 1.25), (1.25, -0.625), (-1.25,
+  -0.625), with alpha = ms left.
+- toexplosive / tosimple: explosive flag 0x20 on (clearing hypnotic 0x40,
+  red, s_explosive.x) or both off (blue, s_ball.x).
+- togipnoz: hypnotic, yellow, s_gipnoz.x, for 15 s.
+- speedup / speeddown: every ball's speed +-0.25 within [0.85, 2] x scalex.
+- trippleball: each ball adds two more at 120 degrees either side, same
+  speed and powers.
+- magnit, gun, bazuka, cannon, rubber: the bat's mode 2, 4 (18 shots), 8
+  (8), 0x10 (5), 0x20 (30 s). With the magnet a ball that hits the bat
+  sticks where it hit (magnited.ogg) and still gets its bounce, so a click
+  sends it off at that angle. The magnet never runs out; another mode lets
+  its balls go.
+- killbat: the bat blows up as when the last ball is lost; the balls fall
+  through.
+- life: a life, up to 9.
+- nextlevel: the level is finished.

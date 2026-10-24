@@ -56,11 +56,15 @@ static struct {
     bool playing;
     int score, lives;  /* carried from level to level */
     int music;         /* which level tune is playing, 0-3 */
-    RenderMesh shadows, glows;
-    unsigned shadow_texture, glow_texture;
+    RenderMesh shadows, glows, prize_glows, trail;
+    unsigned shadow_texture, glow_texture, particle_texture;
+    XModel prize_models[PRIZE_KINDS];
+    RenderMesh prize_meshes[PRIZE_KINDS];
+    bool prize_loaded[PRIZE_KINDS]; /* tried to load: models stay for every level */
+    int test_prize;                 /* the next kind F9 drops */
     unsigned turbine_time; /* the turbines' animation time, XFRAME_REST at first */
-    XModel bat_model, ball_model;
-    RenderMesh background, board, bricks, bat, ball;
+    XModel bat_model, ball_model, explosive_model, hypnotic_model;
+    RenderMesh background, board, bricks, bat, ball, explosive_ball, hypnotic_ball;
     RenderMesh explosions;      /* rebuilt every frame */
     unsigned explosion_texture;
     RenderLight light;
@@ -260,7 +264,8 @@ static void reset_camera(void)
 static bool plain_bat_part(const XPart *part)
 {
     return xpart_in_frame(part, "Corpus") || xpart_in_frame(part, "L_Hand") ||
-           xpart_in_frame(part, "R_Hand") || xpart_in_frame(part, "Plashka");
+           xpart_in_frame(part, "R_Hand") || xpart_in_frame(part, "Plashka") ||
+           xpart_in_frame(part, "Magnit");
 }
 
 /* The bat model named by the level's pad file ("grdata"). */
@@ -300,6 +305,28 @@ static void set_frame_time(const XModel *m, unsigned *times, const char *name, u
 }
 
 /*
+ * The bat's width and look (0x404d62): the plate (or the magnet, which
+ * takes its place) is stretched to the bat's width, 3 being the model's
+ * own; the hands only move in when the bat is narrower than that.
+ */
+static void shape_bat(Mat4 *pose)
+{
+    const XModel *m = &v.bat_model;
+    float stretch = v.play.bat.half_width / 3.0f;
+    bool magnet = v.play.bat.mode == BAT_MAGNET;
+    int p;
+
+    for (p = 0; p < m->part_count; p++) {
+        const XPart *part = &m->parts[p];
+        if (xpart_in_frame(part, magnet ? "Plashka" : "Magnit"))
+            pose[p] = mat4_scaling(0.0f, 0.0f, 0.0f);
+        else if (xpart_in_frame(part, "Plashka") || xpart_in_frame(part, "Magnit") ||
+                 (stretch < 1.0f && (xpart_in_frame(part, "L_Hand") || xpart_in_frame(part, "R_Hand"))))
+            pose[p] = mat4_multiply(pose[p], mat4_scaling(stretch, 1.0f, 1.0f));
+    }
+}
+
+/*
  * The fans spin on the game clock; while the bat leans, the turbines take
  * the lean's time. Setting a frame's time sets its children's too, so the
  * turbines go first and the fans inside keep spinning, as they do in the
@@ -325,15 +352,47 @@ static Mat4 *pose_bat(void)
     }
     set_frame_time(m, times, "R_Fan", (unsigned)v.time);
     set_frame_time(m, times, "L_Fan", (unsigned)v.time);
-    /* The bounce when a ball hits it (0x405218), except with the magnet. */
-    set_frame_time(m, times, "Plashka", v.play.bat.bounce_time);
-    set_frame_time(m, times, "L_Hand", v.play.bat.bounce_time);
-    set_frame_time(m, times, "R_Hand", v.play.bat.bounce_time);
-    set_frame_time(m, times, "L_Ressore", v.play.bat.bounce_time);
-    set_frame_time(m, times, "R_Ressore", v.play.bat.bounce_time);
+    /* The bounce when a ball hits it (0x405218), except with the magnet,
+       which holds its hands still (0x404653). */
+    {
+        bool magnet = v.play.bat.mode == BAT_MAGNET;
+        unsigned bounce = magnet ? 0 : v.play.bat.bounce_time;
+        set_frame_time(m, times, "Magnit", 0);
+        set_frame_time(m, times, "Plashka", bounce);
+        set_frame_time(m, times, "L_Hand", bounce);
+        set_frame_time(m, times, "R_Hand", bounce);
+        set_frame_time(m, times, "L_Ressore", bounce);
+        set_frame_time(m, times, "R_Ressore", bounce);
+    }
     xmodel_pose(m, times, pose);
     free(times);
+    shape_bat(pose);
     return pose;
+}
+
+static void load_model(const char *path, XModel *model, RenderMesh *mesh)
+{
+    if (xfile_load(model, path))
+        build_model_mesh(mesh, model, 0, "", "", NULL);
+    else
+        log_warn("can't load the model %s", path);
+}
+
+/* Each kind of prize's model, named by its file, loaded the first time it is needed. */
+static void load_prize_models(void)
+{
+    int k;
+
+    for (k = PRIZE_NONE + 1; k < PRIZE_KINDS; k++) {
+        const PrizeInfo *info = &v.play.prize_info[k];
+        char path[96];
+
+        if (v.prize_loaded[k] || !info->loaded || info->model[0] == '\0')
+            continue;
+        v.prize_loaded[k] = true;
+        snprintf(path, sizeof(path), "SkinMeshes/%s", info->model);
+        load_model(path, &v.prize_models[k], &v.prize_meshes[k]);
+    }
 }
 
 static void load_bat_model(void)
@@ -440,6 +499,7 @@ static void load_level(int pack, int level)
     if (play_start(&v.play, &v.scene, v.score, v.lives, v.options.mouse_sensitivity)) {
         v.play.sound = play_sound;
         v.playing = true;
+        load_prize_models();
     }
     log_info("level %s: %d bricks (%d to break), %d other objects, board %s", path,
              v.scene.brick_count, v.play.bricks_left, v.scene.other_count,
@@ -481,10 +541,11 @@ bool play_screen_init(SDL_Window *window, const PlayScreenOptions *options)
             }
         }
     }
-    if (xfile_load(&v.ball_model, "SkinMeshes/s_ball.x"))
-        build_model_mesh(&v.ball, &v.ball_model, 0, "", "", NULL);
-    else
-        log_warn("can't load the ball model SkinMeshes/s_ball.x");
+    load_model("SkinMeshes/s_ball.x", &v.ball_model, &v.ball);
+    load_model("SkinMeshes/s_explosive.x", &v.explosive_model, &v.explosive_ball);
+    load_model("SkinMeshes/s_gipnoz.x", &v.hypnotic_model, &v.hypnotic_ball);
+    v.test_prize = PRIZE_NONE + 1;
+    v.particle_texture = texture_for_name("particle.png");
     v.explosion_texture = texture_for_name("explose.png");
     v.shadow_texture = texture_for_name("bshadow.png");
     v.glow_texture = texture_for_name("infravis.png");
@@ -499,10 +560,20 @@ void play_screen_shutdown(void)
     render_mesh_destroy(&v.bat);
     render_mesh_destroy(&v.explosions);
     render_mesh_destroy(&v.ball);
+    render_mesh_destroy(&v.explosive_ball);
+    render_mesh_destroy(&v.hypnotic_ball);
     render_mesh_destroy(&v.shadows);
     render_mesh_destroy(&v.glows);
+    render_mesh_destroy(&v.prize_glows);
+    render_mesh_destroy(&v.trail);
     xfile_free(&v.bat_model);
     xfile_free(&v.ball_model);
+    xfile_free(&v.explosive_model);
+    xfile_free(&v.hypnotic_model);
+    for (i = 0; i < PRIZE_KINDS; i++) {
+        render_mesh_destroy(&v.prize_meshes[i]);
+        xfile_free(&v.prize_models[i]);
+    }
     for (i = 0; i < v.pack_count; i++)
         free(v.packs[i].levels);
     render_shutdown();
@@ -527,6 +598,13 @@ void play_screen_handle_event(const SDL_Event *event)
         case SDLK_PAGEDOWN: jump_to_level(v.pack + 1, 0); break;
         case SDLK_PAGEUP: jump_to_level(v.pack - 1, 0); break;
         case SDLK_SPACE: reset_camera(); break;
+        case SDLK_F9: /* testing: drop the next kind of prize in front of the bat */
+            if (v.playing && v.play.state == PLAY_RUNNING) {
+                play_drop_prize(&v.play, (PrizeKind)v.test_prize,
+                                vec3(v.play.bat.position.x, 0.0f, v.play.bat.position.z + 12.0f));
+                v.test_prize = v.test_prize % (PRIZE_KINDS - 1) + 1;
+            }
+            break;
         case SDLK_F6: /* like the original: the next tune */
             play_level_music(v.music + 1);
             break;
@@ -721,35 +799,148 @@ static void make_overlay(RenderMesh *mesh, const XVertex *quads, int n, unsigned
     render_mesh_add_part(mesh, &part);
 }
 
+/* A camera-facing square of half size (w, h) around p. */
+static void add_billboard(XVertex *out, Mat4 view, Vec3 p, float w, float h)
+{
+    Vec3 right = vec3(view.m[0][0], view.m[1][0], view.m[2][0]);
+    Vec3 up = vec3(view.m[0][1], view.m[1][1], view.m[2][1]);
+    Vec3 c[4];
+
+    c[0] = vec3_add(p, vec3_add(vec3_scale(right, -w), vec3_scale(up, h)));
+    c[1] = vec3_add(p, vec3_add(vec3_scale(right, w), vec3_scale(up, h)));
+    c[2] = vec3_add(p, vec3_add(vec3_scale(right, w), vec3_scale(up, -h)));
+    c[3] = vec3_add(p, vec3_add(vec3_scale(right, -w), vec3_scale(up, -h)));
+    add_quad(out, c);
+}
+
+/* A square of half size r lying on the floor under p, lifted 0.01 so it never loses the depth test. */
+static void add_floor_square(XVertex *out, Vec3 p, float r)
+{
+    Vec3 c[4];
+
+    c[0] = vec3(p.x - r, -0.99f, p.z + r);
+    c[1] = vec3(p.x + r, -0.99f, p.z + r);
+    c[2] = vec3(p.x + r, -0.99f, p.z - r);
+    c[3] = vec3(p.x - r, -0.99f, p.z - r);
+    add_quad(out, c);
+}
+
+static void set_color(float *rgba, uint32_t argb)
+{
+    rgba[0] = (float)((argb >> 16) & 0xff) / 255.0f;
+    rgba[1] = (float)((argb >> 8) & 0xff) / 255.0f;
+    rgba[2] = (float)(argb & 0xff) / 255.0f;
+    rgba[3] = (float)(argb >> 24) / 255.0f;
+}
+
 /*
- * Each ball's shadow is bshadow.png on a 3 x 3 square lying on the floor
- * under it, lifted 0.01 off the floor so it never loses the depth test (0x40ec70, size 1.5 from the ball's constructor at 0x4024a5).
- * Infravision puts infravis.png, half size 0.25, facing the camera at the
- * ball's centre and drawn over everything (0x40f0d0).
+ * Each ball's shadow is bshadow.png on a square lying on the floor under
+ * it, half size 1.5, or 2 for a powerball (0x40ec70, 0x401c60); a prize's
+ * is half size 1, shrinking with it. Infravision puts infravis.png, half
+ * size 0.25, facing the camera at the ball's centre and drawn over
+ * everything (0x40f0d0).
  */
 static void build_ball_overlays(Mat4 view)
 {
-    XVertex shadows[PLAY_MAX_BALLS * 6], glows[PLAY_MAX_BALLS * 6];
-    Vec3 right = vec3(view.m[0][0], view.m[1][0], view.m[2][0]);
-    Vec3 up = vec3(view.m[0][1], view.m[1][1], view.m[2][1]);
-    int i, n = 0;
+    XVertex shadows[(PLAY_MAX_BALLS + PLAY_MAX_PRIZES) * 6], glows[PLAY_MAX_BALLS * 6];
+    int i, n = 0, g = 0;
 
     for (i = 0; i < v.play.ball_count; i++) {
-        Vec3 p = v.play.balls[i].position, c[4];
-        c[0] = vec3(p.x - 1.5f, -0.99f, p.z + 1.5f);
-        c[1] = vec3(p.x + 1.5f, -0.99f, p.z + 1.5f);
-        c[2] = vec3(p.x + 1.5f, -0.99f, p.z - 1.5f);
-        c[3] = vec3(p.x - 1.5f, -0.99f, p.z - 1.5f);
-        add_quad(&shadows[n], c);
-        c[0] = vec3_add(p, vec3_add(vec3_scale(right, -0.25f), vec3_scale(up, 0.25f)));
-        c[1] = vec3_add(p, vec3_add(vec3_scale(right, 0.25f), vec3_scale(up, 0.25f)));
-        c[2] = vec3_add(p, vec3_add(vec3_scale(right, 0.25f), vec3_scale(up, -0.25f)));
-        c[3] = vec3_add(p, vec3_add(vec3_scale(right, -0.25f), vec3_scale(up, -0.25f)));
-        add_quad(&glows[n], c);
+        const Ball *ball = &v.play.balls[i];
+        add_floor_square(&shadows[n], ball->position, (ball->flags & BALL_POWER) ? 2.0f : 1.5f);
+        add_billboard(&glows[g], view, ball->position, 0.25f, 0.25f);
+        n += 6;
+        g += 6;
+    }
+    for (i = 0; i < v.play.prize_count; i++) {
+        add_floor_square(&shadows[n], v.play.prizes[i].position, v.play.prizes[i].glow);
         n += 6;
     }
     make_overlay(&v.shadows, shadows, n, v.shadow_texture, 0);
-    make_overlay(&v.glows, glows, v.options.infravision ? n : 0, v.glow_texture, RENDER_NO_DEPTH_TEST);
+    make_overlay(&v.glows, glows, v.options.infravision ? g : 0, v.glow_texture, RENDER_NO_DEPTH_TEST);
+}
+
+/*
+ * The glow round each prize: infravis.png tinted with the prize's colour,
+ * its size and offset from the prize's file, depth tested but not
+ * written (0x41f8d0's caller).
+ */
+static void build_prize_glows(Mat4 view)
+{
+    XVertex quads[PLAY_MAX_PRIZES * 6];
+    RenderPart part;
+    int i;
+
+    render_mesh_destroy(&v.prize_glows);
+    for (i = 0; i < v.play.prize_count; i++) {
+        const Prize *prize = &v.play.prizes[i];
+        const PrizeInfo *info = &v.play.prize_info[prize->kind];
+        Vec3 p = vec3_add(prize->position,
+                          vec3(info->glow_offset[0], info->glow_offset[1], info->glow_offset[2]));
+        add_billboard(&quads[i * 6], view, p, info->glow_size[0] * prize->glow,
+                      info->glow_size[1] * prize->glow);
+    }
+    if (v.play.prize_count == 0 || !render_mesh_create(&v.prize_glows, quads, v.play.prize_count * 6))
+        return;
+    for (i = 0; i < v.play.prize_count; i++) {
+        memset(&part, 0, sizeof(part));
+        part.first_vertex = i * 6;
+        part.vertex_count = 6;
+        part.texture = v.glow_texture;
+        set_color(part.diffuse, v.play.prize_info[v.play.prizes[i].kind].color);
+        part.flags = RENDER_ALPHA | RENDER_Z_DISABLE | RENDER_TINT | RENDER_TWO_SIDED;
+        part.pose = -1;
+        render_mesh_add_part(&v.prize_glows, &part);
+    }
+}
+
+/*
+ * A powerball's trail: a camera-facing triangle of particle.png per spot,
+ * 2.5 across, in the ball's colour, fading out as its 250 ms run out
+ * (0x41f4e0).
+ */
+static void build_trail(Mat4 view)
+{
+    static XVertex tris[PLAY_MAX_TRAIL * 3];
+    static const float corner[3][4] = {
+        { 0.0f, 1.0f, 0.5f, 0.0f }, { 1.0f, -0.5f, 1.0f, 1.0f }, { -1.0f, -0.5f, 0.0f, 1.0f }
+    };
+    Vec3 right = vec3(view.m[0][0], view.m[1][0], view.m[2][0]);
+    Vec3 up = vec3(view.m[0][1], view.m[1][1], view.m[2][1]);
+    RenderPart part;
+    int i, k;
+
+    render_mesh_destroy(&v.trail);
+    for (i = 0; i < v.play.trail_count; i++) {
+        for (k = 0; k < 3; k++) {
+            XVertex *t = &tris[i * 3 + k];
+            Vec3 p = vec3_add(v.play.trail[i].position,
+                              vec3_add(vec3_scale(right, 1.25f * corner[k][0]),
+                                       vec3_scale(up, 1.25f * corner[k][1])));
+            t->pos[0] = p.x;
+            t->pos[1] = p.y;
+            t->pos[2] = p.z;
+            t->normal[0] = 0.0f;
+            t->normal[1] = 1.0f;
+            t->normal[2] = 0.0f;
+            t->uv[0] = corner[k][2];
+            t->uv[1] = corner[k][3];
+        }
+    }
+    if (v.play.trail_count == 0 || !render_mesh_create(&v.trail, tris, v.play.trail_count * 3))
+        return;
+    for (i = 0; i < v.play.trail_count; i++) {
+        const TrailSpot *spot = &v.play.trail[i];
+        memset(&part, 0, sizeof(part));
+        part.first_vertex = i * 3;
+        part.vertex_count = 3;
+        part.texture = v.particle_texture;
+        /* The spot's alpha is its life left in ms. */
+        set_color(part.diffuse, (spot->color & 0xffffffu) | ((uint32_t)spot->life << 24));
+        part.flags = RENDER_ALPHA | RENDER_Z_DISABLE | RENDER_TINT | RENDER_TWO_SIDED;
+        part.pose = -1;
+        render_mesh_add_part(&v.trail, &part);
+    }
 }
 
 void play_screen_frame(int width, int height, uint32_t ms)
@@ -785,7 +976,12 @@ void play_screen_frame(int width, int height, uint32_t ms)
     {
         float t = (float)v.time;
         Mat4 bat_matrix = mat4_identity(), ball_matrices[PLAY_MAX_BALLS];
+        Mat4 prize_matrices[PLAY_MAX_PRIZES], *prize_poses[PLAY_MAX_PRIZES];
+        const RenderMesh *ball_meshes[PLAY_MAX_BALLS];
         Mat4 *bat_pose = NULL, *ball_pose = pose_model(&v.ball_model, (unsigned)v.time);
+        Mat4 *explosive_pose = pose_model(&v.explosive_model, (unsigned)v.time);
+        Mat4 *hypnotic_pose = pose_model(&v.hypnotic_model, (unsigned)v.time);
+        const Mat4 *ball_poses[PLAY_MAX_BALLS];
         int pass;
 
         if (v.playing) {
@@ -801,14 +997,33 @@ void play_screen_frame(int width, int height, uint32_t ms)
                 v.turbine_time = (unsigned)(abs(bat->tilt) + (bat->tilt < 0 ? 200 : 600));
             }
             bat_pose = pose_bat();
-            /* Balls are drawn at 0.8 of the model's size. */
+            /* Balls are drawn at 0.8 of the model's size, full size when
+               powered up, and look different when explosive or hypnotic. */
             for (i = 0; i < v.play.ball_count; i++) {
                 const Ball *ball = &v.play.balls[i];
                 /* Turned so its spin animation rolls it the way it goes (0x402309). */
                 float heading = 3.14159265f - atan2f(ball->velocity.z, ball->velocity.x);
+                float size = (ball->flags & BALL_POWER) ? 1.0f : 0.8f;
                 ball_matrices[i] = mat4_multiply(
-                    mat4_multiply(mat4_scaling(0.8f, 0.8f, 0.8f), mat4_rotation_y(heading)),
+                    mat4_multiply(mat4_scaling(size, size, size), mat4_rotation_y(heading)),
                     mat4_translation(ball->position.x, ball->position.y, ball->position.z));
+                ball_meshes[i] = &v.ball;
+                ball_poses[i] = ball_pose;
+                if (ball->flags & BALL_EXPLOSIVE) {
+                    ball_meshes[i] = &v.explosive_ball;
+                    ball_poses[i] = explosive_pose;
+                } else if (ball->flags & BALL_HYPNOTIC) {
+                    ball_meshes[i] = &v.hypnotic_ball;
+                    ball_poses[i] = hypnotic_pose;
+                }
+            }
+            /* Prizes play their animation from when they appeared (0x41f8d0). */
+            for (i = 0; i < v.play.prize_count; i++) {
+                const Prize *prize = &v.play.prizes[i];
+                prize_matrices[i] = mat4_multiply(
+                    mat4_scaling(prize->scale, prize->scale, prize->scale),
+                    mat4_translation(prize->position.x, prize->position.y, prize->position.z));
+                prize_poses[i] = pose_model(&v.prize_models[prize->kind], prize->age);
             }
         }
         for (pass = 0; pass < 2; pass++) {
@@ -829,16 +1044,29 @@ void play_screen_frame(int width, int height, uint32_t ms)
                 }
             }
             if (v.playing) {
-                if (v.play.state != PLAY_BAT_LOST && v.play.state != PLAY_GAME_OVER)
+                if (v.play.bat.mode != BAT_DEAD && v.play.state != PLAY_GAME_OVER)
                     render_draw_posed(&v.bat, bat_matrix, bat_pose, kind, t);
                 else if (pass == 1 && v.play.bat.pieces_ms > 0)
                     draw_bat_pieces(bat_matrix, bat_pose, t);
                 for (i = 0; i < v.play.ball_count; i++)
-                    render_draw_posed(&v.ball, ball_matrices[i], ball_pose, kind, t);
+                    render_draw_posed(ball_meshes[i], ball_matrices[i], ball_poses[i], kind, t);
+                for (i = 0; i < v.play.prize_count; i++)
+                    render_draw_posed(&v.prize_meshes[v.play.prizes[i].kind], prize_matrices[i],
+                                      prize_poses[i], kind, t);
             }
         }
         free(bat_pose);
         free(ball_pose);
+        free(explosive_pose);
+        free(hypnotic_pose);
+        if (v.playing) {
+            for (i = 0; i < v.play.prize_count; i++)
+                free(prize_poses[i]);
+            build_prize_glows(view);
+            render_draw(&v.prize_glows, identity, RENDER_PASS_BLENDED, t);
+            build_trail(view);
+            render_draw(&v.trail, identity, RENDER_PASS_BLENDED, t);
+        }
         build_explosion_mesh(view);
         render_draw(&v.explosions, identity, RENDER_PASS_BLENDED, t);
         if (v.playing)

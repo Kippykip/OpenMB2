@@ -2,9 +2,11 @@
 /* Copyright (C) 2026 the OpenMB2 contributors */
 
 #include "play.h"
+#include "../core/config.h"
 #include "../core/log.h"
 
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -16,6 +18,8 @@
 #define STUCK_Z         1.35f   /* a stuck ball sits this far in front of the bat */
 #define MIN_SPEED_Z     0.15f
 #define BAT_LOST_MS     2000    /* guess: the pause before a new ball */
+#define BAT_MIN_WIDTH   2.0f    /* the half widths prizes can make the bat */
+#define BAT_MAX_WIDTH   4.5f
 #define GRID_X 34
 #define GRID_Y 15
 #define GRID_Z 18
@@ -112,6 +116,8 @@ static void grid_remove(Play *play, int index)
 }
 
 /* Take a brick away, score it and count it (0x403cc0 / 0x403d20). */
+static void prize_roll(Play *play, Vec3 at, PrizeKind kind);
+
 static void brick_take(Play *play, int index)
 {
     SceneBrick *b = &play->scene->bricks[index];
@@ -126,6 +132,8 @@ static void brick_take(Play *play, int index)
         play->bricks_left--;
     play->score += pb->points * 100;
     play->bricks_changed = true;
+    /* Every level's bricks leave the prize to chance (kind 0xff in the file). */
+    prize_roll(play, b->position, PRIZE_NONE);
 }
 
 static void brick_destroy(Play *play, int index);
@@ -462,9 +470,52 @@ static Ball *ball_add(Play *play, Vec3 at, bool stuck)
     return ball;
 }
 
-/* One step of a ball's own movement (0x402060). */
-static void ball_update(Play *play, Ball *ball, float dt)
+/* (rand() % 10000) * 0.0001 * range + low, the original's random range (0x42cf20). */
+static float random_range(float low, float range)
 {
+    return low + (float)(rand() % 10000) * 0.0001f * range;
+}
+
+/* A ball's colour, for its trail: blue, red when explosive, yellow when hypnotic. */
+static uint32_t ball_color(const Ball *ball)
+{
+    if (ball->flags & BALL_EXPLOSIVE)
+        return 0xffff0000u;
+    if (ball->flags & BALL_HYPNOTIC)
+        return 0xffffff00u;
+    return 0xff0000ffu;
+}
+
+/*
+ * A powerball leaves a spot of its colour every 25 ms, scattered a little
+ * when it is explosive too (0x401990).
+ */
+static void ball_trail(Play *play, Ball *ball)
+{
+    TrailSpot *spot;
+    Vec3 p = ball->position;
+
+    if (!(ball->flags & BALL_POWER) || ball->trail_time >= ball->age)
+        return;
+    ball->trail_time = ball->age + 25;
+    if (play->trail_count >= PLAY_MAX_TRAIL)
+        return;
+    if (ball->flags & BALL_EXPLOSIVE) {
+        p.x += random_range(-0.2f, 0.4f);
+        p.y += random_range(-0.2f, 0.4f);
+        p.z += random_range(-0.2f, 0.4f);
+    }
+    spot = &play->trail[play->trail_count++];
+    spot->position = p;
+    spot->color = ball_color(ball);
+    spot->life = 250;
+}
+
+/* One step of a ball's own movement (0x402060). */
+static void ball_update(Play *play, Ball *ball, uint32_t ms, float dt)
+{
+    ball->age += ms;
+    ball_trail(play, ball);
     ball->previous = ball->position;
     if (ball->flags & BALL_STUCK) {
         ball->position.x = play->bat.position.x + ball->stuck_offset;
@@ -496,12 +547,6 @@ static bool round_wall(Ball *ball, Vec3 centre, float radius)
     return true;
 }
 
-/* (rand() % 10000) * 0.0001 * range + low, the original's random range (0x42cf20). */
-static float random_range(float low, float range)
-{
-    return low + (float)(rand() % 10000) * 0.0001f * range;
-}
-
 /*
  * The bat blows up (0x4043ff): ten explosions along it, and its ten parts
  * fly off spinning, fading out over 1.5 s.
@@ -531,6 +576,65 @@ static void bat_explode(Play *play)
     bat->pieces_ms = 1500;
 }
 
+/* The bat's sounds are panned by where it is (0x4047c0). */
+static void bat_sound(Play *play, const char *name)
+{
+    sound(play, name, -1, (int)(play->bat.position.x / play->scene->board.half_width * 100.0f));
+}
+
+/* Release every ball held by the bat (0x40e680). */
+static void release_balls(Play *play)
+{
+    int i;
+    for (i = 0; i < play->ball_count; i++)
+        play->balls[i].flags &= ~(uint32_t)BALL_STUCK;
+}
+
+/* The bat dies, from losing the last ball or catching a bat killer (0x4043d0 with 0x40). */
+static void bat_kill(Play *play)
+{
+    if (play->bat.mode == BAT_DEAD)
+        return;
+    sound(play, "batkilled.ogg", -1, 0);
+    bat_explode(play);
+    release_balls(play);
+    play->bat.mode = BAT_DEAD;
+}
+
+/*
+ * The bat becomes a magnet, gun and so on (0x4043d0). Leaving the magnet
+ * lets go of the balls it holds.
+ */
+static void bat_set_mode(Play *play, BatMode mode)
+{
+    Bat *bat = &play->bat;
+
+    if (mode == BAT_DEAD) {
+        bat_kill(play);
+        return;
+    }
+    if (bat->mode == BAT_MAGNET && mode != BAT_MAGNET)
+        release_balls(play);
+    switch (mode) {
+    case BAT_MAGNET: bat->ammo = 2; break; /* never used up */
+    case BAT_GUN: bat->ammo = 18; break;
+    case BAT_BAZOOKA: bat->ammo = 8; break;
+    case BAT_CANNON: bat->ammo = 5; break;
+    default: break;
+    }
+    bat->mode = mode;
+}
+
+/* A prize grows or shrinks the bat by this much, within [2, 4.5] (0x403f90). */
+static void bat_resize(Bat *bat, float amount)
+{
+    bat->target_width += amount;
+    if (bat->target_width < BAT_MIN_WIDTH)
+        bat->target_width = BAT_MIN_WIDTH;
+    if (bat->target_width > BAT_MAX_WIDTH)
+        bat->target_width = BAT_MAX_WIDTH;
+}
+
 /* Each frame: gravity 0.001 a ms, then a move by the whole velocity (0x4048d8). */
 static void bat_pieces_step(Bat *bat, uint32_t ms)
 {
@@ -553,12 +657,18 @@ static bool ball_vs_bat(Play *play, Ball *ball)
     Bat *bat = &play->bat;
     float d;
 
-    if (play->state != PLAY_RUNNING)
+    if (play->state != PLAY_RUNNING || bat->mode == BAT_DEAD)
         return false;
     if (ball->position.x < bat->position.x - bat->half_width ||
         ball->position.x >= bat->position.x + bat->half_width)
         return false;
     d = ball->position.x - bat->position.x;
+    /* The magnet holds the ball where it hit, then it bounces as usual
+       when let go. */
+    if (bat->mode == BAT_MAGNET && bat->ammo > 0) {
+        ball_stick(play, ball, d);
+        bat_sound(play, "magnited.ogg");
+    }
     /* The model's bounce: keys 1-150 in the middle, 1000-1150 at the
        right end, 1150-1300 at the left (0x4054f3). */
     if (d > bat->half_width - 1.0f) {
@@ -576,8 +686,234 @@ static bool ball_vs_bat(Play *play, Ball *ball)
     }
     ball_set_angle(ball, BAT_ANGLE / bat->half_width * d);
     ball_speed_up(play, ball, 0.01f);
-    sound(play, "ball2.ogg", -1, 0);
+    bat_sound(play, "ball2.ogg");
     return true;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Prizes                                                                   */
+/* ------------------------------------------------------------------------ */
+
+static const char *const k_prize_names[PRIZE_KINDS] = {
+    "", "incbat", "decbat", "topowerfull", "tonormal", "tosimple", "toexplosive",
+    "togipnoz", "speedup", "speeddown", "trippleball", "magnit", "gun", "bazuka",
+    "cannon", "rubber", "nextlevel", "killbat", "life"
+};
+
+const char *play_prize_name(PrizeKind kind)
+{
+    return kind > PRIZE_NONE && kind < PRIZE_KINDS ? k_prize_names[kind] : "";
+}
+
+/* Prizes/<name>.txt for every kind (0x4201b0). */
+static void load_prize_info(Play *play)
+{
+    int k;
+
+    for (k = PRIZE_NONE + 1; k < PRIZE_KINDS; k++) {
+        PrizeInfo *info = &play->prize_info[k];
+        char path[64];
+        Config cfg;
+
+        snprintf(path, sizeof(path), "Prizes/%s.txt", k_prize_names[k]);
+        if (!config_load(&cfg, path)) {
+            log_warn("can't load %s", path);
+            continue;
+        }
+        info->loaded = true;
+        info->score = config_get_int(&cfg, "score", 0);
+        snprintf(info->sound, sizeof(info->sound), "%s", config_get_string(&cfg, "sound", ""));
+        snprintf(info->model, sizeof(info->model), "%s", config_get_string(&cfg, "grdata", ""));
+        config_get_floats(&cfg, "glowsize", info->glow_size, 2);
+        config_get_floats(&cfg, "glowoffset", info->glow_offset, 3);
+        info->color = config_get_color(&cfg, "messagecolor", 0xffffffffu);
+        info->color = config_get_color(&cfg, "glowcolor", info->color);
+        config_free(&cfg);
+    }
+}
+
+/*
+ * A new prize falls out of a brick (0x4117c0): up and towards the bat,
+ * more gently close to the bat, and a little faster or slower at random
+ * (0x41f800, 0x41fde0).
+ */
+static bool prize_add(Play *play, PrizeKind kind, Vec3 at)
+{
+    Prize *prize;
+
+    if (play->prize_count >= PLAY_MAX_PRIZES)
+        return false;
+    prize = &play->prizes[play->prize_count++];
+    memset(prize, 0, sizeof(*prize));
+    prize->kind = kind;
+    prize->position = at;
+    prize->velocity = prize->bounce = vec3(0.0f, 0.75f, -0.65f);
+    prize->scale = 1.0f;
+    prize->glow = 1.0f;
+    if (at.z - play->bat.position.z < 5.0f)
+        prize->velocity = vec3(0.0f, 0.5f, -0.45f);
+    prize->velocity = vec3_scale(prize->velocity, random_range(0.85f, 0.3f));
+    return true;
+}
+
+/*
+ * Maybe drop a prize (0x411890). PRIZE_NONE picks one at random: rarely,
+ * twice as often after five quiet seconds, never within a second of the
+ * last one, and never the same kind twice running.
+ */
+static void prize_roll(Play *play, Vec3 at, PrizeKind kind)
+{
+    static const struct { int low, high; PrizeKind kind; } odds[] = {
+        { 0, 80, PRIZE_INCBAT }, { 100, 170, PRIZE_DECBAT },
+        { 200, 260, PRIZE_TOPOWERFULL }, { 300, 360, PRIZE_TONORMAL },
+        { 400, 450, PRIZE_TOSIMPLE }, { 500, 570, PRIZE_TOEXPLOSIVE },
+        { 600, 670, PRIZE_TOGIPNOZ }, { 700, 710, PRIZE_KILLBAT },
+        { 800, 805, PRIZE_LIFE }, { 2000, 2080, PRIZE_SPEEDUP },
+        { 2100, 2170, PRIZE_SPEEDDOWN }, { 2200, 2260, PRIZE_TRIPPLEBALL },
+        { 2900, 2960, PRIZE_RUBBER }, { 3000, 3080, PRIZE_GUN },
+        { 3100, 3170, PRIZE_BAZUKA }, { 3200, 3260, PRIZE_CANNON },
+        { 3300, 3370, PRIZE_MAGNIT }
+    };
+    uint32_t since;
+
+    if (play->prize_time > play->time)
+        return;
+    since = play->time - play->prize_time;
+    if (since > 3000)
+        play->last_prize = PRIZE_NONE;
+    if (kind == PRIZE_NONE) {
+        int r = rand() % (since > 5000 ? 4000 : 8000), i;
+        for (i = 0; i < (int)(sizeof(odds) / sizeof(odds[0])); i++) {
+            if (r > odds[i].low && r < odds[i].high)
+                kind = odds[i].kind;
+        }
+        if (kind == PRIZE_NONE)
+            return;
+    }
+    if (kind == play->last_prize)
+        return;
+    play->last_prize = kind;
+    if (prize_add(play, kind, at))
+        play->prize_time = play->time + 1000;
+}
+
+/* Three balls from each one: two more, 120 degrees either side (0x411f20). */
+static void triple_balls(Play *play)
+{
+    int count = play->ball_count, i, side;
+
+    for (i = 0; i < count; i++) {
+        for (side = -1; side <= 1; side += 2) {
+            Ball *from = &play->balls[i], *ball = ball_add(play, from->position, false);
+            float angle = atan2f(from->velocity.x, from->velocity.z);
+
+            if (ball == NULL)
+                return;
+            ball->velocity = from->velocity;
+            ball_set_angle(ball, angle + (float)side * 2.0944f);
+            /* It takes on the ball's powers (0x401f00). */
+            ball->flags = from->flags & (BALL_POWER | BALL_EXPLOSIVE | BALL_HYPNOTIC);
+        }
+    }
+}
+
+/* The bat caught a prize (0x41fae0). */
+static void prize_apply(Play *play, const Prize *prize)
+{
+    const PrizeInfo *info = &play->prize_info[prize->kind];
+    int i;
+
+    /* Panned hard left, centre or right: the original rounds before scaling. */
+    if (info->sound[0] != '\0')
+        sound(play, info->sound, -1, (int)(prize->position.x / play->scene->board.half_width) * 100);
+    play->score += info->score;
+
+    switch (prize->kind) {
+    case PRIZE_INCBAT: bat_resize(&play->bat, 0.5f); break;
+    case PRIZE_DECBAT: bat_resize(&play->bat, -0.5f); break;
+    case PRIZE_TOPOWERFULL:
+    case PRIZE_TONORMAL:
+        for (i = 0; i < play->ball_count; i++) {
+            if (prize->kind == PRIZE_TOPOWERFULL)
+                play->balls[i].flags |= BALL_POWER;
+            else
+                play->balls[i].flags &= ~(uint32_t)BALL_POWER;
+        }
+        break;
+    case PRIZE_TOEXPLOSIVE:
+    case PRIZE_TOSIMPLE:
+        for (i = 0; i < play->ball_count; i++) {
+            play->balls[i].flags &= ~(uint32_t)(BALL_EXPLOSIVE | BALL_HYPNOTIC);
+            if (prize->kind == PRIZE_TOEXPLOSIVE)
+                play->balls[i].flags |= BALL_EXPLOSIVE;
+        }
+        break;
+    case PRIZE_SPEEDUP:
+    case PRIZE_SPEEDDOWN:
+        for (i = 0; i < play->ball_count; i++)
+            ball_speed_up(play, &play->balls[i], prize->kind == PRIZE_SPEEDUP ? 0.25f : -0.25f);
+        break;
+    case PRIZE_TRIPPLEBALL: triple_balls(play); break;
+    case PRIZE_MAGNIT: bat_set_mode(play, BAT_MAGNET); break;
+    case PRIZE_KILLBAT: bat_set_mode(play, BAT_DEAD); break;
+    case PRIZE_LIFE:
+        if (play->lives < 9)
+            play->lives++;
+        break;
+    case PRIZE_NEXTLEVEL: play->bricks_left = 0; break;
+    default:
+        /* Hypnotic ball, gun, bazooka, cannon and rubber: still to come. */
+        break;
+    }
+}
+
+/*
+ * A prize's step (0x41f910): it flies, bounces lower each time it lands,
+ * and shrinks away once it is past the bat. Then the bat may catch it
+ * (0x404730). Returns false when it is gone.
+ */
+static bool prize_update(Play *play, Prize *prize, uint32_t ms, float dt)
+{
+    const Bat *bat = &play->bat;
+    Vec3 p;
+
+    prize->age += ms;
+    prize->position = vec3_add(prize->position, vec3_scale(prize->velocity, dt));
+    if (prize->position.y <= -0.5f) {
+        prize->position.y = -0.49f;
+        if (prize->bounce.y >= 0.1f) {
+            prize->bounce = vec3_scale(prize->bounce, 0.75f);
+            prize->velocity = prize->bounce;
+            if (prize->velocity.z > -0.25f)
+                prize->velocity.z = -0.25f;
+        } else {
+            prize->velocity.y = 0.0f;
+        }
+    } else {
+        prize->velocity.y -= 0.1f * dt;
+    }
+    if (bat->position.z > prize->position.z) {
+        prize->scale -= 0.2f * dt;
+        prize->glow *= 1.0f - 0.3f * dt;
+        if (prize->scale < 0.25f)
+            return false;
+    }
+
+    p = prize->position;
+    if (bat->mode == BAT_DEAD || p.z > bat->position.z + 1.0f)
+        return true;
+    if (p.z < bat->position.z - 3.0f)
+        return false;
+    if (p.x < bat->position.x - bat->half_width || p.x > bat->position.x + bat->half_width)
+        return true;
+    prize_apply(play, prize);
+    return false;
+}
+
+void play_drop_prize(Play *play, PrizeKind kind, Vec3 at)
+{
+    if (kind > PRIZE_NONE && kind < PRIZE_KINDS)
+        prize_add(play, kind, at);
 }
 
 /* The board's walls and the bat, after everything has moved (0x406b80). */
@@ -646,7 +982,9 @@ static void ball_vs_board(Play *play, Ball *ball)
 static void new_ball(Play *play)
 {
     play->bat.position.x = 0.0f;
-    play->bat.half_width = BAT_HALF_WIDTH;
+    play->bat.half_width = play->bat.target_width = BAT_HALF_WIDTH;
+    play->bat.mode = BAT_NORMAL;
+    play->bat.ammo = 0;
     play->bat.tilt = 0;
     play->bat.bounce_time = 0;
     play->bat.bounce_kind = 0;
@@ -695,6 +1033,7 @@ bool play_start(Play *play, Scene *scene, int score, int lives, float mouse_sens
 
     play->bat.position = vec3(0.0f, 0.0f, scene->board.bat_line);
     new_ball(play);
+    load_prize_info(play);
     return true;
 }
 
@@ -725,11 +1064,9 @@ void play_mouse_move(Play *play, int dx)
 
 void play_click(Play *play)
 {
-    int i;
-    if (play->state != PLAY_RUNNING)
+    if (play->state != PLAY_RUNNING || play->bat.mode == BAT_DEAD)
         return;
-    for (i = 0; i < play->ball_count; i++)
-        play->balls[i].flags &= ~(uint32_t)BALL_STUCK;
+    release_balls(play);
 }
 
 static void step(Play *play, uint32_t ms)
@@ -753,6 +1090,23 @@ static void step(Play *play, uint32_t ms)
             play->bat.bounce_time = 0;
     }
 
+    /* The bat grows or shrinks to its new width at 0.1 a step (0x404ffc). */
+    if (play->bat.half_width < play->bat.target_width) {
+        play->bat.half_width += 0.1f * dt;
+        if (play->bat.half_width > play->bat.target_width)
+            play->bat.half_width = play->bat.target_width;
+    } else if (play->bat.half_width > play->bat.target_width) {
+        play->bat.half_width -= 0.1f * dt;
+        if (play->bat.half_width < play->bat.target_width)
+            play->bat.half_width = play->bat.target_width;
+    }
+    for (i = 0, kept = 0; i < play->trail_count; i++) {
+        play->trail[i].life -= (int)ms;
+        if (play->trail[i].life >= 0)
+            play->trail[kept++] = play->trail[i];
+    }
+    play->trail_count = kept;
+
     if (scene_update_effects(play->scene, ms))
         play->bricks_changed = true;
     for (i = 0; i < play->scene->brick_count; i++) {
@@ -761,7 +1115,7 @@ static void step(Play *play, uint32_t ms)
     }
 
     for (i = 0; i < play->ball_count; i++)
-        ball_update(play, &play->balls[i], dt);
+        ball_update(play, &play->balls[i], ms, dt);
     for (i = 0; i < play->ball_count; i++)
         ball_vs_board(play, &play->balls[i]);
 
@@ -771,14 +1125,28 @@ static void step(Play *play, uint32_t ms)
     }
     play->ball_count = kept;
 
+    for (i = 0, kept = 0; i < play->prize_count; i++) {
+        if (prize_update(play, &play->prizes[i], ms, dt))
+            play->prizes[kept++] = play->prizes[i];
+    }
+    play->prize_count = kept;
+
     switch (play->state) {
     case PLAY_RUNNING:
+        /* With five bricks or fewer to go, a next-level medal comes out
+           of the middle now and then (0x4197fa). */
+        if (play->bricks_left <= 5) {
+            play->medal_timer -= (int)ms;
+            if (play->medal_timer < 0) {
+                prize_roll(play, vec3(0.0f, 0.0f, 10.0f), PRIZE_NEXTLEVEL);
+                play->medal_timer = 9000 + rand() % 5000;
+            }
+        }
         if (play->bricks_left <= 0) {
             play->state = PLAY_LEVEL_DONE;
             play->state_time = 0;
         } else if (play->ball_count == 0) {
-            sound(play, "batkilled.ogg", -1, 0);
-            bat_explode(play);
+            bat_kill(play);
             play->state = PLAY_BAT_LOST;
             play->state_time = 0;
         }

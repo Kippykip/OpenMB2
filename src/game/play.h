@@ -21,12 +21,15 @@
 #include <stdint.h>
 
 #define PLAY_MAX_BALLS 32
+#define PLAY_MAX_PRIZES 4   /* the original drops no more while 4 are falling */
+#define PLAY_MAX_TRAIL 256
 
 /* Ball flags, with the original's values. */
 enum {
     BALL_STUCK = 0x02,     /* waiting on the bat */
     BALL_POWER = 0x10,     /* goes through bricks */
     BALL_EXPLOSIVE = 0x20, /* blows bricks up */
+    BALL_HYPNOTIC = 0x40,
     BALL_LOST = 0x8000
 };
 
@@ -35,7 +38,61 @@ typedef struct Ball {
     uint32_t flags;
     float stuck_offset;   /* x from the bat's centre while stuck */
     int round_bounces;    /* bounces in a row off a round wall */
+    uint32_t age;         /* ms since it was made */
+    uint32_t trail_time;  /* a powerball leaves its next trail spot at this age */
 } Ball;
+
+/* The prizes, numbered as in the original. */
+typedef enum PrizeKind {
+    PRIZE_NONE,
+    PRIZE_INCBAT,
+    PRIZE_DECBAT,
+    PRIZE_TOPOWERFULL,
+    PRIZE_TONORMAL,
+    PRIZE_TOSIMPLE,
+    PRIZE_TOEXPLOSIVE,
+    PRIZE_TOGIPNOZ,
+    PRIZE_SPEEDUP,
+    PRIZE_SPEEDDOWN,
+    PRIZE_TRIPPLEBALL,
+    PRIZE_MAGNIT,
+    PRIZE_GUN,
+    PRIZE_BAZUKA,
+    PRIZE_CANNON,
+    PRIZE_RUBBER,
+    PRIZE_NEXTLEVEL,
+    PRIZE_KILLBAT,
+    PRIZE_LIFE,
+    PRIZE_KINDS
+} PrizeKind;
+
+/* What Prizes/<name>.txt says about a kind of prize. */
+typedef struct PrizeInfo {
+    bool loaded;
+    int score;
+    char sound[64];
+    char model[64];        /* in SkinMeshes */
+    float glow_size[2];    /* half width and height of the glow */
+    float glow_offset[3];
+    uint32_t color;        /* ARGB, the glow's tint */
+} PrizeInfo;
+
+/* A prize falling out of a broken brick. */
+typedef struct Prize {
+    PrizeKind kind;
+    Vec3 position, velocity;
+    Vec3 bounce;           /* the velocity it leaves the floor with, shrinking */
+    float scale;           /* shrinks to nothing once past the bat */
+    float glow;            /* the glow's size, likewise */
+    uint32_t age;          /* ms, for its animation */
+} Prize;
+
+/* A spot of a powerball's trail, fading over 250 ms. */
+typedef struct TrailSpot {
+    Vec3 position;
+    uint32_t color;        /* ARGB, the ball's colour */
+    int life;              /* ms left */
+} TrailSpot;
 
 /* A piece of a bat blown apart: one of the model's frames, flying off. */
 #define BAT_PIECES 10
@@ -45,9 +102,23 @@ typedef struct BatPiece {
     float angle, spin;       /* ...this far so far, and this fast */
 } BatPiece;
 
+/* What the bat is, with the original's values. */
+typedef enum BatMode {
+    BAT_NORMAL = 0x01,
+    BAT_MAGNET = 0x02,
+    BAT_GUN = 0x04,
+    BAT_BAZOOKA = 0x08,
+    BAT_CANNON = 0x10,
+    BAT_RUBBER = 0x20,
+    BAT_DEAD = 0x40
+} BatMode;
+
 typedef struct Bat {
     Vec3 position;
     float half_width;
+    float target_width;   /* the half width it is growing or shrinking to */
+    BatMode mode;
+    int ammo;
     int tilt;             /* the model leans while it moves, ±299 */
     /*
      * The bounce the model plays when a ball hits it: the time into the
@@ -89,6 +160,14 @@ typedef struct Play {
     Bat bat;
     int score, lives;
     int bricks_left;
+    Prize prizes[PLAY_MAX_PRIZES];
+    int prize_count;
+    PrizeInfo prize_info[PRIZE_KINDS];
+    uint32_t prize_time;         /* no prize drops before this time */
+    PrizeKind last_prize;        /* never the same kind twice running */
+    int medal_timer;             /* ms to the next next-level medal */
+    TrailSpot trail[PLAY_MAX_TRAIL];
+    int trail_count;
     PlayState state;
     uint32_t state_time;         /* ms in the current state */
     uint32_t time;               /* ms since the level started */
@@ -98,6 +177,9 @@ typedef struct Play {
     PlaySoundFn sound;
     void *sound_user;
 } Play;
+
+/* Prize names as the files call them ("incbat"), "" for PRIZE_NONE. */
+const char *play_prize_name(PrizeKind kind);
 
 /* Start a level. score and lives carry over between levels. */
 bool play_start(Play *play, Scene *scene, int score, int lives, float mouse_sensitivity);
@@ -112,5 +194,8 @@ void play_update(Play *play, uint32_t ms);
 
 /* For testing: the bat follows the first ball and launches it. Call before play_update(). */
 void play_autopilot(Play *play);
+
+/* For testing: drop a prize at a point. */
+void play_drop_prize(Play *play, PrizeKind kind, Vec3 at);
 
 #endif
