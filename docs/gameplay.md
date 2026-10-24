@@ -189,9 +189,14 @@ never set keeps its FrameTransformMatrix. Objects set their whole model to
 their age in ms (0x401960), so the ball spins on its own 1000 ms loop.
 
 The bat (0x40514d) sets R_Fan and L_Fan to its clock every frame. While its
-tilt is beyond ±5 it then sets L_Turbine and R_Turbine to |tilt| + 200
-(tilt < 0) or |tilt| + 600, which leans them and, as children, the fans
-too. Otherwise the turbines keep their last pose.
+tilt is beyond ±5 it also sets L_Turbine and R_Turbine to |tilt| + 200
+(tilt < 0) or |tilt| + 600, which leans them; otherwise they keep their
+last pose. The code sets the turbines after the fans, which would freeze
+the fans while leaning, but in the original they keep spinning, so OpenMB2
+poses the turbines first.
+
+The ball is turned about y by pi - atan2(vz, vx) before its spin is applied
+(0x402309), so it rolls the way it moves.
 
 ## Shadows and infravision
 

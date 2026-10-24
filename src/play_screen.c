@@ -300,11 +300,12 @@ static void set_frame_time(const XModel *m, unsigned *times, const char *name, u
 }
 
 /*
- * The fans spin on the game clock. While the bat leans, the turbines are
- * set after them, and that sets the fans inside them to the lean's time
- * too, just as in the original (0x40514d).
+ * The fans spin on the game clock; while the bat leans, the turbines take
+ * the lean's time. Setting a frame's time sets its children's too, so the
+ * turbines go first and the fans inside keep spinning, as they do in the
+ * original game.
  */
-static Mat4 *pose_bat(bool leaning)
+static Mat4 *pose_bat(void)
 {
     const XModel *m = &v.bat_model;
     unsigned *times = malloc((size_t)(m->frame_count + 1) * sizeof(*times));
@@ -324,10 +325,6 @@ static Mat4 *pose_bat(bool leaning)
     }
     set_frame_time(m, times, "R_Fan", (unsigned)v.time);
     set_frame_time(m, times, "L_Fan", (unsigned)v.time);
-    if (leaning) {
-        set_frame_time(m, times, "L_Turbine", v.turbine_time);
-        set_frame_time(m, times, "R_Turbine", v.turbine_time);
-    }
     xmodel_pose(m, times, pose);
     free(times);
     return pose;
@@ -761,13 +758,15 @@ void play_screen_frame(int width, int height, uint32_t ms)
                    one way and from 600 the other (0x405178). */
                 v.turbine_time = (unsigned)(abs(bat->tilt) + (bat->tilt < 0 ? 200 : 600));
             }
-            bat_pose = pose_bat(leaning);
+            bat_pose = pose_bat();
             /* Balls are drawn at 0.8 of the model's size. */
             for (i = 0; i < v.play.ball_count; i++) {
                 const Ball *ball = &v.play.balls[i];
-                ball_matrices[i] = mat4_multiply(mat4_scaling(0.8f, 0.8f, 0.8f),
-                                                 mat4_translation(ball->position.x, ball->position.y,
-                                                                  ball->position.z));
+                /* Turned so its spin animation rolls it the way it goes (0x402309). */
+                float heading = 3.14159265f - atan2f(ball->velocity.z, ball->velocity.x);
+                ball_matrices[i] = mat4_multiply(
+                    mat4_multiply(mat4_scaling(0.8f, 0.8f, 0.8f), mat4_rotation_y(heading)),
+                    mat4_translation(ball->position.x, ball->position.y, ball->position.z));
             }
         }
         for (pass = 0; pass < 2; pass++) {
