@@ -107,6 +107,8 @@ void scene_randomize_background(Scene *scene, int random);
 void scene_bake_bricks(Scene *scene);
 
 /* A brick has broken: it starts shrinking, and crumbs and a flash fly off. */
+/* Start an explosion flash (the factory's object 0x40). */
+void scene_add_explosion(Scene *scene, Vec3 position);
 void scene_break_brick(Scene *scene, int index);
 
 /* Move the breaking effects on by one game step. True if anything moved. */

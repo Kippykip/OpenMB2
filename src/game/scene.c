@@ -383,6 +383,15 @@ static float random_percent(float scale)
     return (float)(rand() % 100) * scale;
 }
 
+void scene_add_explosion(Scene *scene, Vec3 position)
+{
+    if (scene->explosion_count < SCENE_MAX_EXPLOSIONS) {
+        SceneExplosion *e = &scene->explosions[scene->explosion_count++];
+        e->position = position;
+        e->age = 0;
+    }
+}
+
 void scene_break_brick(Scene *scene, int index)
 {
     SceneBrick *b = &scene->bricks[index];
@@ -392,11 +401,7 @@ void scene_break_brick(Scene *scene, int index)
     if (b->hidden)
         return;
 
-    if (scene->explosion_count < SCENE_MAX_EXPLOSIONS) {
-        SceneExplosion *e = &scene->explosions[scene->explosion_count++];
-        e->position = b->position;
-        e->age = 0;
-    }
+    scene_add_explosion(scene, b->position);
     /* 0x425870 */
     for (i = 0; i < CRUMBS && scene->crumb_count < SCENE_MAX_CRUMBS; i++) {
         SceneCrumb *c = &scene->crumbs[scene->crumb_count++];

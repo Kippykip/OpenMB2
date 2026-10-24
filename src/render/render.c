@@ -49,10 +49,11 @@ static const char *const k_fragment_shader =
     "precision mediump float;\n"
     "#endif\n"
     "uniform sampler2D u_texture;\n"
+    "uniform float u_fade;\n"
     "varying vec4 v_color;\n"
     "varying vec2 v_uv;\n"
     "void main() {\n"
-    "    gl_FragColor = texture2D(u_texture, v_uv) * v_color;\n"
+    "    gl_FragColor = texture2D(u_texture, v_uv) * v_color * vec4(1.0, 1.0, 1.0, u_fade);\n"
     "}\n";
 
 enum { ATTRIB_POSITION, ATTRIB_NORMAL, ATTRIB_UV };
@@ -65,7 +66,8 @@ typedef struct TextureEntry {
 static struct {
     GLuint program;
     GLint u_mvp, u_model, u_light_dir, u_ambient, u_light_diffuse, u_material, u_lighted,
-        u_uv_offset, u_texture;
+        u_uv_offset, u_texture, u_fade;
+    float fade; /* render_set_fade() */
     unsigned white_texture;
     TextureEntry *textures;
     int texture_count;
@@ -123,6 +125,7 @@ static bool create_program(void)
     r.u_light_diffuse = gl.GetUniformLocation(r.program, "u_light_diffuse");
     r.u_material = gl.GetUniformLocation(r.program, "u_material");
     r.u_lighted = gl.GetUniformLocation(r.program, "u_lighted");
+    r.u_fade = gl.GetUniformLocation(r.program, "u_fade");
     r.u_uv_offset = gl.GetUniformLocation(r.program, "u_uv_offset");
     r.u_texture = gl.GetUniformLocation(r.program, "u_texture");
     return true;
@@ -236,9 +239,15 @@ unsigned render_texture(const char *game_path)
 
 /* ------------------------------------------------------------------------ */
 
+void render_set_fade(float alpha)
+{
+    r.fade = alpha < 0.0f ? 0.0f : alpha > 1.0f ? 1.0f : alpha;
+}
+
 bool render_init(void)
 {
     memset(&r, 0, sizeof(r));
+    r.fade = 1.0f;
     if (!create_program())
         return false;
     r.white_texture = create_white_texture();
@@ -335,6 +344,7 @@ void render_draw_posed(const RenderMesh *mesh, Mat4 model, const Mat4 *pose, Ren
     if (mesh->buffer == 0)
         return;
     set_model(model);
+    gl.Uniform1f(r.u_fade, r.fade);
 
     gl.BindBuffer(GL_ARRAY_BUFFER, mesh->buffer);
     gl.VertexAttribPointer(ATTRIB_POSITION, 3, GL_FLOAT, GL_FALSE, sizeof(XVertex),
@@ -349,7 +359,7 @@ void render_draw_posed(const RenderMesh *mesh, Mat4 model, const Mat4 *pose, Ren
 
     for (i = 0; i < mesh->part_count; i++) {
         const RenderPart *part = &mesh->parts[i];
-        bool blended = (part->flags & RENDER_ALPHA) != 0;
+        bool blended = (part->flags & RENDER_ALPHA) != 0 || r.fade < 1.0f;
         float u = part->uv_speed[0] * time_ms, v = part->uv_speed[1] * time_ms;
 
         if (pass != RENDER_PASS_ALL && blended != (pass == RENDER_PASS_BLENDED))

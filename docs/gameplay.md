@@ -214,3 +214,17 @@ the ball shows through bricks.
 A strong brick (0x28) that survives a hit moves its texture coordinates
 down by its texture's yfactor (0x4033c0), so the sheet's next row shows
 the next crack. Stone (0x30) bricks show nothing.
+
+## Losing the bat (0x4043ff, pieces 0x4048d8, drawing 0x404cb6)
+
+When the last ball is lost the bat blows up: batkilled.ogg plays, ten
+explosions start at whole-number positions (x + random(-halfwidth,
+halfwidth), y, z + random(-1, 1)), and ten frames of the model (Corpus,
+Plashka, L/R_Ressore, L/R_Hand, L/R_Turbine, L/R_Fan) fly off as pieces.
+Each starts at the bat with velocity (random(-0.1, 0.1), random(0.3, 0.6),
+random(-0.1, 0)), an axis (random(-0.3, 0.3), random(0.3, 0.6),
+random(-0.3, 0.3)) and spin random(0.3, 0.6). Every frame: velocity.y -=
+0.001 * ms, position += velocity, angle += ms * spin * 0.0025. A piece is
+drawn as rotation about its axis, then its offset, then the bat's matrix,
+blended at (time left) / 1500 for 1.5 s. random(a, b) here is
+a + (rand() % 10000) * 0.0001 * (b - a).

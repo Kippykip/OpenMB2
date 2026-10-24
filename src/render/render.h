@@ -82,4 +82,10 @@ void render_draw(const RenderMesh *mesh, Mat4 model, RenderPass pass, float time
 void render_draw_posed(const RenderMesh *mesh, Mat4 model, const Mat4 *pose, RenderPass pass,
                        float time_ms);
 
+/*
+ * Fade everything drawn from now on to this opacity (1 = normal). Faded
+ * parts are blended, so draw them in a blended or RENDER_PASS_ALL pass.
+ */
+void render_set_fade(float alpha);
+
 #endif

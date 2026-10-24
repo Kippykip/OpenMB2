@@ -496,6 +496,57 @@ static bool round_wall(Ball *ball, Vec3 centre, float radius)
     return true;
 }
 
+/* (rand() % 10000) * 0.0001 * range + low, the original's random range (0x42cf20). */
+static float random_range(float low, float range)
+{
+    return low + (float)(rand() % 10000) * 0.0001f * range;
+}
+
+/*
+ * The bat blows up (0x4043ff): ten explosions along it, and its ten parts
+ * fly off spinning, fading out over 1.5 s.
+ */
+static void bat_explode(Play *play)
+{
+    Bat *bat = &play->bat;
+    int i;
+
+    for (i = 0; i < 10; i++) {
+        /* The factory gets whole-number positions. */
+        Vec3 p = vec3((float)(int)(bat->position.x + random_range(-bat->half_width, 2.0f * bat->half_width)),
+                      (float)(int)bat->position.y,
+                      (float)(int)(bat->position.z + random_range(-1.0f, 2.0f)));
+        scene_add_explosion(play->scene, p);
+    }
+    for (i = 0; i < BAT_PIECES; i++) {
+        BatPiece *piece = &bat->pieces[i];
+        piece->position = vec3(0.0f, 0.0f, 0.0f);
+        piece->velocity = vec3(random_range(-0.1f, 0.2f), random_range(0.3f, 0.3f),
+                               random_range(-0.1f, 0.1f));
+        piece->axis = vec3(random_range(-0.3f, 0.6f), random_range(0.3f, 0.3f),
+                           random_range(-0.3f, 0.6f));
+        piece->angle = 0.0f;
+        piece->spin = random_range(0.3f, 0.3f);
+    }
+    bat->pieces_ms = 1500;
+}
+
+/* Each frame: gravity 0.001 a ms, then a move by the whole velocity (0x4048d8). */
+static void bat_pieces_step(Bat *bat, uint32_t ms)
+{
+    int i;
+
+    if (bat->pieces_ms == 0)
+        return;
+    for (i = 0; i < BAT_PIECES; i++) {
+        BatPiece *piece = &bat->pieces[i];
+        piece->velocity.y -= 0.001f * (float)ms;
+        piece->position = vec3_add(piece->position, piece->velocity);
+        piece->angle += (float)ms * piece->spin * 0.0025f;
+    }
+    bat->pieces_ms = bat->pieces_ms > ms ? bat->pieces_ms - ms : 0;
+}
+
 /* A ball against the bat; true if it bounced (0x405450). */
 static bool ball_vs_bat(Play *play, Ball *ball)
 {
@@ -599,6 +650,7 @@ static void new_ball(Play *play)
     play->bat.tilt = 0;
     play->bat.bounce_time = 0;
     play->bat.bounce_kind = 0;
+    play->bat.pieces_ms = 0;
     play->ball_count = 0;
     ball_add(play, vec3(play->bat.position.x, 0.0f, play->bat.position.z + 0.5f), true);
 }
@@ -690,6 +742,7 @@ static void step(Play *play, uint32_t ms)
 
     /* The bat eases back upright. */
     play->bat.tilt += play->bat.tilt > 0 ? -3 : 3;
+    bat_pieces_step(&play->bat, ms);
     /* Its bounce plays at a third of real time, then stops (0x404f4f). */
     if (play->bat.bounce_time != 0) {
         static const unsigned end[3] = { 150, 1150, 1300 };
@@ -725,6 +778,7 @@ static void step(Play *play, uint32_t ms)
             play->state_time = 0;
         } else if (play->ball_count == 0) {
             sound(play, "batkilled.ogg", -1, 0);
+            bat_explode(play);
             play->state = PLAY_BAT_LOST;
             play->state_time = 0;
         }

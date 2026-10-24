@@ -30,7 +30,8 @@ typedef struct Sound {
 /* A sound that is playing. position is in the sound's own frames, 16.16. */
 typedef struct Voice {
     const Sound *sound;
-    uint32_t position, step;
+    uint64_t position; /* 64 bits: a 32-bit 16.16 count wraps after 65536 frames */
+    uint32_t step;
     int left, right; /* gains, 0-256 */
 } Voice;
 
@@ -82,7 +83,7 @@ static void mix(void *user, Uint8 *stream, int bytes)
                 continue;
             }
             /* Linear interpolation, for sounds that aren't at 44.1 kHz. */
-            frac = voice->position & 0xffff;
+            frac = (uint32_t)(voice->position & 0xffff);
             l = sample_at(voice->sound, frame, 0);
             r = sample_at(voice->sound, frame, 1);
             l += (int)(((int64_t)(sample_at(voice->sound, frame + 1, 0) - l) * frac) >> 16);

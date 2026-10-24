@@ -37,6 +37,14 @@ typedef struct Ball {
     int round_bounces;    /* bounces in a row off a round wall */
 } Ball;
 
+/* A piece of a bat blown apart: one of the model's frames, flying off. */
+#define BAT_PIECES 10
+typedef struct BatPiece {
+    Vec3 position, velocity; /* from where the bat was */
+    Vec3 axis;               /* it spins about this... */
+    float angle, spin;       /* ...this far so far, and this fast */
+} BatPiece;
+
 typedef struct Bat {
     Vec3 position;
     float half_width;
@@ -49,6 +57,9 @@ typedef struct Bat {
     unsigned bounce_time;
     int bounce_kind;
     unsigned bounce_ms;   /* real time since the hit */
+    /* After losing the last ball: the pieces, fading out over this time. */
+    BatPiece pieces[BAT_PIECES];
+    uint32_t pieces_ms;
 } Bat;
 
 /* Per brick of the scene, the gameplay side. */

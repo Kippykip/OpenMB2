@@ -648,6 +648,42 @@ static void build_explosion_mesh(Mat4 view)
     render_mesh_add_part(&v.explosions, &part);
 }
 
+/*
+ * A blown-up bat (0x404cb6): each of these frames is drawn on its own,
+ * spun about its piece's axis and moved by the piece's offset, all faded
+ * by the time left.
+ */
+static void draw_bat_pieces(Mat4 bat_matrix, const Mat4 *pose, float t)
+{
+    static const char *const names[BAT_PIECES] = {
+        "Corpus", "Plashka", "L_Ressore", "R_Ressore", "L_Hand",
+        "R_Hand", "L_Turbine", "R_Turbine", "L_Fan", "R_Fan"
+    };
+    const XModel *m = &v.bat_model;
+    const Bat *bat = &v.play.bat;
+    Mat4 *only = malloc((size_t)(m->part_count + 1) * sizeof(*only));
+    int i, p;
+
+    if (only == NULL || pose == NULL) {
+        free(only);
+        return;
+    }
+    render_set_fade((float)bat->pieces_ms * (1.0f / 1500.0f));
+    for (i = 0; i < BAT_PIECES; i++) {
+        const BatPiece *piece = &bat->pieces[i];
+        Mat4 world = mat4_multiply(
+            mat4_multiply(mat4_rotation_axis(vec3_normalize(piece->axis), piece->angle),
+                          mat4_translation(piece->position.x, piece->position.y, piece->position.z)),
+            bat_matrix);
+        /* Parts outside this frame are squashed to nothing. */
+        for (p = 0; p < m->part_count; p++)
+            only[p] = strcmp(m->parts[p].frame, names[i]) == 0 ? pose[p] : mat4_scaling(0, 0, 0);
+        render_draw_posed(&v.bat, world, only, RENDER_PASS_ALL, t);
+    }
+    render_set_fade(1.0f);
+    free(only);
+}
+
 /* One quad as two triangles, from four corners in order around it. */
 static void add_quad(XVertex *out, const Vec3 *corner)
 {
@@ -795,6 +831,8 @@ void play_screen_frame(int width, int height, uint32_t ms)
             if (v.playing) {
                 if (v.play.state != PLAY_BAT_LOST && v.play.state != PLAY_GAME_OVER)
                     render_draw_posed(&v.bat, bat_matrix, bat_pose, kind, t);
+                else if (pass == 1 && v.play.bat.pieces_ms > 0)
+                    draw_bat_pieces(bat_matrix, bat_pose, t);
                 for (i = 0; i < v.play.ball_count; i++)
                     render_draw_posed(&v.ball, ball_matrices[i], ball_pose, kind, t);
             }
