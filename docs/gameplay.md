@@ -568,6 +568,10 @@ so the normals come out 0.4 long. The upper sky gets only the ambient
 96 at the top of the screen and up to 166 at the bottom, with Gouraud
 corners visible.
 
+It is drawn with an identity world matrix and back faces culled (the
+device's CCW cull mode, 0x41b72c), so a camera zoomed out beyond the
+sphere sees only its far half and the board stays in view.
+
 ## Stone shine (type 0x30, class 0x408280)
 
 Stone (6 hits, 12 points, doesn't count) sets a shining flag when a hit

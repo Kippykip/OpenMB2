@@ -271,10 +271,9 @@ static void build_brick_mesh(void)
 }
 
 /*
- * The background is seen from inside. The original shows it darker than
- * its picture: about 0.65 of it at the bottom of the screen down to 0.5 at
- * the top (measured from screenshots; how it gets that isn't known yet), so
- * it is drawn at 0.6 all over.
+ * The background is a sphere seen from inside. The original draws it with
+ * back faces culled (0x41b72c), so with the camera zoomed out past it only
+ * its far side shows and the board stays in view.
  */
 static void build_background_mesh(void)
 {
@@ -282,7 +281,7 @@ static void build_background_mesh(void)
 
     render_mesh_destroy(&v.background);
     build_model_mesh(&v.background, &v.scene.background_model,
-                     RENDER_TWO_SIDED, v.scene.background_texture, "", NULL);
+                     0, v.scene.background_texture, "", NULL);
     /* The sky sphere is lit like everything else, but fon.x scales it up
        2.5 times in its frame, and Direct3D lights it with normals shrunk
        by as much (the inverse transpose, not normalised), so only its
@@ -901,9 +900,10 @@ void play_screen_handle_event(const SDL_Event *event)
         }
         break;
     case SDL_MOUSEWHEEL:
-        /* Wheel forward moves the camera out; zoom stays within 0.25 to
-           1.75 of the board's distance (0x409f20). The step is a guess. */
-        v.camera.zoom += (float)event->wheel.y * 0.1f;
+        /* Zoom stays within 0.25 to 1.75 of the board's distance (0x409f20).
+           The original moves out with the wheel forward, by a step too small
+           to notice; here forward moves in, by 0.1 a notch. */
+        v.camera.zoom -= (float)event->wheel.y * 0.1f;
         if (v.camera.zoom < 0.25f) v.camera.zoom = 0.25f;
         if (v.camera.zoom > 1.75f) v.camera.zoom = 1.75f;
         break;
