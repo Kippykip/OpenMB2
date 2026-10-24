@@ -40,11 +40,18 @@ it is a level viewer:
 | Page Up / Page Down | previous / next level pack |
 | mouse drag, wheel | turn and zoom the camera |
 | Space | reset the camera |
+| F10 | smooth motion on / off |
 | Alt+Enter | fullscreen |
 | Escape | quit |
 
 `--level "Levels1/001_Vesi.mb2"` starts on a level, and
 `--screenshot shot.bmp` saves the first frame and quits.
+
+The game itself runs in fixed 18 ms steps, as the original does. On
+screens faster than that, OpenMB2 draws the balls, prizes and shots part
+way between their last two steps so they move smoothly; the rules are
+untouched. `--no-smooth` (or F10) draws them only where each step leaves
+them, like the original.
 
 `mb2inspect` looks inside a game folder:
 

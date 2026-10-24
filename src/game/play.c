@@ -532,7 +532,7 @@ static Ball *ball_add(Play *play, Vec3 at, bool stuck)
         return NULL;
     ball = &play->balls[play->ball_count++];
     memset(ball, 0, sizeof(*ball));
-    ball->position = ball->previous = at;
+    ball->position = ball->previous = ball->from = at;
     ball->velocity = vec3(-0.35f * s, 0.0f, 0.65f * s);
     if (stuck)
         ball_stick(play, ball, 0.0f);
@@ -664,7 +664,7 @@ static void bat_explode(Play *play)
     }
     for (i = 0; i < BAT_PIECES; i++) {
         BatPiece *piece = &bat->pieces[i];
-        piece->position = vec3(0.0f, 0.0f, 0.0f);
+        piece->position = piece->from = vec3(0.0f, 0.0f, 0.0f);
         piece->velocity = vec3(random_range(-0.1f, 0.2f), random_range(0.3f, 0.3f),
                                random_range(-0.1f, 0.1f));
         piece->axis = vec3(random_range(-0.3f, 0.6f), random_range(0.3f, 0.3f),
@@ -867,7 +867,7 @@ static bool prize_add(Play *play, PrizeKind kind, Vec3 at)
     prize = &play->prizes[play->prize_count++];
     memset(prize, 0, sizeof(*prize));
     prize->kind = kind;
-    prize->position = at;
+    prize->position = prize->from = at;
     prize->velocity = prize->bounce = vec3(0.0f, 0.75f, -0.65f);
     prize->scale = 1.0f;
     prize->glow = 1.0f;
@@ -1146,7 +1146,7 @@ static void fire(Play *play, Weapon weapon, Vec3 at)
     bullet = &play->bullets[play->bullet_count++];
     memset(bullet, 0, sizeof(*bullet));
     bullet->weapon = weapon;
-    bullet->position = at;
+    bullet->position = bullet->from = at;
     /* Turned to face ahead, keeping its whole speed. */
     bullet->velocity = vec3(0.0f, v.y, sqrtf(vec3_dot(v, v)));
     bullet->bounce = bullet->velocity;
@@ -1554,6 +1554,28 @@ static void step(Play *play, uint32_t ms)
     }
 }
 
+/* Where everything is before a step, for drawing between steps. */
+static void remember_positions(Play *play)
+{
+    int i;
+
+    for (i = 0; i < play->ball_count; i++) {
+        play->balls[i].from = play->balls[i].position;
+        play->balls[i].spin_from = play->balls[i].spin;
+    }
+    for (i = 0; i < play->prize_count; i++)
+        play->prizes[i].from = play->prizes[i].position;
+    for (i = 0; i < play->bullet_count; i++)
+        play->bullets[i].from = play->bullets[i].position;
+    for (i = 0; i < BAT_PIECES; i++)
+        play->bat.pieces[i].from = play->bat.pieces[i].position;
+}
+
+float play_blend(const Play *play)
+{
+    return (float)play->pending_ms / (float)STEP_MS;
+}
+
 void play_update(Play *play, uint32_t ms)
 {
     play->pending_ms += ms;
@@ -1561,6 +1583,7 @@ void play_update(Play *play, uint32_t ms)
     if (play->pending_ms > 10 * STEP_MS)
         play->pending_ms = 10 * STEP_MS;
     while (play->pending_ms >= STEP_MS) {
+        remember_positions(play);
         step(play, STEP_MS);
         play->pending_ms -= STEP_MS;
     }

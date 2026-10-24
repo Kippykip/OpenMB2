@@ -323,6 +323,7 @@ int main(int argc, char **argv)
     int i;
 
     memset(&options, 0, sizeof(options));
+    options.smooth = true;
     for (i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--game") == 0 && i + 1 < argc)
             game_folder = argv[++i];
@@ -332,6 +333,8 @@ int main(int argc, char **argv)
             g_app.screenshot_path = argv[++i];
         else if (strcmp(argv[i], "--run-ms") == 0 && i + 1 < argc)
             g_app.run_ms = atoi(argv[++i]);
+        else if (strcmp(argv[i], "--no-smooth") == 0)
+            options.smooth = false;
         else if (strcmp(argv[i], "--autoplay") == 0)
             options.autoplay = true;
         else if (strcmp(argv[i], "--debug") == 0)

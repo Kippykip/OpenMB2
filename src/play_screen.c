@@ -676,6 +676,10 @@ void play_screen_handle_event(const SDL_Event *event)
                 v.test_prize = v.test_prize % (PRIZE_KINDS - 1) + 1;
             }
             break;
+        case SDLK_F10: /* OpenMB2's own: smooth motion on or off */
+            v.options.smooth = !v.options.smooth;
+            log_info("smooth motion %s", v.options.smooth ? "on" : "off");
+            break;
         case SDLK_F6: /* like the original: the next tune */
             play_level_music(v.music + 1);
             break;
@@ -872,6 +876,70 @@ static void make_overlay(RenderMesh *mesh, const XVertex *quads, int n, unsigned
     part.flags = flags | RENDER_ALPHA | RENDER_Z_DISABLE | RENDER_NOT_LIGHTED | RENDER_TWO_SIDED;
     part.pose = -1;
     render_mesh_add_part(mesh, &part);
+}
+
+/*
+ * The game moves things in steps of 18 ms. On a faster screen, frames
+ * between steps would show them standing still, so for drawing each is
+ * put part way from where it was before the last step to where it is
+ * now, and put back afterwards. A ball on the bat goes with the bat,
+ * which the mouse moves between steps.
+ */
+static struct {
+    Vec3 balls[PLAY_MAX_BALLS], prizes[PLAY_MAX_PRIZES], bullets[PLAY_MAX_BULLETS];
+    Vec3 pieces[BAT_PIECES];
+    float spins[PLAY_MAX_BALLS];
+} unblended;
+
+static Vec3 vec3_lerp(Vec3 a, Vec3 b, float t)
+{
+    return vec3_add(a, vec3_scale(vec3_sub(b, a), t));
+}
+
+static void blend_positions(void)
+{
+    Play *play = &v.play;
+    float t = play_blend(play);
+    int i;
+
+    for (i = 0; i < play->ball_count; i++) {
+        Ball *ball = &play->balls[i];
+        unblended.balls[i] = ball->position;
+        unblended.spins[i] = ball->spin;
+        ball->position = vec3_lerp(ball->from, ball->position, t);
+        ball->spin = ball->spin_from + (ball->spin - ball->spin_from) * t;
+        if (ball->flags & BALL_STUCK)
+            ball->position.x = play->bat.position.x + ball->stuck_offset;
+    }
+    for (i = 0; i < play->prize_count; i++) {
+        unblended.prizes[i] = play->prizes[i].position;
+        play->prizes[i].position = vec3_lerp(play->prizes[i].from, play->prizes[i].position, t);
+    }
+    for (i = 0; i < play->bullet_count; i++) {
+        unblended.bullets[i] = play->bullets[i].position;
+        play->bullets[i].position = vec3_lerp(play->bullets[i].from, play->bullets[i].position, t);
+    }
+    for (i = 0; i < BAT_PIECES; i++) {
+        unblended.pieces[i] = play->bat.pieces[i].position;
+        play->bat.pieces[i].position = vec3_lerp(play->bat.pieces[i].from, play->bat.pieces[i].position, t);
+    }
+}
+
+static void unblend_positions(void)
+{
+    Play *play = &v.play;
+    int i;
+
+    for (i = 0; i < play->ball_count; i++) {
+        play->balls[i].position = unblended.balls[i];
+        play->balls[i].spin = unblended.spins[i];
+    }
+    for (i = 0; i < play->prize_count; i++)
+        play->prizes[i].position = unblended.prizes[i];
+    for (i = 0; i < play->bullet_count; i++)
+        play->bullets[i].position = unblended.bullets[i];
+    for (i = 0; i < BAT_PIECES; i++)
+        play->bat.pieces[i].position = unblended.pieces[i];
 }
 
 /* A camera-facing square of half size (w, h) around p. */
@@ -1176,6 +1244,8 @@ void play_screen_frame(int width, int height, uint32_t ms)
     render_begin(width, height, view, projection, &v.light);
     if (!v.scene_loaded)
         return;
+    if (v.playing && v.options.smooth)
+        blend_positions();
     {
         float t = (float)v.time;
         Mat4 bat_matrix = mat4_identity(), ball_matrices[PLAY_MAX_BALLS];
@@ -1307,4 +1377,6 @@ void play_screen_frame(int width, int height, uint32_t ms)
         if (v.playing)
             render_draw(&v.glows, identity, RENDER_PASS_BLENDED, t);
     }
+    if (v.playing && v.options.smooth)
+        unblend_positions();
 }

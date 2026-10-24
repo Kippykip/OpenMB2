@@ -38,12 +38,14 @@ enum {
 
 typedef struct Ball {
     Vec3 position, previous, velocity;
+    Vec3 from;            /* where it was when the last step began, to draw between steps */
     uint32_t flags;
     float stuck_offset;   /* x from the bat's centre while stuck */
     int round_bounces;    /* bounces in a row off a round wall */
     uint32_t age;         /* ms since it was made */
     uint32_t trail_time;  /* a powerball leaves its next trail spot at this age */
     float spin;           /* turns 0.03 a step; the explosive ball is drawn turned by it */
+    float spin_from;
     float wobble;         /* a hypnotic ball's swing, in radians of a sine */
     uint32_t explosive_end; /* the age a fire's explosive wears off at; PLAY_FOREVER for a prize's */
 } Ball;
@@ -87,6 +89,7 @@ typedef struct PrizeInfo {
 typedef struct Prize {
     PrizeKind kind;
     Vec3 position, velocity;
+    Vec3 from;             /* where it was when the last step began */
     Vec3 bounce;           /* the velocity it leaves the floor with, shrinking */
     float scale;           /* shrinks to nothing once past the bat */
     float glow;            /* the glow's size, likewise */
@@ -125,6 +128,7 @@ typedef struct BulletInfo {
 typedef struct Bullet {
     Weapon weapon;
     Vec3 position, velocity, bounce;
+    Vec3 from;             /* where it was when the last step began */
     uint32_t age;
     uint32_t trail_time;
     float spin;            /* about its own length, 0.01 a ms */
@@ -134,6 +138,7 @@ typedef struct Bullet {
 #define BAT_PIECES 10
 typedef struct BatPiece {
     Vec3 position, velocity; /* from where the bat was */
+    Vec3 from;               /* where it was when the last step began */
     Vec3 axis;               /* it spins about this... */
     float angle, spin;       /* ...this far so far, and this fast */
 } BatPiece;
@@ -234,6 +239,12 @@ void play_mouse_move(Play *play, int dx);
 void play_click(Play *play);
 /* Holding the button keeps a weapon firing as fast as it reloads. */
 void play_hold_trigger(Play *play, bool held);
+/*
+ * How far the time not yet stepped is into the next step, 0 to 1. Drawing
+ * things that far from their `from` to where they are now keeps them
+ * moving smoothly on screens faster than the game's steps.
+ */
+float play_blend(const Play *play);
 
 /* Let time pass (in ms). */
 void play_update(Play *play, uint32_t ms);

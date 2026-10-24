@@ -26,6 +26,7 @@ typedef struct PlayScreenOptions {
     float mouse_sensitivity; /* from params.txt */
     bool autoplay;           /* the bat follows the ball, for testing */
     bool infravision;        /* from params.txt: show balls through walls */
+    bool smooth;             /* draw moving things between game steps (OpenMB2's own) */
 } PlayScreenOptions;
 
 bool play_screen_init(SDL_Window *window, const PlayScreenOptions *options);
