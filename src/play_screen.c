@@ -325,6 +325,12 @@ static Mat4 *pose_bat(void)
     }
     set_frame_time(m, times, "R_Fan", (unsigned)v.time);
     set_frame_time(m, times, "L_Fan", (unsigned)v.time);
+    /* The bounce when a ball hits it (0x405218), except with the magnet. */
+    set_frame_time(m, times, "Plashka", v.play.bat.bounce_time);
+    set_frame_time(m, times, "L_Hand", v.play.bat.bounce_time);
+    set_frame_time(m, times, "R_Hand", v.play.bat.bounce_time);
+    set_frame_time(m, times, "L_Ressore", v.play.bat.bounce_time);
+    set_frame_time(m, times, "R_Ressore", v.play.bat.bounce_time);
     xmodel_pose(m, times, pose);
     free(times);
     return pose;

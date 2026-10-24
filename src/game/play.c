@@ -508,6 +508,21 @@ static bool ball_vs_bat(Play *play, Ball *ball)
         ball->position.x >= bat->position.x + bat->half_width)
         return false;
     d = ball->position.x - bat->position.x;
+    /* The model's bounce: keys 1-150 in the middle, 1000-1150 at the
+       right end, 1150-1300 at the left (0x4054f3). */
+    if (d > bat->half_width - 1.0f) {
+        bat->bounce_kind = 1;
+        bat->bounce_time = 1000;
+        bat->bounce_ms = 0;
+    } else if (d < -(bat->half_width - 1.0f)) {
+        bat->bounce_kind = 2;
+        bat->bounce_time = 1150;
+        bat->bounce_ms = 0;
+    } else {
+        bat->bounce_kind = 0;
+        bat->bounce_time = 1;
+        bat->bounce_ms = 0;
+    }
     ball_set_angle(ball, BAT_ANGLE / bat->half_width * d);
     ball_speed_up(play, ball, 0.01f);
     sound(play, "ball2.ogg", -1, 0);
@@ -582,6 +597,8 @@ static void new_ball(Play *play)
     play->bat.position.x = 0.0f;
     play->bat.half_width = BAT_HALF_WIDTH;
     play->bat.tilt = 0;
+    play->bat.bounce_time = 0;
+    play->bat.bounce_kind = 0;
     play->ball_count = 0;
     ball_add(play, vec3(play->bat.position.x, 0.0f, play->bat.position.z + 0.5f), true);
 }
@@ -673,6 +690,15 @@ static void step(Play *play, uint32_t ms)
 
     /* The bat eases back upright. */
     play->bat.tilt += play->bat.tilt > 0 ? -3 : 3;
+    /* Its bounce plays at a third of real time, then stops (0x404f4f). */
+    if (play->bat.bounce_time != 0) {
+        static const unsigned end[3] = { 150, 1150, 1300 };
+        static const unsigned start[3] = { 1, 1000, 1150 };
+        play->bat.bounce_ms += ms; /* kept apart so short frames still count */
+        play->bat.bounce_time = start[play->bat.bounce_kind] + play->bat.bounce_ms / 3;
+        if (play->bat.bounce_time > end[play->bat.bounce_kind])
+            play->bat.bounce_time = 0;
+    }
 
     if (scene_update_effects(play->scene, ms))
         play->bricks_changed = true;

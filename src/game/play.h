@@ -41,6 +41,14 @@ typedef struct Bat {
     Vec3 position;
     float half_width;
     int tilt;             /* the model leans while it moves, ±299 */
+    /*
+     * The bounce the model plays when a ball hits it: the time into the
+     * model's animation (0 = still), and which bounce (0 middle, 1 right
+     * end, 2 left end).
+     */
+    unsigned bounce_time;
+    int bounce_kind;
+    unsigned bounce_ms;   /* real time since the hit */
 } Bat;
 
 /* Per brick of the scene, the gameplay side. */

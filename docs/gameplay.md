@@ -63,7 +63,10 @@ if it misses and is behind the bat line, the ball is lost.
 - A ball between bat x ± half width bounces off at angle
   (ball.x - bat.x) / halfwidth * 60° from straight ahead, its speed goes up by
   0.01 (then clamped as above), and `ball2.ogg` plays.
-- Hits within 1 of either end play the bat's end animations.
+- Every hit plays a bounce on the model (0x4054f3): Plashka, L_Hand, R_Hand,
+  L_Ressore and R_Ressore are set to a time that runs at a third of real
+  time (0x404f4f): 1-150 for a middle hit, 1000-1150 within 1 of the right
+  end, 1150-1300 within 1 of the left end, then back to 0.
 
 ## Bricks (0x412180 factory, 0x4036b0 base)
 
