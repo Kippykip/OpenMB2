@@ -43,7 +43,32 @@ typedef struct SceneBrick {
      */
     float tip;
     float roll;    /* turns from earlier tips, about its centre: it stays tipped over */
+    /* A broken brick shrinks away for a while before it's gone. */
+    uint32_t dying_ms; /* time left, 0 = not dying */
+    float scale;       /* about its centre; 1 normally */
 } SceneBrick;
+
+/*
+ * A crumb: a small copy of a broken brick that flies off spinning,
+ * bounces on the floor and shrinks away.
+ */
+typedef struct SceneCrumb {
+    int brick;          /* the brick it is a copy of */
+    Vec3 position, velocity, bounce;
+    Vec3 axis;          /* it spins about this... */
+    float spin, angle;  /* ...this much a frame; turned so far */
+    float scale;
+    uint32_t age;
+} SceneCrumb;
+
+/* The flash where a brick broke: 16 frames from explose.png. */
+typedef struct SceneExplosion {
+    Vec3 position;
+    uint32_t age;
+} SceneExplosion;
+
+#define SCENE_MAX_CRUMBS 256
+#define SCENE_MAX_EXPLOSIONS 64
 
 typedef struct ModelCache ModelCache;
 
@@ -65,14 +90,24 @@ typedef struct Scene {
     BrickBatch *batches;
     int batch_count;
     ModelCache *models; /* brick models, kept for rebaking */
+    SceneCrumb crumbs[SCENE_MAX_CRUMBS];
+    int crumb_count;
+    SceneExplosion explosions[SCENE_MAX_EXPLOSIONS];
+    int explosion_count;
 } Scene;
 
 /* What randomizetexture does: pick new board floor and background images. */
 void scene_randomize_board(Scene *scene, int random);
 void scene_randomize_background(Scene *scene, int random);
 
-/* Rebuild the brick batches from the bricks that aren't hidden or removed. */
+/* Rebuild the brick batches from the bricks that are showing and the crumbs. */
 void scene_bake_bricks(Scene *scene);
+
+/* A brick has broken: it starts shrinking, and crumbs and a flash fly off. */
+void scene_break_brick(Scene *scene, int index);
+
+/* Move the breaking effects on by one game step. True if anything moved. */
+bool scene_update_effects(Scene *scene, uint32_t ms);
 
 /* random picks the randomizetexture images, as rand() does in the original. */
 bool scene_load(Scene *scene, const char *level_path, int random);

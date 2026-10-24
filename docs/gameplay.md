@@ -168,3 +168,14 @@ level does not give a life: in a recording of the original, Lives shows 2
 on level 48 and still 2 on level 49 after finishing it. (The same recording
 shows Lives 2 with no lives lost, so the HUD may count spare lives; not yet
 checked.)
+
+## Breaking bricks
+
+A broken brick (0x403d20) is marked dying for 2000 ms. Each frame it shrinks
+by a factor of (1 - 0.5*dt) about its centre, dt = ms*0.01 (0x402e66). It
+spawns an explosion (0x405fb0): a billboard of half size 2 playing the 4x4
+sheet explose.png at 75 ms a frame, and a group of 5 crumbs (0x425bd0).
+Each crumb starts with velocity ((r*0.02-1)*0.35, (r*0.01+0.5)*0.35,
+(r*0.02-1)*0.35), r = rand()%100, falls at 0.1*dt, bounces off y = -0.75
+keeping 75% while the bounce is above 0.05, spins about a random axis and
+shrinks by 0.98 a frame (0x425a00). OpenMB2 skips the crumbs' wall test.

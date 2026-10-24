@@ -121,6 +121,7 @@ static void brick_take(Play *play, int index)
         return;
     b->removed = true;
     grid_remove(play, index);
+    scene_break_brick(play->scene, index);
     if (pb->counts)
         play->bricks_left--;
     play->score += pb->points * 100;
@@ -669,6 +670,8 @@ static void step(Play *play, uint32_t ms)
     /* The bat eases back upright. */
     play->bat.tilt += play->bat.tilt > 0 ? -3 : 3;
 
+    if (scene_update_effects(play->scene, ms))
+        play->bricks_changed = true;
     for (i = 0; i < play->scene->brick_count; i++) {
         brick_gravity(play, i);
         brick_move(play, i, ms);

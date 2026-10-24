@@ -40,6 +40,7 @@ static SceneBrick decode_brick(const LevelObject *object)
     b.object = object;
     /* The original nudges every brick 0.01 to the left. */
     b.position = vec3((float)object->x - 0.01f, (float)object->y, (float)object->z);
+    b.scale = 1.0f;
     b.flags = raw[8];
     b.rotation = raw[9];
     b.model = raw[12];
@@ -72,6 +73,13 @@ static Mat4 brick_matrix(const SceneBrick *b)
         mat4_multiply(mat4_multiply(mat4_multiply(mat4_rotation_x(rx), mat4_rotation_y(ry)), mat4_rotation_z(rz)),
                       mat4_rotation_z(b->roll)),
         mat4_translation(b->position.x, b->position.y, b->position.z));
+
+    if (b->scale != 1.0f) {
+        Vec3 p = b->position;
+        world = mat4_multiply(world, mat4_translation(-p.x, -p.y, -p.z));
+        world = mat4_multiply(world, mat4_scaling(b->scale, b->scale, b->scale));
+        world = mat4_multiply(world, mat4_translation(p.x, p.y, p.z));
+    }
 
     /* The part of a tip done so far, about (x, y - 1, z) (0x402f36). */
     if (b->tip != 0.0f) {
@@ -202,11 +210,10 @@ static void bake_model(Scene *scene, const XModel *model, Mat4 world, int textur
     }
 }
 
-static void bake_brick(Scene *scene, ModelCache *cache, const SceneBrick *b)
+static void bake_brick_at(Scene *scene, ModelCache *cache, const SceneBrick *b, Mat4 world)
 {
     char path[64];
     const XModel *model;
-    Mat4 world = brick_matrix(b);
 
     if (b->height <= 1)
         snprintf(path, sizeof(path), "Meshes/%d.x", b->model);
@@ -223,6 +230,27 @@ static void bake_brick(Scene *scene, ModelCache *cache, const SceneBrick *b)
             bake_model(scene, model, world, b->texture + 1, b->overlay_tile, (b->flags & 0x20) != 0,
                        (b->flags & 0x40) != 0);
     }
+}
+
+static void bake_brick(Scene *scene, ModelCache *cache, const SceneBrick *b)
+{
+    bake_brick_at(scene, cache, b, brick_matrix(b));
+}
+
+/* A crumb: the brick's own model and rotations, spun, shrunk and moved. */
+static void bake_crumb(Scene *scene, const SceneCrumb *c)
+{
+    SceneBrick b = scene->bricks[c->brick];
+    Mat4 world;
+
+    b.position = vec3(0.0f, 0.0f, 0.0f);
+    b.scale = 1.0f;
+    b.tip = 0.0f;
+    world = brick_matrix(&b);
+    world = mat4_multiply(world, mat4_scaling(c->scale, c->scale, c->scale));
+    world = mat4_multiply(world, mat4_rotation_axis(c->axis, c->angle));
+    world = mat4_multiply(world, mat4_translation(c->position.x, c->position.y, c->position.z));
+    bake_brick_at(scene, scene->models, &b, world);
 }
 
 /* ------------------------------------------------------------------------ */
@@ -273,9 +301,11 @@ void scene_bake_bricks(Scene *scene)
         scene->batches[i].vertex_count = 0;
     for (i = 0; i < scene->brick_count; i++) {
         const SceneBrick *b = &scene->bricks[i];
-        if (!b->hidden && !b->removed)
+        if (!b->hidden && (!b->removed || b->dying_ms > 0))
             bake_brick(scene, scene->models, b);
     }
+    for (i = 0; i < scene->crumb_count; i++)
+        bake_crumb(scene, &scene->crumbs[i]);
     /* In texture order, which is the order the original draws them in. */
     qsort(scene->batches, (size_t)scene->batch_count, sizeof(*scene->batches), compare_batches);
 }
@@ -334,6 +364,111 @@ bool scene_load(Scene *scene, const char *level_path, int random)
     }
     scene_bake_bricks(scene);
     return true;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Breaking                                                                 */
+/* ------------------------------------------------------------------------ */
+
+#define DYING_MS        2000 /* 0x403d20 */
+#define CRUMBS          5    /* 0x425bd0 */
+#define CRUMB_LIFE_MS   2200 /* the group's life (0x425cd0); a crumb's own is 3000 */
+#define CRUMB_SCALE     0.3f /* guess, from a video of the original */
+#define CRUMB_FLOOR     -0.75f
+#define EXPLOSION_FRAME_MS 75
+
+/* rand() % 100 * scale, as the original picks its random numbers. */
+static float random_percent(float scale)
+{
+    return (float)(rand() % 100) * scale;
+}
+
+void scene_break_brick(Scene *scene, int index)
+{
+    SceneBrick *b = &scene->bricks[index];
+    int i;
+
+    b->dying_ms = DYING_MS;
+    if (b->hidden)
+        return;
+
+    if (scene->explosion_count < SCENE_MAX_EXPLOSIONS) {
+        SceneExplosion *e = &scene->explosions[scene->explosion_count++];
+        e->position = b->position;
+        e->age = 0;
+    }
+    /* 0x425870 */
+    for (i = 0; i < CRUMBS && scene->crumb_count < SCENE_MAX_CRUMBS; i++) {
+        SceneCrumb *c = &scene->crumbs[scene->crumb_count++];
+        memset(c, 0, sizeof(*c));
+        c->brick = index;
+        c->position = b->position;
+        c->velocity = vec3((random_percent(0.02f) - 1.0f) * 0.35f, (random_percent(0.01f) + 0.5f) * 0.35f,
+                           (random_percent(0.02f) - 1.0f) * 0.35f);
+        c->bounce = c->velocity;
+        c->axis = vec3(random_percent(0.02f) - 1.0f, random_percent(0.02f) - 1.0f,
+                       random_percent(0.02f) - 1.0f);
+        if (vec3_length(c->axis) < 0.01f)
+            c->axis = vec3(0.0f, 1.0f, 0.0f);
+        c->axis = vec3_normalize(c->axis);
+        c->spin = random_percent(0.00025f);
+        c->scale = CRUMB_SCALE;
+    }
+}
+
+bool scene_update_effects(Scene *scene, uint32_t ms)
+{
+    float dt = (float)ms * 0.01f;
+    bool moved = false;
+    int i, kept;
+
+    /* A dying brick shrinks by half of dt a step (0x402e40). */
+    for (i = 0; i < scene->brick_count; i++) {
+        SceneBrick *b = &scene->bricks[i];
+        if (b->dying_ms == 0)
+            continue;
+        b->dying_ms = b->dying_ms > ms ? b->dying_ms - ms : 0;
+        b->scale *= 1.0f - 0.5f * dt;
+        if (b->scale < 0.0f)
+            b->scale = 0.0f;
+        moved = true;
+    }
+
+    /* Crumbs fly, fall, bounce and shrink (0x425a00). */
+    for (i = 0, kept = 0; i < scene->crumb_count; i++) {
+        SceneCrumb *c = &scene->crumbs[i];
+        c->age += ms;
+        if (c->age > CRUMB_LIFE_MS)
+            continue;
+        c->position = vec3_add(c->position, vec3_scale(c->velocity, dt));
+        if (c->position.y <= CRUMB_FLOOR) {
+            c->position.y = -0.74f;
+            if (c->bounce.y > 0.05f) {
+                c->bounce = vec3_scale(c->bounce, 0.75f);
+                c->velocity = c->bounce;
+            } else {
+                c->velocity.y = 0.0f;
+            }
+        } else {
+            c->velocity.y -= dt * 0.1f;
+        }
+        c->angle += c->spin;
+        c->scale *= 0.98f;
+        scene->crumbs[kept++] = *c;
+        moved = true;
+    }
+    scene->crumb_count = kept;
+
+    /* 16 frames of 75 ms (0x406030). */
+    for (i = 0, kept = 0; i < scene->explosion_count; i++) {
+        SceneExplosion *e = &scene->explosions[i];
+        e->age += ms;
+        if (e->age / EXPLOSION_FRAME_MS > 15)
+            continue;
+        scene->explosions[kept++] = *e;
+    }
+    scene->explosion_count = kept;
+    return moved;
 }
 
 void scene_randomize_board(Scene *scene, int random)

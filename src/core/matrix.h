@@ -46,6 +46,8 @@ Mat4 mat4_scaling(float x, float y, float z);
 Mat4 mat4_rotation_x(float radians);
 Mat4 mat4_rotation_y(float radians);
 Mat4 mat4_rotation_z(float radians);
+/* D3DXMatrixRotationAxis; axis must be normalized. */
+Mat4 mat4_rotation_axis(Vec3 axis, float radians);
 /* D3DXMatrixRotationYawPitchRoll: roll about z, then pitch about x, then yaw about y. */
 Mat4 mat4_yaw_pitch_roll(float yaw, float pitch, float roll);
 /* D3DXMatrixLookAtLH */

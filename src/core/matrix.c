@@ -105,6 +105,23 @@ Mat4 mat4_rotation_z(float radians)
     return r;
 }
 
+Mat4 mat4_rotation_axis(Vec3 a, float radians)
+{
+    Mat4 r = mat4_identity();
+    float c = cosf(radians), s = sinf(radians), t = 1.0f - c;
+
+    r.m[0][0] = t * a.x * a.x + c;
+    r.m[0][1] = t * a.x * a.y + s * a.z;
+    r.m[0][2] = t * a.x * a.z - s * a.y;
+    r.m[1][0] = t * a.x * a.y - s * a.z;
+    r.m[1][1] = t * a.y * a.y + c;
+    r.m[1][2] = t * a.y * a.z + s * a.x;
+    r.m[2][0] = t * a.x * a.z + s * a.y;
+    r.m[2][1] = t * a.y * a.z - s * a.x;
+    r.m[2][2] = t * a.z * a.z + c;
+    return r;
+}
+
 Mat4 mat4_yaw_pitch_roll(float yaw, float pitch, float roll)
 {
     return mat4_multiply(mat4_multiply(mat4_rotation_z(roll), mat4_rotation_x(pitch)),

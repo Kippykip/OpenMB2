@@ -58,6 +58,8 @@ static struct {
     int music;         /* which level tune is playing, 0-3 */
     XModel bat_model, ball_model;
     RenderMesh background, board, bricks, bat, ball;
+    RenderMesh explosions;      /* rebuilt every frame */
+    unsigned explosion_texture;
     RenderLight light;
     Camera camera;
     bool dragging;
@@ -406,6 +408,7 @@ bool play_screen_init(SDL_Window *window, const PlayScreenOptions *options)
         build_model_mesh(&v.ball, &v.ball_model, 0, "", "", NULL);
     else
         log_warn("can't load the ball model SkinMeshes/s_ball.x");
+    v.explosion_texture = texture_for_name("explose.png");
     load_level(pack, level);
     return true;
 }
@@ -415,6 +418,7 @@ void play_screen_shutdown(void)
     int i;
     unload_level();
     render_mesh_destroy(&v.bat);
+    render_mesh_destroy(&v.explosions);
     render_mesh_destroy(&v.ball);
     xfile_free(&v.bat_model);
     xfile_free(&v.ball_model);
@@ -515,6 +519,54 @@ static void update(uint32_t ms)
     update_title();
 }
 
+/*
+ * The flashes where bricks broke: camera-facing squares 4 units across,
+ * each showing one of the 16 frames of explose.png (0x406030).
+ */
+static void build_explosion_mesh(Mat4 view)
+{
+    const Scene *s = &v.scene;
+    Vec3 right = vec3(view.m[0][0], view.m[1][0], view.m[2][0]);
+    Vec3 up = vec3(view.m[0][1], view.m[1][1], view.m[2][1]);
+    XVertex quads[SCENE_MAX_EXPLOSIONS * 6];
+    static const float corners[6][2] = { { -1, 1 }, { 1, 1 }, { 1, -1 }, { -1, 1 }, { 1, -1 }, { -1, -1 } };
+    RenderPart part;
+    int i, k, n = 0;
+
+    render_mesh_destroy(&v.explosions);
+    if (s->explosion_count == 0)
+        return;
+    for (i = 0; i < s->explosion_count; i++) {
+        const SceneExplosion *e = &s->explosions[i];
+        int frame = (int)(e->age / 75);
+        float u0 = (float)(frame >> 2) * 0.25f, v0 = (float)(frame & 3) * 0.25f;
+
+        if (frame > 15)
+            frame = 15;
+        for (k = 0; k < 6; k++) {
+            XVertex *q = &quads[n++];
+            float cx = corners[k][0], cy = corners[k][1];
+            Vec3 p = vec3_add(e->position, vec3_add(vec3_scale(right, 2.0f * cx), vec3_scale(up, 2.0f * cy)));
+            q->pos[0] = p.x;
+            q->pos[1] = p.y;
+            q->pos[2] = p.z;
+            q->normal[0] = 0.0f;
+            q->normal[1] = 0.1f;
+            q->normal[2] = 1.0f;
+            q->uv[0] = u0 + (cx + 1.0f) * 0.125f;
+            q->uv[1] = v0 + (1.0f - cy) * 0.125f;
+        }
+    }
+    if (!render_mesh_create(&v.explosions, quads, n))
+        return;
+    memset(&part, 0, sizeof(part));
+    part.vertex_count = n;
+    part.texture = v.explosion_texture;
+    part.diffuse[0] = part.diffuse[1] = part.diffuse[2] = part.diffuse[3] = 1.0f;
+    part.flags = RENDER_ALPHA | RENDER_Z_DISABLE | RENDER_NOT_LIGHTED | RENDER_TWO_SIDED;
+    render_mesh_add_part(&v.explosions, &part);
+}
+
 void play_screen_frame(int width, int height, uint32_t ms)
 {
     const Camera *c = &v.camera;
@@ -584,5 +636,7 @@ void play_screen_frame(int width, int height, uint32_t ms)
                     render_draw(&v.ball, ball_matrices[i], kind, t);
             }
         }
+        build_explosion_mesh(view);
+        render_draw(&v.explosions, identity, RENDER_PASS_BLENDED, t);
     }
 }
