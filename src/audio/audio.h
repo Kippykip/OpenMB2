@@ -27,6 +27,12 @@ void audio_shutdown(void);
 
 void audio_play(const char *name, int volume, int pan);
 
+/* A sound that plays over and over until stopped, e.g. a train's engine.
+   Returns its handle, 0 if it couldn't start. */
+int audio_play_loop(const char *name, int volume, int pan);
+void audio_pan_loop(int handle, int pan);
+void audio_stop_loop(int handle);
+
 /* Start the tune a Music/<tune>.txt file describes, e.g. "Music/mb2.txt". */
 void audio_play_music(const char *path);
 void audio_stop_music(void);

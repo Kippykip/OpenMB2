@@ -537,6 +537,86 @@ static void ball_vs_billboard(Play *play, Ball *ball, int index)
 }
 
 /*
+ * A train (0x408a80) runs round an ellipse about where it was placed, x
+ * radius from its record (bytes 4..7), z radius three quarters of that,
+ * quicker along the sides; it puffs white smoke from its funnel every
+ * 25 ms and whistles every 4 to 7 s. Hit, it rolls over a quarter turn
+ * slowly and a quarter faster, about the z axis, then sinks 0.5 a step
+ * until it is gone after 2 s.
+ */
+static void train_update(Play *play, int index, uint32_t ms, float dt)
+{
+    SceneBrick *b = &play->scene->bricks[index];
+    PlayBrick *pb = &play->bricks[index];
+    float h;
+
+    pb->idle_ms += ms;
+    if (b->flying_ms > 0) {
+        b->flying_ms += ms;
+        if (b->flying_ms >= 2000) {
+            b->flying_ms = 0;
+            return;
+        }
+        if (b->flip < 3.1415927f)
+            b->flip += (b->flip < 1.5707964f ? 0.25f : 0.5f) * dt;
+        else
+            b->drop += 0.5f * dt;
+        return;
+    }
+    if (b->removed)
+        return;
+    b->heading += fabsf(cosf(b->heading) * dt * 0.05f) + dt * 0.05f;
+    h = b->heading;
+    b->position.x = sinf(h) * pb->radius + pb->centre.x;
+    b->position.z = cosf(h) * pb->radius * 0.75f + pb->centre.z;
+    pb->smoke_ms += ms;
+    if (pb->smoke_ms > 25) {
+        pb->smoke_ms -= 25;
+        if (play->smoke_count < PLAY_MAX_SMOKE) {
+            Particle *p = &play->smoke[play->smoke_count++];
+            p->position = p->from = vec3(b->position.x + sinf(h + 1.5707964f) * 0.8f, 3.0f,
+                                         b->position.z + cosf(h + 1.5707964f) * 0.8f);
+            p->velocity = vec3(random_range(-0.05f, 0.1f), random_range(0.1f, 0.15f), random_range(-0.05f, 0.1f));
+            p->color = 0xffffffu;
+            p->life = 2000;
+            p->size = random_range(1.0f, 0.5f);
+        }
+    }
+    if (pb->call_ms < pb->idle_ms) {
+        brick_sound(play, index, rand() % 3 == 0 ? "Train2_2.ogg" : "Train2.ogg");
+        pb->call_ms = pb->idle_ms + 4000u + (uint32_t)(rand() % 3000);
+    }
+}
+
+/*
+ * A ball within 2 of a train (0x408e20, 0x408ea0) knocks it over: it
+ * counts as broken, without points, and a ball that isn't a powerball
+ * turns straight back.
+ */
+static void ball_vs_trains(Play *play, Ball *ball)
+{
+    int i;
+
+    for (i = 0; i < play->scene->brick_count; i++) {
+        SceneBrick *b = &play->scene->bricks[i];
+        Vec3 d;
+
+        if (b->animal == NULL || b->animal->kind != MODEL_TRAIN || b->removed)
+            continue;
+        d = vec3_sub(b->position, ball->position);
+        if (sqrtf(d.x * d.x + d.y * d.y + d.z * d.z) >= 2.0f)
+            continue;
+        b->removed = true;
+        b->flying_ms = 1;
+        if (play->bricks[i].counts)
+            play->bricks_left--;
+        brick_sound(play, i, b->animal->hit_sound);
+        if (!(ball->flags & BALL_POWER))
+            ball->velocity = vec3_scale(ball->velocity, -1.0f);
+    }
+}
+
+/*
  * Turning a ball about the vertical by an angle (0x402010). The original
  * keeps the length of the whole velocity, climb and all, as its speed
  * across the board.
@@ -953,6 +1033,7 @@ static void ball_update(Play *play, Ball *ball, uint32_t ms, float dt)
     ball->position = vec3_add(ball->position, vec3_scale(ball->velocity, dt));
     ball->position.y = BALL_Y;
     ball_vs_brick(play, ball);
+    ball_vs_trains(play, ball);
 }
 
 /* A ball against a round wall: mirror it about the circle's normal (0x406ca1). */
@@ -1699,6 +1780,7 @@ static void remember_positions(Play *play)
         const SceneBrick *b = &play->scene->bricks[i];
         PlayBrick *pb = &play->bricks[i];
         pb->from = b->position;
+        pb->heading_from = b->heading;
         pb->tip_from = b->tip;
         pb->roll_from = b->roll;
         pb->scale_from = b->scale;
@@ -1736,6 +1818,14 @@ bool play_start(Play *play, Scene *scene, int score, int lives, float mouse_sens
             pb->call_ms = (uint32_t)(rand() % 15000);
             if (scene->bricks[i].animal->kind == MODEL_TELEPORT || scene->bricks[i].animal->kind == MODEL_TELEPORT_END)
                 pb->counts = false;
+            if (scene->bricks[i].animal->kind == MODEL_TRAIN) {
+                const uint8_t *raw = scene->bricks[i].object->raw;
+                pb->centre = scene->bricks[i].position;
+                pb->radius = (float)((uint32_t)raw[4] | (uint32_t)raw[5] << 8 | (uint32_t)raw[6] << 16 |
+                                     (uint32_t)raw[7] << 24);
+                pb->idle_ms = 0;
+                pb->call_ms = 0;
+            }
         }
         if (pb->counts)
             play->bricks_left++;
@@ -1747,7 +1837,8 @@ bool play_start(Play *play, Scene *scene, int score, int lives, float mouse_sens
             pb->target_x = scene->bricks[i].position.x;
             pb->target_y = scene->bricks[i].position.y;
         }
-        grid_place(play, i);
+        if (scene->bricks[i].animal == NULL || scene->bricks[i].animal->kind != MODEL_TRAIN)
+            grid_place(play, i);
     }
 
     play->bat.position = vec3(0.0f, 0.0f, scene->board.bat_line);
@@ -1862,6 +1953,10 @@ static void step(Play *play, uint32_t ms)
     if (scene_update_effects(play->scene, ms))
         play->bricks_changed = true;
     for (i = 0; i < play->scene->brick_count; i++) {
+        if (play->scene->bricks[i].animal != NULL && play->scene->bricks[i].animal->kind == MODEL_TRAIN) {
+            train_update(play, i, ms, dt);
+            continue;
+        }
         brick_gravity(play, i);
         brick_move(play, i, ms);
         if (play->scene->bricks[i].animal != NULL && play->scene->bricks[i].animal->kind == MODEL_ANIMAL)

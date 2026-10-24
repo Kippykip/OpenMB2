@@ -33,6 +33,8 @@ typedef struct Voice {
     uint64_t position; /* 64 bits: a 32-bit 16.16 count wraps after 65536 frames */
     uint32_t step;
     int left, right; /* gains, 0-256 */
+    int volume;      /* 0-100, kept for re-panning */
+    int loop;        /* a looping voice's handle, 0 for a one-shot */
 } Voice;
 
 static struct {
@@ -41,6 +43,7 @@ static struct {
     Sound sounds[MAX_SOUNDS];
     int sound_count;
     Voice voices[MAX_VOICES];
+    int next_loop;
     int music_master;          /* 0-256 */
     openmpt_module *music;     /* NULL when no music is playing */
     char music_file[96];       /* the module it was loaded from */
@@ -79,8 +82,12 @@ static void mix(void *user, Uint8 *stream, int bytes)
                 continue;
             frame = (int)(voice->position >> 16);
             if (frame >= voice->sound->frames) {
-                voice->sound = NULL;
-                continue;
+                if (voice->loop == 0) {
+                    voice->sound = NULL;
+                    continue;
+                }
+                voice->position -= (uint64_t)voice->sound->frames << 16;
+                frame = (int)(voice->position >> 16);
             }
             /* Linear interpolation, for sounds that aren't at 44.1 kHz. */
             frac = (uint32_t)(voice->position & 0xffff);
@@ -172,28 +179,34 @@ static const Sound *find_sound(const char *name)
     return s;
 }
 
-void audio_play(const char *name, int volume, int pan)
+/* DirectSound-style panning: the far side is turned down, the near side stays. */
+static void set_gains(Voice *voice, int volume, int pan)
+{
+    if (volume < 0 || volume > 100)
+        volume = 100;
+    if (pan < -100) pan = -100;
+    if (pan > 100) pan = 100;
+    voice->volume = volume;
+    voice->left = volume * 256 / 100 * (pan > 0 ? 100 - pan : 100) / 100;
+    voice->right = volume * 256 / 100 * (pan < 0 ? 100 + pan : 100) / 100;
+}
+
+static int start_voice(const char *name, int volume, int pan, int loop)
 {
     const Sound *sound;
     Voice voice;
     int v;
 
     if (a.device == 0)
-        return;
+        return 0;
     sound = find_sound(name);
     if (sound == NULL)
-        return;
-    if (volume < 0 || volume > 100)
-        volume = 100;
-    if (pan < -100) pan = -100;
-    if (pan > 100) pan = 100;
-
+        return 0;
+    memset(&voice, 0, sizeof(voice));
     voice.sound = sound;
-    voice.position = 0;
     voice.step = (uint32_t)(((uint64_t)sound->rate << 16) / OUTPUT_RATE);
-    /* DirectSound-style panning: the far side is turned down, the near side stays. */
-    voice.left = volume * 256 / 100 * (pan > 0 ? 100 - pan : 100) / 100;
-    voice.right = volume * 256 / 100 * (pan < 0 ? 100 + pan : 100) / 100;
+    voice.loop = loop;
+    set_gains(&voice, volume, pan);
 
     SDL_LockAudioDevice(a.device);
     for (v = 0; v < MAX_VOICES; v++) {
@@ -202,6 +215,45 @@ void audio_play(const char *name, int volume, int pan)
             break;
         }
     }
+    SDL_UnlockAudioDevice(a.device);
+    return v < MAX_VOICES ? loop : 0;
+}
+
+void audio_play(const char *name, int volume, int pan)
+{
+    start_voice(name, volume, pan, 0);
+}
+
+int audio_play_loop(const char *name, int volume, int pan)
+{
+    if (++a.next_loop <= 0)
+        a.next_loop = 1;
+    return start_voice(name, volume, pan, a.next_loop);
+}
+
+void audio_pan_loop(int handle, int pan)
+{
+    int v;
+
+    if (a.device == 0 || handle == 0)
+        return;
+    SDL_LockAudioDevice(a.device);
+    for (v = 0; v < MAX_VOICES; v++)
+        if (a.voices[v].sound != NULL && a.voices[v].loop == handle)
+            set_gains(&a.voices[v], a.voices[v].volume, pan);
+    SDL_UnlockAudioDevice(a.device);
+}
+
+void audio_stop_loop(int handle)
+{
+    int v;
+
+    if (a.device == 0 || handle == 0)
+        return;
+    SDL_LockAudioDevice(a.device);
+    for (v = 0; v < MAX_VOICES; v++)
+        if (a.voices[v].loop == handle)
+            a.voices[v].sound = NULL;
     SDL_UnlockAudioDevice(a.device);
 }
 

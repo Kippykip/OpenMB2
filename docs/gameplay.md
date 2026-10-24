@@ -522,3 +522,29 @@ clock gives head = clamp(t/50, 1, 20) and tail = clamp(t/50 − 20, 0, 20),
 and the pieces tail..head are drawn (0x40d540) with t_lighting.txt
 (lighting.png, alpha, two-sided, no depth, unlit). It is gone when head
 equals tail, after 2 s.
+
+## Train (type 0xb0, class 0x408900)
+
+A model (SkinMeshes/b_train.x) that counts toward the level end but has
+no grid cell. Its record's bytes 4..7 are the x radius R of its track; its
+own place is the track's middle. Its update (0x408a80), clock += ms:
+
+- running: angle += |cos(angle)·dt·0.05| + dt·0.05 (quickest along the
+  sides); x = sin(angle)·R + cx, z = cos(angle)·R·0.75 + cz; drawn
+  RotationY(angle − π/2) · Translation. Every 25 ms of its clock it puffs
+  white smoke (the fog brick's smoke) at (x + sin(angle + π/2)·0.8, 3,
+  z + cos(angle + π/2)·0.8). When its clock passes its whistle time it
+  plays Train2_2.ogg (one in three) or Train2.ogg and sets the next to
+  clock + 4000 + rand % 3000 (so the first whistle is on its first step).
+- Train1.ogg loops from its creation until it is destroyed, its pan set
+  each step to sin(angle)·100 (0x4245a0, BASS_ChannelSetAttributes).
+- At the end of every ball update the objects in the ball list get the
+  ball (slot 1, 0x408e20): within 2 of the train (3D distance), it is hit
+  (slot 0x50, 0x408ea0) unless already hit. It counts as broken (no
+  score, no prize), plays Train3.ogg, and the ball's velocity turns
+  straight round unless it is a powerball. Anything other than a ball
+  removes the train at once.
+- hit: after 2000 ms it is gone. Until its roll reaches π it turns about
+  world z through its place by 0.25·dt a step, 0.5·dt past π/2
+  (M = M·T(−p)·RotationZ·T(p)); then its matrix's y translation drops
+  0.5·dt a step.

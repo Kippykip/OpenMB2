@@ -59,6 +59,7 @@ static struct {
     RenderMesh shadows, glows, prize_glows, trail, bullet_shadows, strings, billboards;
     RenderMesh bolts;
     unsigned bolt_texture;
+    int train_sounds[64];   /* each train brick's engine loop, by brick */
     uint32_t object_time;
     unsigned shadow_texture, glow_texture, particle_texture, rubber_texture, billboard_texture;
     XModel bullet_models[WEAPON_COUNT];
@@ -136,7 +137,7 @@ static void find_packs(void)
 /* What blend_positions() moved, to put back after drawing. */
 typedef struct UnblendedBrick {
     Vec3 position;
-    float tip, scale;
+    float tip, scale, heading;
 } UnblendedBrick;
 
 static struct {
@@ -548,12 +549,17 @@ static void draw_animals(RenderPass kind, float t)
 
         if (k < 0 || (b->removed && b->flying_ms == 0))
             continue;
-        world = scene_brick_matrix(b);
+        if (b->animal->kind == MODEL_TRAIN) /* faces along its track (0x408c9f) */
+            world = mat4_multiply(mat4_rotation_y(b->heading - 1.5707964f), mat4_translation(p.x, p.y, p.z));
+        else
+            world = scene_brick_matrix(b);
         if (b->flip != 0.0f) {
             world = mat4_multiply(world, mat4_translation(-p.x, -p.y, -p.z));
             world = mat4_multiply(world, mat4_rotation_z(b->flip));
             world = mat4_multiply(world, mat4_translation(p.x, p.y, p.z));
         }
+        if (b->drop != 0.0f)
+            world = mat4_multiply(world, mat4_translation(0.0f, -b->drop, 0.0f));
         pose = pose_model(&v.animals[k].model, b->animation_ms + v.time);
         render_draw_posed(&v.animals[k].mesh, world, pose, kind, t);
         free(pose);
@@ -580,8 +586,35 @@ static void load_bat_model(void)
         log_warn("can't load the bat model %s", path);
 }
 
+/*
+ * A train's engine (Train1.ogg) loops from the moment it is made until it
+ * is gone, panned to follow it while it runs (0x4089d9, 0x408d4a).
+ */
+static void train_sounds(bool stop_all)
+{
+    int i;
+
+    for (i = 0; i < v.scene.brick_count && i < (int)(sizeof(v.train_sounds) / sizeof(v.train_sounds[0])); i++) {
+        const SceneBrick *b = &v.scene.bricks[i];
+        bool there = !stop_all && b->animal != NULL && b->animal->kind == MODEL_TRAIN &&
+                     !(b->removed && b->flying_ms == 0);
+        int pan = (int)(sinf(b->heading) * 100.0f);
+
+        if (!there) {
+            if (v.train_sounds[i] != 0)
+                audio_stop_loop(v.train_sounds[i]);
+            v.train_sounds[i] = 0;
+        } else if (v.train_sounds[i] == 0) {
+            v.train_sounds[i] = audio_play_loop("Train1.ogg", -1, pan);
+        } else if (!b->removed) {
+            audio_pan_loop(v.train_sounds[i], pan);
+        }
+    }
+}
+
 static void unload_level(void)
 {
+    train_sounds(true);
     render_mesh_destroy(&v.background);
     render_mesh_destroy(&v.board);
     render_mesh_destroy(&v.bricks);
@@ -898,6 +931,7 @@ static void update(uint32_t ms)
     if (v.options.autoplay)
         play_autopilot(&v.play);
     play_update(&v.play, ms);
+    train_sounds(false);
     if (v.play.bricks_changed) {
         scene_bake_bricks(&v.scene);
         build_brick_mesh();
@@ -1075,9 +1109,11 @@ static void blend_bricks(float t)
         unblended.bricks[i].position = b->position;
         unblended.bricks[i].tip = b->tip;
         unblended.bricks[i].scale = b->scale;
+        unblended.bricks[i].heading = b->heading;
         unblended.bricks_saved = true;
-        if (b->animal != NULL && b->flying_ms > 0) { /* drawn as a model, not baked */
+        if (b->animal != NULL) { /* drawn as a model, not baked */
             b->position = vec3_add(pb->from, vec3_scale(vec3_sub(b->position, pb->from), t));
+            b->heading = pb->heading_from + (b->heading - pb->heading_from) * t;
             continue;
         }
         if (!brick_moved(i))
@@ -1173,6 +1209,7 @@ static void unblend_positions(void)
         v.scene.bricks[i].position = unblended.bricks[i].position;
         v.scene.bricks[i].tip = unblended.bricks[i].tip;
         v.scene.bricks[i].scale = unblended.bricks[i].scale;
+        v.scene.bricks[i].heading = unblended.bricks[i].heading;
     }
 }
 

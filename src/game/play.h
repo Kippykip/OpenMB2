@@ -228,9 +228,16 @@ typedef struct PlayBrick {
     Vec3 from;
     float tip_from, roll_from, scale_from;
     /* An animal: its clock, when it next makes its sound, and once hit, its climb.
-       A fog brick: its clock, and when it next puffs smoke. */
+       A fog brick: its clock, and when it next puffs smoke.
+       A train: its clock and when it next whistles. */
     uint32_t idle_ms, call_ms;
     float climb;
+    /* A train: the middle of its track, the track's x radius, when it next
+       puffs smoke, and its heading when the last step began. */
+    Vec3 centre;
+    float radius;
+    uint32_t smoke_ms;
+    float heading_from;
 } PlayBrick;
 
 typedef enum PlayState {
