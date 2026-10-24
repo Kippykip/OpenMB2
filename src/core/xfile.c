@@ -1033,9 +1033,12 @@ static Mat4 animated_local(const XFrame *f, unsigned time)
         m = mat4_multiply(m, mat4_rotation_quaternion(-v[1] * len, -v[2] * len, -v[3] * len,
                                                       v[0] * len));
     }
+    /* Without position keys the frame stays where its own matrix puts it (0x42155f). */
     if (f->position.count > 0) {
         lerp_key(&f->position, time, 3, v);
         m = mat4_multiply(m, mat4_translation(v[0], v[1], v[2]));
+    } else {
+        m = mat4_multiply(m, mat4_translation(f->local.m[3][0], f->local.m[3][1], f->local.m[3][2]));
     }
     return m;
 }

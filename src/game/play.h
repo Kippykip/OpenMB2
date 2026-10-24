@@ -40,6 +40,7 @@ typedef struct Ball {
     int round_bounces;    /* bounces in a row off a round wall */
     uint32_t age;         /* ms since it was made */
     uint32_t trail_time;  /* a powerball leaves its next trail spot at this age */
+    float spin;           /* turns 0.03 a step; the explosive ball is drawn turned by it */
 } Ball;
 
 /* The prizes, numbered as in the original. */

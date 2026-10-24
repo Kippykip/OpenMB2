@@ -515,6 +515,7 @@ static void ball_trail(Play *play, Ball *ball)
 static void ball_update(Play *play, Ball *ball, uint32_t ms, float dt)
 {
     ball->age += ms;
+    ball->spin += 0.03f;
     ball_trail(play, ball);
     ball->previous = ball->position;
     if (ball->flags & BALL_STUCK) {

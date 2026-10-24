@@ -1001,11 +1001,15 @@ void play_screen_frame(int width, int height, uint32_t ms)
                powered up, and look different when explosive or hypnotic. */
             for (i = 0; i < v.play.ball_count; i++) {
                 const Ball *ball = &v.play.balls[i];
-                /* Turned so its spin animation rolls it the way it goes (0x402309). */
+                /* Turned so its spin animation rolls it the way it goes (0x402309).
+                   The explosive ball has no animation; it tumbles instead (0x4022eb). */
                 float heading = 3.14159265f - atan2f(ball->velocity.z, ball->velocity.x);
                 float size = (ball->flags & BALL_POWER) ? 1.0f : 0.8f;
+                Mat4 turn = (ball->flags & BALL_EXPLOSIVE)
+                                ? mat4_yaw_pitch_roll(1.0472f, ball->spin / 3.0f, ball->spin)
+                                : mat4_rotation_y(heading);
                 ball_matrices[i] = mat4_multiply(
-                    mat4_multiply(mat4_scaling(size, size, size), mat4_rotation_y(heading)),
+                    mat4_multiply(mat4_scaling(size, size, size), turn),
                     mat4_translation(ball->position.x, ball->position.y, ball->position.z));
                 ball_meshes[i] = &v.ball;
                 ball_poses[i] = ball_pose;
@@ -1050,6 +1054,12 @@ void play_screen_frame(int width, int height, uint32_t ms)
                     draw_bat_pieces(bat_matrix, bat_pose, t);
                 for (i = 0; i < v.play.ball_count; i++)
                     render_draw_posed(ball_meshes[i], ball_matrices[i], ball_poses[i], kind, t);
+                /* A prize's glow goes first, without depth writes, so the
+                   model covers it. */
+                if (pass == 0) {
+                    build_prize_glows(view);
+                    render_draw(&v.prize_glows, identity, RENDER_PASS_ALL, t);
+                }
                 for (i = 0; i < v.play.prize_count; i++)
                     render_draw_posed(&v.prize_meshes[v.play.prizes[i].kind], prize_matrices[i],
                                       prize_poses[i], kind, t);
@@ -1062,8 +1072,6 @@ void play_screen_frame(int width, int height, uint32_t ms)
         if (v.playing) {
             for (i = 0; i < v.play.prize_count; i++)
                 free(prize_poses[i]);
-            build_prize_glows(view);
-            render_draw(&v.prize_glows, identity, RENDER_PASS_BLENDED, t);
             build_trail(view);
             render_draw(&v.trail, identity, RENDER_PASS_BLENDED, t);
         }
