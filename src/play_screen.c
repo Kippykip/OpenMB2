@@ -61,6 +61,8 @@ static struct {
     unsigned shadow_texture, glow_texture, particle_texture, rubber_texture, billboard_texture;
     XModel bullet_models[WEAPON_COUNT];
     RenderMesh bullet_meshes[WEAPON_COUNT];
+    XModel firework_model;
+    RenderMesh firework_mesh;
     XModel prize_models[PRIZE_KINDS];
     RenderMesh prize_meshes[PRIZE_KINDS];
     bool prize_loaded[PRIZE_KINDS]; /* tried to load: models stay for every level */
@@ -141,6 +143,8 @@ static struct {
     float spins[PLAY_MAX_BALLS];
     Vec3 particles[PLAY_MAX_PARTICLES];
     Vec3 smoke[PLAY_MAX_SMOKE];
+    Vec3 sparks[PLAY_MAX_SPARKS];
+    Vec3 fireworks[PLAY_MAX_FIREWORKS];
     UnblendedBrick *bricks;     /* one per scene brick */
     int brick_capacity;
     bool bricks_saved;          /* bricks[] holds this frame's bricks */
@@ -662,6 +666,8 @@ static void load_level(int pack, int level)
         v.playing = true;
         load_prize_models();
         load_bullet_models();
+        if (v.firework_mesh.buffer == 0)
+            load_model("SkinMeshes/firework.x", &v.firework_model, &v.firework_mesh);
     }
     log_info("level %s: %d bricks (%d to break), %d other objects, board %s", path,
              v.scene.brick_count, v.play.bricks_left, v.scene.other_count,
@@ -739,6 +745,8 @@ void play_screen_shutdown(void)
         render_mesh_destroy(&v.bullet_meshes[i]);
         xfile_free(&v.bullet_models[i]);
     }
+    render_mesh_destroy(&v.firework_mesh);
+    xfile_free(&v.firework_model);
     xfile_free(&v.bat_model);
     xfile_free(&v.ball_model);
     xfile_free(&v.explosive_model);
@@ -1123,6 +1131,14 @@ static void blend_positions(void)
         unblended.smoke[i] = play->smoke[i].position;
         play->smoke[i].position = vec3_lerp(play->smoke[i].from, play->smoke[i].position, t);
     }
+    for (i = 0; i < play->spark_count; i++) {
+        unblended.sparks[i] = play->sparks[i].position;
+        play->sparks[i].position = vec3_lerp(play->sparks[i].from, play->sparks[i].position, t);
+    }
+    for (i = 0; i < play->firework_count; i++) {
+        unblended.fireworks[i] = play->fireworks[i].position;
+        play->fireworks[i].position = vec3_lerp(play->fireworks[i].from, play->fireworks[i].position, t);
+    }
     blend_bricks(t);
 }
 
@@ -1145,6 +1161,10 @@ static void unblend_positions(void)
         play->particles[i].position = unblended.particles[i];
     for (i = 0; i < play->smoke_count; i++)
         play->smoke[i].position = unblended.smoke[i];
+    for (i = 0; i < play->spark_count; i++)
+        play->sparks[i].position = unblended.sparks[i];
+    for (i = 0; i < play->firework_count; i++)
+        play->fireworks[i].position = unblended.fireworks[i];
     for (i = 0; unblended.bricks_saved && i < v.scene.brick_count; i++) {
         v.scene.bricks[i].position = unblended.bricks[i].position;
         v.scene.bricks[i].tip = unblended.bricks[i].tip;
@@ -1374,37 +1394,56 @@ static void build_strings(void)
 /*
  * A powerball's trail: a camera-facing triangle of particle.png per spot,
  * 2.5 across, in the ball's colour, fading out as its 250 ms run out
- * (0x41f4e0). Puffs and smoke are drawn the same way, in their own colour.
+ * (0x41f4e0). Puffs, smoke and firework sparks are drawn the same way,
+ * in their own colour.
  */
 static void build_trail(Mat4 view)
 {
-    static XVertex tris[(PLAY_MAX_TRAIL + PLAY_MAX_PARTICLES + PLAY_MAX_SMOKE) * 3];
+    static XVertex tris[(PLAY_MAX_TRAIL + PLAY_MAX_PARTICLES + PLAY_MAX_SMOKE + PLAY_MAX_SPARKS) * 3];
     static const float corner[3][4] = {
         { 0.0f, 1.0f, 0.5f, 0.0f }, { 1.0f, -0.5f, 1.0f, 1.0f }, { -1.0f, -0.5f, 0.0f, 1.0f }
     };
+    /* Puffs, smoke and sparks follow the trail, in the original's order. */
+    const struct { const Particle *list; int count; } puffs[3] = {
+        { v.play.particles, v.play.particle_count },
+        { v.play.smoke, v.play.smoke_count },
+        { v.play.sparks, v.play.spark_count },
+    };
+    static uint32_t colors[PLAY_MAX_TRAIL + PLAY_MAX_PARTICLES + PLAY_MAX_SMOKE + PLAY_MAX_SPARKS];
     Vec3 right = vec3(view.m[0][0], view.m[1][0], view.m[2][0]);
     Vec3 up = vec3(view.m[0][1], view.m[1][1], view.m[2][1]);
-    int spots = v.play.trail_count, puffs = spots + v.play.particle_count, n = puffs + v.play.smoke_count;
     RenderPart part;
-    int i, k;
+    int i, j, k, n = 0;
 
     render_mesh_destroy(&v.trail);
-    for (i = 0; i < n; i++) {
-        const Particle *puff = i < spots ? NULL : i < puffs ? &v.play.particles[i - spots] : &v.play.smoke[i - puffs];
-        Vec3 at = puff == NULL ? v.play.trail[i].position : puff->position;
-        float size = puff == NULL ? v.play.trail[i].size : puff->size;
-        for (k = 0; k < 3; k++) {
-            XVertex *t = &tris[i * 3 + k];
-            Vec3 p = vec3_add(at, vec3_add(vec3_scale(right, size * corner[k][0]),
-                                           vec3_scale(up, size * corner[k][1])));
-            t->pos[0] = p.x;
-            t->pos[1] = p.y;
-            t->pos[2] = p.z;
-            t->normal[0] = 0.0f;
-            t->normal[1] = 1.0f;
-            t->normal[2] = 0.0f;
-            t->uv[0] = corner[k][2];
-            t->uv[1] = corner[k][3];
+    for (j = -1; j < 3; j++) {
+        int count = j < 0 ? v.play.trail_count : puffs[j].count;
+        for (i = 0; i < count; i++, n++) {
+            Vec3 at;
+            float size;
+            if (j < 0) { /* a trail spot's alpha is its life left in ms */
+                const TrailSpot *spot = &v.play.trail[i];
+                at = spot->position;
+                size = spot->size;
+                colors[n] = (spot->color & 0xffffffu) | ((uint32_t)spot->life << 24);
+            } else {
+                at = puffs[j].list[i].position;
+                size = puffs[j].list[i].size;
+                colors[n] = puffs[j].list[i].color;
+            }
+            for (k = 0; k < 3; k++) {
+                XVertex *t = &tris[n * 3 + k];
+                Vec3 p = vec3_add(at, vec3_add(vec3_scale(right, size * corner[k][0]),
+                                               vec3_scale(up, size * corner[k][1])));
+                t->pos[0] = p.x;
+                t->pos[1] = p.y;
+                t->pos[2] = p.z;
+                t->normal[0] = 0.0f;
+                t->normal[1] = 1.0f;
+                t->normal[2] = 0.0f;
+                t->uv[0] = corner[k][2];
+                t->uv[1] = corner[k][3];
+            }
         }
     }
     if (n == 0 || !render_mesh_create(&v.trail, tris, n * 3))
@@ -1414,14 +1453,7 @@ static void build_trail(Mat4 view)
         part.first_vertex = i * 3;
         part.vertex_count = 3;
         part.texture = v.particle_texture;
-        if (i < spots) { /* a trail spot's alpha is its life left in ms */
-            const TrailSpot *spot = &v.play.trail[i];
-            set_color(part.diffuse, (spot->color & 0xffffffu) | ((uint32_t)spot->life << 24));
-        } else if (i < puffs) {
-            set_color(part.diffuse, v.play.particles[i - spots].color);
-        } else {
-            set_color(part.diffuse, v.play.smoke[i - puffs].color);
-        }
+        set_color(part.diffuse, colors[i]);
         part.flags = RENDER_ALPHA | RENDER_Z_DISABLE | RENDER_TINT | RENDER_TWO_SIDED;
         part.pose = -1;
         render_mesh_add_part(&v.trail, &part);
@@ -1568,6 +1600,11 @@ void play_screen_frame(int width, int height, uint32_t ms)
                         mat4_multiply(mat4_rotation_z(b->spin), mat4_rotation_x(-atan2f(b->velocity.y, ahead))),
                         mat4_translation(b->position.x, b->position.y, b->position.z));
                     render_draw(&v.bullet_meshes[b->weapon], world, kind, t);
+                }
+                /* A firework rocket just goes straight up (0x40bf97). */
+                for (i = 0; i < v.play.firework_count; i++) {
+                    Vec3 p = v.play.fireworks[i].position;
+                    render_draw(&v.firework_mesh, mat4_translation(p.x, p.y, p.z), kind, t);
                 }
                 /* A prize's glow goes first, without depth writes, so the
                    model covers it. */

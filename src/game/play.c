@@ -59,13 +59,17 @@ static void sound(Play *play, const char *name, int volume, int pan)
         play->sound(name, volume, pan, play->sound_user);
 }
 
-/* Bricks sound quieter further away, and are panned by x (0x403660). */
-static void brick_sound(Play *play, int index, const char *name)
+/* Objects sound quieter further away, and are panned by x (0x403660). */
+static void sound_at(Play *play, Vec3 p, const char *name)
 {
-    Vec3 p = play->scene->bricks[index].position;
     int volume = (int)(100.0f - fabsf(p.z + p.z));
     if (volume >= 0)
         sound(play, name, volume, (int)(p.x / play->scene->board.half_width * 100.0f));
+}
+
+static void brick_sound(Play *play, int index, const char *name)
+{
+    sound_at(play, play->scene->bricks[index].position, name);
 }
 
 static void wall_sound(Play *play, const Ball *ball)
@@ -163,6 +167,94 @@ static void fog_update(Play *play, int index, uint32_t ms)
     p->size = random_range(1.0f, 0.5f);
 }
 
+/* A record's colour, bytes 4..7, as ARGB. */
+static uint32_t record_color(const SceneBrick *b)
+{
+    const uint8_t *raw = b->object->raw;
+
+    return (uint32_t)raw[4] | (uint32_t)raw[5] << 8 | (uint32_t)raw[6] << 16 | (uint32_t)raw[7] << 24;
+}
+
+/*
+ * A firework brick hit by anything (0x4079c0, 0x407a70) leaves the grid,
+ * counts as broken (no score, no prize) and fires a rocket from its cell
+ * (object type 0xa8). The original forgets to count it when it is at the
+ * heart of an explosion, which would leave the level unfinishable; here
+ * it always counts.
+ */
+static void rocket_hit(Play *play, int index)
+{
+    SceneBrick *b = &play->scene->bricks[index];
+    PlayBrick *pb = &play->bricks[index];
+    Firework *f;
+
+    if (b->removed)
+        return;
+    b->removed = true;
+    grid_remove(play, index);
+    if (pb->counts)
+        play->bricks_left--;
+    brick_sound(play, index, b->animal->hit_sound);
+    if (play->firework_count >= PLAY_MAX_FIREWORKS)
+        return;
+    f = &play->fireworks[play->firework_count++];
+    f->position = f->from = vec3(floorf(b->position.x), (float)(int)b->position.y, (float)(int)b->position.z);
+    f->velocity = vec3(0.0f, 1.8f, 0.0f);
+    f->color = record_color(b);
+    f->age = 0;
+    f->spark_ms = 0;
+}
+
+/*
+ * A firework's burst (0x40c2d0): 64 sparks thrown out in a ring tilted
+ * 45 degrees (the original sets y and z both from the cosine), 1 to 1.8
+ * across; one in three stays unseen until it fades (0x40c050).
+ */
+static void firework_burst(Play *play, Vec3 at, uint32_t color)
+{
+    int n;
+
+    for (n = 0; n < 64 && play->spark_count < PLAY_MAX_SPARKS; n++) {
+        Particle *p = &play->sparks[play->spark_count++];
+        float a = random_range(0.0f, 6.2831855f);
+        float r = random_range(0.5f, 0.25f);
+        p->position = p->from = at;
+        p->velocity = vec3(r * sinf(a), r * cosf(a), r * cosf(a));
+        p->size = random_range(1.0f, 0.8f);
+        p->color = rand() % 3 == 0 ? color & 0xffffffu : color;
+        p->life = 1500 + rand() % 1000;
+    }
+}
+
+/*
+ * A rocket (0x40be50) slows as it climbs, leaving a spark in its colour
+ * 1.25 below it every 25 ms; after 1.5 s it bursts with a bang.
+ */
+static bool firework_update(Play *play, Firework *f, uint32_t ms, float dt)
+{
+    f->age += ms;
+    if (f->age > 1500) {
+        firework_burst(play, vec3(floorf(f->position.x), (float)(int)f->position.y, (float)(int)f->position.z),
+                       f->color);
+        sound_at(play, f->position, "Firework2.ogg");
+        return false;
+    }
+    f->position = vec3_add(f->position, vec3_scale(f->velocity, dt));
+    f->velocity = vec3_sub(f->velocity, vec3_scale(f->velocity, 0.075f * dt));
+    f->spark_ms += ms;
+    if (f->spark_ms > 25) {
+        f->spark_ms -= 25;
+        if (play->trail_count < PLAY_MAX_TRAIL) {
+            TrailSpot *spot = &play->trail[play->trail_count++];
+            spot->position = vec3(f->position.x + random_range(-0.15f, 0.3f), f->position.y - 1.25f, f->position.z);
+            spot->color = f->color;
+            spot->size = 0.75f;
+            spot->life = 250;
+        }
+    }
+    return true;
+}
+
 /*
  * An animal hit (0x407eb0) leaves the grid, counts as broken and cries
  * out, then flies up rolling over. Blown up (0x408150) it also scores,
@@ -172,8 +264,11 @@ static void animal_hit(Play *play, int index, bool blown_up)
 {
     SceneBrick *b = &play->scene->bricks[index];
     PlayBrick *pb = &play->bricks[index];
-    const uint8_t *raw = b->object->raw;
 
+    if (b->animal->rocket) {
+        rocket_hit(play, index);
+        return;
+    }
     if (b->removed)
         return;
     b->removed = true;
@@ -184,7 +279,7 @@ static void animal_hit(Play *play, int index, bool blown_up)
         prize_roll(play, b->position, PRIZE_NONE);
         play->score += pb->points * 100;
         particle_burst(play, vec3(floorf(b->position.x), (float)(int)b->position.y, (float)(int)b->position.z),
-                       (uint32_t)raw[4] | (uint32_t)raw[5] << 8 | (uint32_t)raw[6] << 16 | (uint32_t)raw[7] << 24);
+                       record_color(b));
     }
     brick_sound(play, index, b->animal->hit_sound);
     b->flying_ms = 1;
@@ -318,9 +413,9 @@ static bool brick_hit(Play *play, int index, const Ball *ball)
         explode(play, b->position);
         return !through;
     }
-    if (b->animal != NULL) { /* a powerball goes on through (0x407e20) */
+    if (b->animal != NULL) { /* a powerball goes on through an animal (0x407e20), not a rocket (0x407990) */
         animal_hit(play, index, false);
-        return !through;
+        return b->animal->rocket || !through;
     }
     switch (b->object->type) {
     case 0x18: /* glass: shows on the first hit, breaks on the second */
@@ -1481,6 +1576,10 @@ static void remember_positions(Play *play)
         play->particles[i].from = play->particles[i].position;
     for (i = 0; i < play->smoke_count; i++)
         play->smoke[i].from = play->smoke[i].position;
+    for (i = 0; i < play->spark_count; i++)
+        play->sparks[i].from = play->sparks[i].position;
+    for (i = 0; i < play->firework_count; i++)
+        play->fireworks[i].from = play->fireworks[i].position;
     for (i = 0; i < play->scene->brick_count; i++) {
         const SceneBrick *b = &play->scene->bricks[i];
         PlayBrick *pb = &play->bricks[i];
@@ -1648,7 +1747,7 @@ static void step(Play *play, uint32_t ms)
     for (i = 0; i < play->scene->brick_count; i++) {
         brick_gravity(play, i);
         brick_move(play, i, ms);
-        if (play->scene->bricks[i].animal != NULL)
+        if (play->scene->bricks[i].animal != NULL && !play->scene->bricks[i].animal->rocket)
             animal_update(play, i, ms, dt);
         else if (play->scene->bricks[i].object->type == 0x38 && !play->scene->bricks[i].removed)
             fog_update(play, i, ms);
@@ -1683,6 +1782,30 @@ static void step(Play *play, uint32_t ms)
         play->smoke[kept++] = *p;
     }
     play->smoke_count = kept;
+
+    for (i = 0, kept = 0; i < play->firework_count; i++)
+        if (firework_update(play, &play->fireworks[i], ms, dt))
+            play->fireworks[kept++] = play->fireworks[i];
+    play->firework_count = kept;
+
+    /* Sparks fly out, slow, fall 0.025 a step and shrink 0.02, bouncing off
+       the floor, and fade over their last half second (0x40c140). */
+    for (i = 0, kept = 0; i < play->spark_count; i++) {
+        Particle *p = &play->sparks[i];
+        p->position = vec3_add(p->position, vec3_scale(p->velocity, dt));
+        p->velocity.y -= 0.025f * dt;
+        p->velocity = vec3_scale(p->velocity, 1.0f - 0.1f * dt);
+        p->size -= 0.02f * dt;
+        p->life -= (int)ms;
+        if (p->size <= 0.25f || p->life < 0)
+            continue;
+        if (p->life < 500)
+            p->color = (p->color & 0xffffffu) | (uint32_t)(p->life / 2) << 24;
+        if (p->position.y < -0.75f)
+            p->velocity.y = fabsf(p->velocity.y) * 0.75f;
+        play->sparks[kept++] = *p;
+    }
+    play->spark_count = kept;
 
     for (i = 0; i < play->ball_count; i++)
         ball_update(play, &play->balls[i], ms, dt);

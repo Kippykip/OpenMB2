@@ -44,16 +44,18 @@ typedef struct SceneBillboard {
 /*
  * Animals (and people, aliens and the UFO), types 0xb8 to 0xde: a skinned
  * model standing in the grid like a brick, with a sound when it is hit and
- * one it makes now and then (factory 0x412180, class 0x407cd0).
+ * one it makes now and then (factory 0x412180, class 0x407cd0). The
+ * firework rocket, type 0xa4 (class 0x407940), stands the same way.
  */
 typedef struct SceneAnimal {
     int type;
     const char *model;      /* in SkinMeshes */
     const char *hit_sound;
     const char *idle_sound;
+    bool rocket;            /* a firework rocket, not an animal */
 } SceneAnimal;
 
-/* The animal an object type is, or NULL. */
+/* The animal (or rocket) an object type is, or NULL. */
 const SceneAnimal *scene_animal(int type);
 
 typedef struct SceneBrick {

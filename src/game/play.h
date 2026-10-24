@@ -26,6 +26,8 @@
 #define PLAY_MAX_BULLETS 64
 #define PLAY_MAX_PARTICLES 512
 #define PLAY_MAX_SMOKE 2048     /* 0x800, as the original's smoke list */
+#define PLAY_MAX_SPARKS 2048    /* and its firework burst list */
+#define PLAY_MAX_FIREWORKS 32
 #define PLAY_FOREVER 0xffffffffu
 
 /* Ball flags, with the original's values. */
@@ -100,15 +102,24 @@ typedef struct Prize {
 
 /*
  * A puff thrown up where an animal was blown up, falling and shrinking
- * (0x41f250), or a puff of smoke rising from a fog brick (0x4242a0).
+ * (0x41f250), a puff of smoke rising from a fog brick (0x4242a0), or a
+ * spark of a firework's burst (0x40c050).
  */
 typedef struct Particle {
     Vec3 position, velocity;
     Vec3 from;             /* where it was when the last step began */
     uint32_t color;        /* ARGB; smoke's alpha follows its life */
     float size;
-    int life;              /* smoke only: ms left */
+    int life;              /* smoke and sparks: ms left */
 } Particle;
+
+/* A rocket flying up from a firework brick, to burst after 1.5 s (0x40bdd0). */
+typedef struct Firework {
+    Vec3 position, velocity;
+    Vec3 from;
+    uint32_t color;        /* the brick's record colour, ARGB */
+    uint32_t age, spark_ms;
+} Firework;
 
 /* A spot of a powerball's or a rocket's trail, fading over 250 ms. */
 typedef struct TrailSpot {
@@ -237,6 +248,10 @@ typedef struct Play {
     int particle_count;
     Particle smoke[PLAY_MAX_SMOKE];
     int smoke_count;
+    Particle sparks[PLAY_MAX_SPARKS];
+    int spark_count;
+    Firework fireworks[PLAY_MAX_FIREWORKS];
+    int firework_count;
     Bullet bullets[PLAY_MAX_BULLETS];
     int bullet_count;
     BulletInfo bullet_info[WEAPON_COUNT];

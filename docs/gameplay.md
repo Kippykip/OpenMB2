@@ -450,3 +450,37 @@ Smoke (list 0x4e3408, 0x800 slots; add 0x4242a0, update 0x4243a0):
 | alpha | life ≥ 1000: 250 − (life − 1000)/4; below: life/4 (fades in, then out) |
 
 It is gone once life is below 0, and is drawn like puffs and trail spots.
+
+## Firework bricks (type 0xa4, class 0x407940)
+
+A model brick (SkinMeshes/b_rocket.x, turned about Y only, like animals)
+that counts toward the level end. Hit by a ball, shot or explosion
+neighbour (slot 0x4c, 0x4079c0) it leaves the grid, counts as broken (no
+score, no prize), plays Firework1.ogg and makes a new object of type 0xa8
+from its own record at (floor x, int y, int z). A powerball bounces off it
+(slot 0x50 always returns 0). At the heart of an explosion (slot 0x40,
+0x407a70) the original forgets to count it as broken; OpenMB2 counts it.
+
+The rocket (type 0xa8, class 0x40bdd0, SkinMeshes/firework.x; no grid
+cell, doesn't count) starts with velocity (0, 1.8, 0). Each step
+(0x40be50): position += velocity·dt; velocity −= velocity·0.075·dt; drawn
+translated only. Every 25 ms it leaves a trail spot (the powerball trail
+list) at (x + −0.15..0.15, y − 1.25, z), size 0.75, in the record colour.
+After 1500 ms it is gone, plays Firework2.ogg and makes a type 0x50 record
+at its (floor x, int y, int z), which is a burst (0x40e0d0, list 0x4e3410,
+0x800 slots):
+
+| | |
+|---|---|
+| sparks | 64 |
+| velocity | a = 0..2π, r = 0.5..0.75: (r sin a, r cos a, r cos a); a second random angle is drawn and thrown away |
+| size | 1.0..1.8 |
+| colour | the record's; one in three has alpha 0 until it fades |
+| life | 1500 + rand % 1000 ms |
+| each step (0x40c140) | position += velocity·dt; size −= 0.02·dt (0.01 twice); velocity.y −= 0.025·dt; velocity ·= 1 − 0.1·dt; life −= ms |
+| alpha | life < 500: life / 2 |
+| bounce | y < −0.75: velocity.y = abs(velocity.y)·0.75 |
+
+A spark is gone once its size is 0.25 or less, or its life below 0.
+The trail spot list's update (0x425e60) also has a bug: it shrinks the
+slot past the last spot instead of each spot, so spots keep their size.
