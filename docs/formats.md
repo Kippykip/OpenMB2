@@ -190,7 +190,10 @@ start of a level: yaw 0, pitch 50° (0.8727 rad), roll 0.05, zoom 1.
 Eye = (0, 0, −distance × zoom) turned by `YawPitchRoll(yaw, pitch, roll)`,
 view = `LookAtLH(eye, (0, 0, look-at z), up (0, 1, 0))`. Projection is
 `PerspectiveFovLH(45°, aspect 1.0, near 1, far 1000)` in 4:3 modes, so
-the picture is stretched to the screen. The intro flies in along one of 15
+the picture is stretched to the screen. Dragging with the right
+button turns it by 0.005 per mouse step, yaw clamped to ±60° and pitch to
+15°–90°; the wheel adds lZ × 0.00001 to the zoom, clamped to 0.25–1.75
+(camera 0x48f088: 0x409ed0, 0x409e80, 0x409f20). The intro flies in along one of 15
 built-in spline paths (rand() % 15); OpenMB2 doesn't do that yet.
 
 ## Models, `.x` (confirmed)

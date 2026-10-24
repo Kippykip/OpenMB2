@@ -888,17 +888,24 @@ void play_screen_handle_event(const SDL_Event *event)
         break;
     case SDL_MOUSEMOTION:
         if (v.dragging) {
-            /* The original turns the camera by 0.005 per mouse step. */
+            /* The original turns the camera by 0.005 per mouse step, yaw
+               within ±60° and pitch from 15° to 90° (0x409ed0, 0x409e80). */
             v.camera.yaw += (float)event->motion.xrel * 0.005f;
             v.camera.pitch += (float)event->motion.yrel * 0.005f;
-            if (v.camera.pitch < 0.05f) v.camera.pitch = 0.05f;
-            if (v.camera.pitch > 1.55f) v.camera.pitch = 1.55f;
+            if (v.camera.yaw < -1.0472f) v.camera.yaw = -1.0472f;
+            if (v.camera.yaw > 1.0472f) v.camera.yaw = 1.0472f;
+            if (v.camera.pitch < 0.2618f) v.camera.pitch = 0.2618f;
+            if (v.camera.pitch > 1.5708f) v.camera.pitch = 1.5708f;
         } else if (v.playing) {
             play_mouse_move(&v.play, event->motion.xrel);
         }
         break;
     case SDL_MOUSEWHEEL:
-        v.camera.zoom *= event->wheel.y > 0 ? 0.9f : 1.0f / 0.9f;
+        /* Wheel forward moves the camera out; zoom stays within 0.25 to
+           1.75 of the board's distance (0x409f20). The step is a guess. */
+        v.camera.zoom += (float)event->wheel.y * 0.1f;
+        if (v.camera.zoom < 0.25f) v.camera.zoom = 0.25f;
+        if (v.camera.zoom > 1.75f) v.camera.zoom = 1.75f;
         break;
     default:
         break;
