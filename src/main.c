@@ -374,6 +374,7 @@ int main(int argc, char **argv)
     audio_init(g_app.params.sound_volume, g_app.params.music_volume);
     options.mouse_sensitivity = g_app.params.mouse_sensitivity;
     options.infravision = g_app.params.infravision;
+    options.language = g_app.params.language;
     if (!play_screen_init(g_app.window, &options)) {
         show_error("Couldn't start the game. See the log for details.");
         shutdown_app();

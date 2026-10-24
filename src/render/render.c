@@ -346,6 +346,11 @@ void render_begin(int width, int height, Mat4 view, Mat4 projection, const Rende
     gl.ActiveTexture(GL_TEXTURE0);
 }
 
+void render_begin_2d(float width, float height)
+{
+    r.view_projection = mat4_scaling(2.0f / width, 2.0f / height, 0.0f);
+}
+
 static void set_model(Mat4 model)
 {
     Mat4 mvp = mat4_multiply(model, r.view_projection);

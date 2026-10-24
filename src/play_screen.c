@@ -7,6 +7,8 @@
 #include "core/log.h"
 #include "core/matrix.h"
 #include "core/vfs.h"
+#include "game/font.h"
+#include "game/lang.h"
 #include "game/play.h"
 #include "game/scene.h"
 #include "render/render.h"
@@ -91,6 +93,11 @@ static struct {
     Camera camera;
     bool dragging;
     float fade; /* 0 to 1 as the light dies at the end of a level */
+    /* The HUD: Text/text.txt over font.png, and Text/service.txt over
+       service.png (the corner bars) or icons.png (the weapon icons). */
+    Font text_font, service_font;
+    unsigned font_texture, service_texture, icons_texture;
+    RenderMesh hud;
     uint32_t time;     /* ms, for scrolling textures */
     char title[320];
 } v;
@@ -847,6 +854,12 @@ bool play_screen_init(SDL_Window *window, const PlayScreenOptions *options)
     v.shadow_texture = texture_for_name("bshadow.png");
     v.glow_texture = texture_for_name("infravis.png");
     v.billboard_texture = texture_for_name("Billboards.png");
+    font_load(&v.text_font, "Text/text.txt");
+    font_load(&v.service_font, "Text/service.txt");
+    v.font_texture = texture_for_name("font.png");
+    v.service_texture = texture_for_name("service.png");
+    v.icons_texture = texture_for_name("icons.png");
+    lang_load(options->language);
     load_level(pack, level);
     return true;
 }
@@ -868,6 +881,8 @@ void play_screen_shutdown(void)
     render_mesh_destroy(&v.bullet_shadows);
     render_mesh_destroy(&v.strings);
     render_mesh_destroy(&v.billboards);
+    render_mesh_destroy(&v.hud);
+    lang_free();
     free(unblended.bricks);
     memset(&unblended, 0, sizeof(unblended));
     for (i = 0; i < SHOT_KINDS; i++) {
@@ -1676,6 +1691,133 @@ static void build_bolts(void)
     render_mesh_add_part(&v.bolts, &part);
 }
 
+/* ------------------------------------------------------------------------ */
+/* HUD                                                                      */
+/* ------------------------------------------------------------------------ */
+
+#define HUD_MAX_VERTICES 3072
+#define HUD_MAX_PARTS 32
+
+static struct {
+    XVertex vertices[HUD_MAX_VERTICES];
+    int vertex_count;
+    RenderPart parts[HUD_MAX_PARTS];
+    int part_count;
+    float left, right; /* how far the screen's sides are from the 4:3 picture's */
+} hud;
+
+/* Which side of the screen a piece of the HUD keeps its distance from. */
+enum { HUD_MIDDLE, HUD_LEFT, HUD_RIGHT };
+
+/*
+ * 0x425fb0: text at (x, y) in the original's 800x600 screen, y up from
+ * the middle. On a wider screen the HUD keeps its size and each piece
+ * keeps its distance from its own side.
+ */
+static void hud_text(const Font *font, unsigned texture, int side, float x, float y, float scale,
+                     int align, const char *text, uint32_t color)
+{
+    RenderPart *part;
+    int n;
+
+    if (hud.part_count == HUD_MAX_PARTS)
+        return;
+    if (side == HUD_LEFT)
+        x += hud.left;
+    else if (side == HUD_RIGHT)
+        x += hud.right;
+    n = font_layout(font, x, y, scale, align, text, hud.vertices + hud.vertex_count,
+                    HUD_MAX_VERTICES - hud.vertex_count);
+    if (n == 0)
+        return;
+    part = &hud.parts[hud.part_count++];
+    memset(part, 0, sizeof(*part));
+    part->first_vertex = hud.vertex_count;
+    part->vertex_count = n;
+    part->texture = texture;
+    set_color(part->diffuse, color);
+    part->flags = RENDER_ALPHA | RENDER_Z_DISABLE | RENDER_NO_DEPTH_TEST | RENDER_TINT | RENDER_TWO_SIDED;
+    part->pose = -1;
+    hud.vertex_count += n;
+}
+
+/* 0x404110: the weapon the bat carries, top right, with its shots or seconds left. */
+static void hud_weapon(void)
+{
+    const Bat *bat = &v.play.bat;
+    const char *icon = NULL;
+    float icon_x = 310.0f, count_x = 340.0f;
+    char count[32];
+
+    count[0] = '\0';
+    switch (bat->mode) {
+    case BAT_MAGNET: icon = "J"; icon_x = 330.0f; break;
+    case BAT_GUN: icon = "H"; icon_x = 320.0f; count_x = 350.0f; break;
+    case BAT_BAZOOKA: icon = "G"; icon_x = 320.0f; break;
+    case BAT_CANNON: icon = "K"; break;
+    case BAT_RUBBER: icon = "I"; break;
+    default: return;
+    }
+    hud_text(&v.service_font, v.icons_texture, HUD_RIGHT, icon_x, 284.0f, 0.95f, FONT_RIGHT, icon,
+             0xffffffffu);
+    if (bat->mode == BAT_RUBBER)
+        snprintf(count, sizeof(count), "%u",
+                 bat->rubber_end > v.play.time ? (unsigned)(bat->rubber_end - v.play.time) / 1000u : 0u);
+    else if (bat->mode != BAT_MAGNET)
+        snprintf(count, sizeof(count), "%d", bat->ammo);
+    if (count[0] != '\0')
+        hud_text(&v.text_font, v.font_texture, HUD_RIGHT, count_x, 286.0f, 0.95f, FONT_CENTER, count,
+                 0xffffffffu);
+}
+
+/*
+ * 0x41b818: score top left, lives bottom left, level bottom right, each
+ * on a bar from service.png, and the weapon top right.
+ */
+static void draw_hud(int width, int height)
+{
+    float w = 800.0f, h = 600.0f;
+    int score = v.playing ? v.play.score : v.score;
+    int lives = v.playing ? v.play.lives : v.lives;
+    char text[256];
+
+    /* Sized by the screen's height, or its width when narrower than 4:3. */
+    if (width * 3 >= height * 4)
+        w = 600.0f * (float)width / (float)height;
+    else
+        h = 800.0f * (float)height / (float)width;
+    hud.left = 400.0f - w * 0.5f;
+    hud.right = w * 0.5f - 400.0f;
+    hud.vertex_count = 0;
+    hud.part_count = 0;
+
+    /* The original queues the text and draws it by texture: the bars, the
+       icons, then the words. */
+    hud_text(&v.service_font, v.service_texture, HUD_LEFT, -401.0f, 278.0f, 0.85f, FONT_LEFT, "C", 0xffffffffu);
+    hud_text(&v.service_font, v.service_texture, HUD_LEFT, -401.0f, -278.0f, 0.85f, FONT_LEFT, "D", 0xffffffffu);
+    hud_text(&v.service_font, v.service_texture, HUD_RIGHT, 401.0f, -278.0f, 0.85f, FONT_RIGHT, "F", 0xffffffffu);
+    hud_text(&v.service_font, v.service_texture, HUD_RIGHT, 401.0f, 278.0f, 0.85f, FONT_RIGHT, "E", 0xffffffffu);
+    if (v.playing)
+        hud_weapon();
+    snprintf(text, sizeof(text), lang_text(LANG_SCORE, "Score %d"), score);
+    hud_text(&v.text_font, v.font_texture, HUD_LEFT, -375.0f, 286.0f, 0.85f, FONT_LEFT, text, 0xffffffffu);
+    snprintf(text, sizeof(text), lang_text(LANG_LIVES, "Lives %d"), lives > 0 ? lives : 0);
+    hud_text(&v.text_font, v.font_texture, HUD_LEFT, -375.0f, -282.0f, 0.9f, FONT_LEFT, text, 0xffffffffu);
+    snprintf(text, sizeof(text), lang_text(LANG_LEVEL, "Level %d"), v.level + 1);
+    hud_text(&v.text_font, v.font_texture, HUD_RIGHT, 375.0f, -282.0f, 0.9f, FONT_RIGHT, text, 0xffffffffu);
+
+    render_mesh_destroy(&v.hud);
+    if (hud.vertex_count == 0 || !render_mesh_create(&v.hud, hud.vertices, hud.vertex_count))
+        return;
+    {
+        int i;
+        for (i = 0; i < hud.part_count; i++)
+            render_mesh_add_part(&v.hud, &hud.parts[i]);
+    }
+    render_begin_2d(w, h);
+    render_draw(&v.hud, mat4_identity(), RENDER_PASS_ALL, 0.0f);
+}
+
 void play_screen_frame(int width, int height, uint32_t ms)
 {
     const Camera *c = &v.camera;
@@ -1860,4 +2002,5 @@ void play_screen_frame(int width, int height, uint32_t ms)
     }
     if (v.playing && v.options.smooth)
         unblend_positions();
+    draw_hud(width, height);
 }

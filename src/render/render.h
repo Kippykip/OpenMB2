@@ -72,6 +72,12 @@ void render_mesh_destroy(RenderMesh *mesh);
 /* Start a frame: viewport, clear, camera and light. */
 void render_begin(int width, int height, Mat4 view, Mat4 projection, const RenderLight *light);
 
+/*
+ * Switch to flat drawing for the HUD, without clearing: x from -width/2
+ * to width/2 and y from -height/2 (bottom) to height/2, z ignored.
+ */
+void render_begin_2d(float width, float height);
+
 typedef enum RenderPass {
     RENDER_PASS_SOLID,   /* only the parts that aren't blended */
     RENDER_PASS_BLENDED, /* only the blended ones */

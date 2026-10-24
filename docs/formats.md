@@ -239,10 +239,48 @@ each model to triangles grouped by material. Skin weights and animation
 sets are skipped for now. Frame names matter: boards have `Doska` (the
 floor) and `Stenki` (the walls).
 
+## Fonts and the HUD (confirmed)
+
+`Text/text.txt` lays out `Textures/font.png`, and `Text/service.txt` lays
+out `service.png` (the corner bars C-F) and `icons.png` (weapon icons G-K).
+A font starts as a grid of 20x32 cells on a 256x256 sheet, 12 to a row:
+A-Z, 0-9, then the codes from 0x80 up (0x426d30). The file then changes
+single glyphs, in file order (0x4279f0):
+
+| Line | Effect |
+|---|---|
+| `chr: charcode: N x1: y1: x2: y2:` | glyph anywhere on the sheet; x2 < x1 mirrors it (E and F are C and D flipped) |
+| `charwidth: X n` | cell n+1 pixels wide; A-Z also set a-z |
+| `charheight: X n` | cell n+1 pixels high |
+| `chardopwidth/chardopheight: X n` | drawn size only |
+
+Text is placed in an 800x600 screen centred on 0, y up (0x4271f0). Bytes
+0xC0-0xD9 in a string resize or nudge the rest of the line and `|` starts
+a new line. Strings come from `Languages/<name>.txt` by line number after
+the first line; params.txt `language` picks the file by its place in the
+folder.
+
+The HUD (0x41b818, 0x404110), all white:
+
+| What | Font | At | Scale | Align |
+|---|---|---|---|---|
+| bar C | service | (-401, 278) | 0.85 | left |
+| bar D | service | (-401, -278) | 0.85 | left |
+| bar F | service | (401, -278) | 0.85 | right |
+| bar E | service | (401, 278) | 0.85 | right |
+| weapon icon J/H/G/K/I | icons | (330/320/320/310/310, 284) | 0.95 | right |
+| shots, or yo-yo seconds | text | (350 gun, else 340, 286) | 0.95 | centre |
+| "Score %d" (string 12) | text | (-375, 286) | 0.85 | left |
+| "Lives %d" (13, never below 0) | text | (-375, -282) | 0.9 | left |
+| "Level %d" (14) | text | (375, -282) | 0.9 | right |
+
+The original stretches this over any screen. OpenMB2 sizes it by the
+screen's height and keeps each piece its distance from its own side, so
+4:3 is unchanged and wider screens move the corners outwards.
+
 ## Still to look at
 
 - Animation sets in `SkinMeshes/` (bats, animals, prizes).
 - What brick record bytes 10, 11, 17-19 do, and the non-brick objects.
-- Font layout files in `Text/`.
 - Ball physics, prize effects and scoring: these live in the original exe,
   and will be checked there one function at a time.

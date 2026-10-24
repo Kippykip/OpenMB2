@@ -37,6 +37,8 @@ add_library(openmb2_core STATIC
     src/core/vfs.c
     src/core/xfile.c
     src/game/board.c
+    src/game/font.c
+    src/game/lang.c
     src/game/level.c
     src/game/params.c
     src/game/play.c
