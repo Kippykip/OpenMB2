@@ -71,6 +71,11 @@ void render_mesh_destroy(RenderMesh *mesh);
 
 /* Start a frame: viewport, clear, camera and light. */
 void render_begin(int width, int height, Mat4 view, Mat4 projection, const RenderLight *light);
+/* Change the camera and light mid-frame. */
+void render_set_camera(Mat4 view, Mat4 projection, const RenderLight *light);
+/* Draw into part of the screen only (pixels from the bottom left). */
+void render_viewport(int x, int y, int width, int height);
+void render_clear_depth(void);
 
 /*
  * Switch to flat drawing for the HUD, without clearing: x from -width/2

@@ -24,6 +24,8 @@
 /* The player's settings from params.txt, 0-100. */
 bool audio_init(int sound_volume, int music_volume);
 void audio_shutdown(void);
+/* The options page's sliders, 0-100. */
+void audio_set_volumes(int sound_volume, int music_volume);
 
 void audio_play(const char *name, int volume, int pan);
 

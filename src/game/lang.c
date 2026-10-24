@@ -58,6 +58,36 @@ static int compare_names(const void *a, const void *b)
     return compare_nocase((const char *)a, (const char *)b);
 }
 
+/* The original lists them with FindFirstFile, which goes by name on NTFS. */
+static void list_languages(Names *list)
+{
+    list->count = 0;
+    vfs_list("Languages", add_name, list);
+    qsort(list->names, (size_t)list->count, sizeof(list->names[0]), compare_names);
+}
+
+int lang_count(void)
+{
+    Names list;
+    list_languages(&list);
+    return list.count;
+}
+
+bool lang_name(int index, char *out, size_t size)
+{
+    Names list;
+    size_t length;
+
+    list_languages(&list);
+    if (index < 0 || index >= list.count || size == 0)
+        return false;
+    snprintf(out, size, "%s", list.names[index]);
+    length = strlen(out);
+    if (length >= 4)
+        out[length - 4] = '\0';
+    return true;
+}
+
 bool lang_load(int index)
 {
     Names list;
@@ -66,14 +96,11 @@ bool lang_load(int index)
     int slot = 0;
 
     lang_free();
-    list.count = 0;
-    vfs_list("Languages", add_name, &list);
+    list_languages(&list);
     if (list.count == 0) {
         log_warn("lang: no languages in the Languages folder");
         return false;
     }
-    /* The original lists them with FindFirstFile, which goes by name on NTFS. */
-    qsort(list.names, (size_t)list.count, sizeof(list.names[0]), compare_names);
     if (index < 0 || index >= list.count)
         index = 0;
     snprintf(path, sizeof(path), "Languages/%s", list.names[index]);

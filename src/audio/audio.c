@@ -132,6 +132,16 @@ bool audio_init(int sound_volume, int music_volume)
     return true;
 }
 
+void audio_set_volumes(int sound_volume, int music_volume)
+{
+    if (a.device != 0)
+        SDL_LockAudioDevice(a.device);
+    a.master = sound_volume * 256 / 100;
+    a.music_master = music_volume * 256 / 100;
+    if (a.device != 0)
+        SDL_UnlockAudioDevice(a.device);
+}
+
 void audio_shutdown(void)
 {
     int i;

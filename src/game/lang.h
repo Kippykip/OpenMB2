@@ -14,6 +14,7 @@
 #define OPENMB2_LANG_H
 
 #include <stdbool.h>
+#include <stddef.h>
 
 enum {
     LANG_SCORE = 13,
@@ -33,6 +34,10 @@ enum {
  */
 bool lang_load(int index);
 void lang_free(void);
+
+/* How many languages there are, and one's name ("English"), for the options page. */
+int lang_count(void);
+bool lang_name(int index, char *out, size_t size);
 
 /* String number index, or fallback if the file doesn't have it. */
 const char *lang_text(int index, const char *fallback);

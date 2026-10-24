@@ -27,6 +27,7 @@
 #define OPENMB2_PARAMS_H
 
 #include <stdbool.h>
+#include <stddef.h>
 
 typedef struct Params {
     int sound_volume;        /* 0-100 */
@@ -46,5 +47,8 @@ void params_set_defaults(Params *params);
 
 /* Load params.txt from the game folder. Missing keys keep their defaults. */
 bool params_load(Params *params, const char *game_path);
+
+/* The file's text, as the original writes it (0x4178e0); returns its length. */
+int params_format(const Params *params, char *out, size_t size);
 
 #endif

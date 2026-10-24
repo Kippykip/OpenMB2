@@ -1267,12 +1267,12 @@ const char *play_prize_name(PrizeKind kind)
 }
 
 /* Prizes/<name>.txt for every kind (0x4201b0). */
-static void load_prize_info(Play *play)
+void play_load_prize_info(PrizeInfo info_out[PRIZE_KINDS])
 {
     int k;
 
     for (k = PRIZE_NONE + 1; k < PRIZE_KINDS; k++) {
-        PrizeInfo *info = &play->prize_info[k];
+        PrizeInfo *info = &info_out[k];
         char path[64];
         Config cfg;
 
@@ -1950,7 +1950,7 @@ bool play_start(Play *play, Scene *scene, int score, int lives, float mouse_sens
 
     play->bat.position = vec3(0.0f, 0.0f, scene->board.bat_line);
     new_ball(play);
-    load_prize_info(play);
+    play_load_prize_info(play->prize_info);
     load_weapons(play);
     remember_positions(play);
     return true;

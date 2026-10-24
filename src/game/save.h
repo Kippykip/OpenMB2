@@ -51,5 +51,7 @@ bool save_decode(const unsigned char *data, size_t size, SaveGame *save);
 
 /* A progress file: fills progress, returns false if it's not one. */
 bool save_decode_progress(const unsigned char *data, size_t size, int progress[SAVE_MAX_LEVELS][3]);
+/* The file's bytes; free() the result. */
+unsigned char *save_encode_progress(const int progress[SAVE_MAX_LEVELS][3], size_t *size);
 
 #endif

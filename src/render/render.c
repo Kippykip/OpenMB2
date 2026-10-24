@@ -324,8 +324,6 @@ void render_mesh_destroy(RenderMesh *mesh)
 
 void render_begin(int width, int height, Mat4 view, Mat4 projection, const RenderLight *light)
 {
-    Vec3 dir = vec3_normalize(vec3(light->direction[0], light->direction[1], light->direction[2]));
-
     gl.Viewport(0, 0, width, height);
     gl.ClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     gl.DepthMask(GL_TRUE);
@@ -336,6 +334,12 @@ void render_begin(int width, int height, Mat4 view, Mat4 projection, const Rende
     gl.FrontFace(GL_CW); /* Direct3D's front faces are clockwise */
     gl.CullFace(GL_BACK);
     gl.BlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    render_set_camera(view, projection, light);
+}
+
+void render_set_camera(Mat4 view, Mat4 projection, const RenderLight *light)
+{
+    Vec3 dir = vec3_normalize(vec3(light->direction[0], light->direction[1], light->direction[2]));
 
     r.view_projection = mat4_multiply(view, mat4_d3d_to_gl_depth(projection));
     gl.UseProgram(r.program);
@@ -344,6 +348,17 @@ void render_begin(int width, int height, Mat4 view, Mat4 projection, const Rende
     gl.Uniform4fv(r.u_light_diffuse, 1, light->diffuse);
     gl.Uniform1i(r.u_texture, 0);
     gl.ActiveTexture(GL_TEXTURE0);
+}
+
+void render_viewport(int x, int y, int width, int height)
+{
+    gl.Viewport(x, y, width, height);
+}
+
+void render_clear_depth(void)
+{
+    gl.DepthMask(GL_TRUE);
+    gl.Clear(GL_DEPTH_BUFFER_BIT);
 }
 
 void render_begin_2d(float width, float height)

@@ -146,3 +146,16 @@ bool save_decode_progress(const unsigned char *data, size_t size, int progress[S
     }
     return true;
 }
+
+unsigned char *save_encode_progress(const int progress[SAVE_MAX_LEVELS][3], size_t *size)
+{
+    unsigned char raw[PROGRESS_SIZE];
+    int i;
+
+    for (i = 0; i < SAVE_MAX_LEVELS; i++) {
+        put_int(raw + i * 12, progress[i][0]);
+        put_int(raw + i * 12 + 4, progress[i][1]);
+        put_int(raw + i * 12 + 8, progress[i][2]);
+    }
+    return to_text_mode(raw, sizeof(raw), size);
+}

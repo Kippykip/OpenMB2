@@ -302,6 +302,9 @@ typedef struct Play {
 /* Prize names as the files call them ("incbat"), "" for PRIZE_NONE. */
 const char *play_prize_name(PrizeKind kind);
 
+/* Read Prizes/<name>.txt for every kind (the play does this itself). */
+void play_load_prize_info(PrizeInfo info[PRIZE_KINDS]);
+
 /* Start a level. score and lives carry over between levels. */
 bool play_start(Play *play, Scene *scene, int score, int lives, float mouse_sensitivity);
 void play_free(Play *play);

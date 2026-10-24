@@ -40,9 +40,11 @@ add_library(openmb2_core STATIC
     src/game/font.c
     src/game/lang.c
     src/game/level.c
+    src/game/menu.c
     src/game/params.c
     src/game/play.c
     src/game/save.c
+    src/game/scores.c
     src/game/scene.c
     src/game/textures.c
 )
@@ -93,8 +95,11 @@ endif()
 # The game
 # ---------------------------------------------------------------------------
 add_executable(openmb2
+    src/assets.c
     src/main.c
+    src/menu_screen.c
     src/play_screen.c
+    src/userfile.c
     src/audio/audio.c
     src/platform/gl.c
     src/render/render.c

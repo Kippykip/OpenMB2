@@ -4,6 +4,8 @@
 #include "params.h"
 #include "../core/config.h"
 
+#include <stdio.h>
+
 void params_set_defaults(Params *params)
 {
     params->sound_volume = 100;
@@ -39,4 +41,17 @@ bool params_load(Params *params, const char *game_path)
 
     config_free(&cfg);
     return true;
+}
+
+int params_format(const Params *params, char *out, size_t size)
+{
+    /* Written in text mode, so each line ends in CR LF. */
+    return snprintf(out, size,
+                    "{\r\n  soundvolume: %d\r\n  musicvolume: %d\r\n  window: %d\r\n"
+                    "  language: %d\r\n  resolution: %d\r\n  hallfame: %d\r\n"
+                    "  infravision: %d\r\n  act: %d\r\n  joystick: %d\r\n  msensivity: %f\r\n}\r\n",
+                    params->sound_volume, params->music_volume, params->windowed ? 1 : 0,
+                    params->language, params->resolution, params->hall_of_fame ? 1 : 0,
+                    params->infravision ? 1 : 0, params->activated ? 1 : 0,
+                    params->joystick ? 1 : 0, (double)params->mouse_sensitivity);
 }

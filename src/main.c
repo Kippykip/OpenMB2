@@ -5,13 +5,16 @@
  * main.c - OpenMB2 entry point.
  *
  * Finds the user's game folder, reads their settings, opens a window with
- * an OpenGL ES 2 context and runs the main loop. For now (milestone 3)
- * the loop goes straight to playing a level, see play_screen.h.
+ * an OpenGL ES 2 context and runs the main loop, which shows the menus
+ * (menu_screen.h) or a level (play_screen.h).
  *
  * Usage: openmb2 [--game <folder>] [--level <file>] [--debug]
  *                [--screenshot <file.bmp>] [--run-ms <ms>] [--autoplay]
  *
- *   --level       start on this level, e.g. "Levels1/001_Vesi.mb2"
+ *   --level       start on this level, e.g. "Levels1/001_Vesi.mb2",
+ *                 instead of the splash screen and menus
+ *   --menu <list> start on this menu page, e.g. "Menu/loptions.txt"
+ *                 (testing)
  *   --screenshot  save a frame as a .bmp and quit (for testing); with
  *                 --run-ms, after playing that long in steady 18 ms frames
  *   --autoplay    the bat follows the ball by itself (for testing)
@@ -20,10 +23,14 @@
 #include "core/config.h"
 #include "core/log.h"
 #include "core/vfs.h"
+#include "game/lang.h"
 #include "game/level.h"
 #include "game/params.h"
+#include "menu_screen.h"
 #include "platform/gl.h"
 #include "play_screen.h"
+#include "render/render.h"
+#include "userfile.h"
 
 #include <SDL.h>
 #include <stdio.h>
@@ -50,6 +57,7 @@ typedef struct App {
     const char *screenshot_path;
     int run_ms;          /* with screenshot_path: game time to play first */
     uint32_t last_ticks;
+    bool playing;        /* a level, not the menus */
 } App;
 
 static App g_app;
@@ -239,34 +247,99 @@ static void save_screenshot(const char *path, int width, int height)
     SDL_FreeSurface(surface);
 }
 
+/* The bat takes the mouse while a level is played; the menus draw their
+   own pointer where the system's is. */
+static void set_mouse_mode(bool focused)
+{
+    if (g_app.screenshot_path != NULL)
+        return;
+    SDL_SetRelativeMouseMode(focused && g_app.playing ? SDL_TRUE : SDL_FALSE);
+    SDL_ShowCursor(focused ? SDL_DISABLE : SDL_ENABLE);
+}
+
+static void show_menus(void)
+{
+    play_screen_stop();
+    g_app.playing = false;
+    set_mouse_mode(true);
+}
+
+static void start_play(void)
+{
+    const char *folder, *pad;
+    int level;
+
+    menu_screen_game(&folder, &level, &pad);
+    play_screen_set_options(g_app.params.mouse_sensitivity, g_app.params.infravision);
+    if (play_screen_start(folder, level, pad)) {
+        g_app.playing = true;
+        set_mouse_mode(true);
+    }
+}
+
 static void handle_event(const SDL_Event *event)
 {
     switch (event->type) {
     case SDL_QUIT:
         g_app.running = false;
-        break;
+        return;
     case SDL_KEYDOWN:
-        if (event->key.keysym.sym == SDLK_ESCAPE) {
-            if (!play_screen_escape())
-                g_app.running = false;
-        }
-        else if (event->key.keysym.sym == SDLK_RETURN && (event->key.keysym.mod & KMOD_ALT))
+        if (event->key.keysym.sym == SDLK_RETURN && (event->key.keysym.mod & KMOD_ALT)) {
             toggle_fullscreen();
-        else
-            play_screen_handle_event(event);
+            return;
+        }
+        if (g_app.playing && event->key.keysym.sym == SDLK_ESCAPE) {
+            /* Escape pauses; again, it's the main menu (0x41bee4). */
+            if (!play_screen_escape()) {
+                show_menus();
+                menu_screen_show_main();
+            }
+            return;
+        }
         break;
     case SDL_WINDOWEVENT:
-        /* The bat takes the mouse while the window has focus. */
-        if (event->window.event == SDL_WINDOWEVENT_FOCUS_GAINED)
-            SDL_SetRelativeMouseMode(SDL_TRUE);
-        else if (event->window.event == SDL_WINDOWEVENT_FOCUS_LOST) {
-            SDL_SetRelativeMouseMode(SDL_FALSE);
-            play_screen_pause(); /* as the original does when it loses focus */
+        if (event->window.event == SDL_WINDOWEVENT_FOCUS_GAINED) {
+            set_mouse_mode(true);
+        } else if (event->window.event == SDL_WINDOWEVENT_FOCUS_LOST) {
+            set_mouse_mode(false);
+            if (g_app.playing)
+                play_screen_pause(); /* as the original does when it loses focus */
         }
-        break;
+        return;
     default:
-        play_screen_handle_event(event);
         break;
+    }
+    if (g_app.playing)
+        play_screen_handle_event(event);
+    else
+        menu_screen_handle_event(event);
+}
+
+static void frame(int width, int height, uint32_t ms)
+{
+    if (g_app.playing) {
+        switch (play_screen_frame(width, height, ms)) {
+        case PLAY_SCREEN_GAME_OVER: {
+            int score = play_screen_score();
+            show_menus();
+            menu_screen_show_game_over(score);
+            break;
+        }
+        case PLAY_SCREEN_PACK_DONE: {
+            int score = play_screen_score();
+            show_menus();
+            menu_screen_show_end_of_pack(score);
+            break;
+        }
+        default:
+            break;
+        }
+        return;
+    }
+    switch (menu_screen_frame(width, height, ms)) {
+    case MENU_ACTION_PLAY: start_play(); break;
+    case MENU_ACTION_QUIT: g_app.running = false; break;
+    default: break;
     }
 }
 
@@ -282,14 +355,14 @@ static void run_frame(void)
     if (g_app.screenshot_path != NULL) {
         /* Testing: play in steady steps, then save the last frame. */
         int frames = g_app.run_ms / 18, i;
-        for (i = 0; i < frames; i++)
-            play_screen_frame(width, height, 18);
-        play_screen_frame(width, height, 0);
+        for (i = 0; i < frames && g_app.running; i++)
+            frame(width, height, 18);
+        frame(width, height, 0);
         save_screenshot(g_app.screenshot_path, width, height);
         g_app.running = false;
     } else {
         Uint32 now = SDL_GetTicks();
-        play_screen_frame(width, height, now - g_app.last_ticks);
+        frame(width, height, now - g_app.last_ticks);
         g_app.last_ticks = now;
     }
     SDL_GL_SwapWindow(g_app.window);
@@ -308,9 +381,20 @@ static void show_error(const char *message)
     SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "OpenMB2", message, NULL);
 }
 
+static void save_params(void)
+{
+    char text[512];
+    int length = params_format(&g_app.params, text, sizeof(text));
+    if (length > 0 && length < (int)sizeof(text))
+        userfile_write("params.txt", text, (size_t)length);
+}
+
 static void shutdown_app(void)
 {
+    menu_screen_shutdown();
     play_screen_shutdown();
+    lang_free();
+    render_shutdown();
     audio_shutdown();
     if (g_app.gl_context != NULL)
         SDL_GL_DeleteContext(g_app.gl_context);
@@ -322,7 +406,7 @@ static void shutdown_app(void)
 
 int main(int argc, char **argv)
 {
-    const char *game_folder = NULL;
+    const char *game_folder = NULL, *start_level = NULL, *start_menu = NULL;
     PlayScreenOptions options;
     unsigned seed = (unsigned)time(NULL);
     int i;
@@ -335,7 +419,9 @@ int main(int argc, char **argv)
         if (strcmp(argv[i], "--game") == 0 && i + 1 < argc)
             game_folder = argv[++i];
         else if (strcmp(argv[i], "--level") == 0 && i + 1 < argc)
-            options.start_level = argv[++i];
+            start_level = argv[++i];
+        else if (strcmp(argv[i], "--menu") == 0 && i + 1 < argc)
+            start_menu = argv[++i];
         else if (strcmp(argv[i], "--screenshot") == 0 && i + 1 < argc)
             g_app.screenshot_path = argv[++i];
         else if (strcmp(argv[i], "--run-ms") == 0 && i + 1 < argc)
@@ -381,17 +467,23 @@ int main(int argc, char **argv)
     audio_init(g_app.params.sound_volume, g_app.params.music_volume);
     options.mouse_sensitivity = g_app.params.mouse_sensitivity;
     options.infravision = g_app.params.infravision;
-    options.language = g_app.params.language;
-    if (!play_screen_init(g_app.window, &options)) {
+    if (!render_init() || !play_screen_init(g_app.window, &options) ||
+        !menu_screen_init(g_app.window, &g_app.params, false)) {
         show_error("Couldn't start the game. See the log for details.");
         shutdown_app();
         return 1;
     }
+    lang_load(g_app.params.language);
 
     g_app.running = true;
     g_app.last_ticks = SDL_GetTicks();
-    if (g_app.screenshot_path == NULL)
-        SDL_SetRelativeMouseMode(SDL_TRUE);
+    if (start_level != NULL && play_screen_start_file(start_level))
+        g_app.playing = true;
+    else if (start_menu != NULL)
+        menu_screen_show_page(start_menu);
+    else
+        menu_screen_show_splash();
+    set_mouse_mode(true);
 #ifdef __EMSCRIPTEN__
     emscripten_set_main_loop(run_frame, 0, 1);
 #else
@@ -399,6 +491,7 @@ int main(int argc, char **argv)
         run_frame();
 #endif
 
+    save_params();
     shutdown_app();
     return 0;
 }

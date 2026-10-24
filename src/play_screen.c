@@ -2,6 +2,8 @@
 /* Copyright (C) 2026 the OpenMB2 contributors */
 
 #include "play_screen.h"
+#include "assets.h"
+#include "userfile.h"
 #include "audio/audio.h"
 #include "core/config.h"
 #include "core/log.h"
@@ -20,16 +22,10 @@
 #include <string.h>
 
 #define MAX_LEVELS 256
-
-/* The original looks for level packs in these folders. */
-static const char *const k_pack_folders[] = {
-    "Levels", "Levels1", "Levels2", "Levels3", "Levels4",
-    "Levels5", "Levels6", "Levels7", "Levels0r"
-};
-#define PACK_FOLDER_COUNT ((int)(sizeof(k_pack_folders) / sizeof(k_pack_folders[0])))
+#define MAX_PACKS 16
 
 typedef struct Pack {
-    const char *folder;
+    char folder[64];
     char (*levels)[128];
     int level_count;
 } Pack;
@@ -55,7 +51,7 @@ typedef struct Camera {
 static struct {
     SDL_Window *window;
     PlayScreenOptions options;
-    Pack packs[PACK_FOLDER_COUNT];
+    Pack packs[MAX_PACKS];
     int pack_count;
     int pack, level; /* what's showing */
     Scene scene;
@@ -113,7 +109,8 @@ static struct {
     int message_count;
     bool paused;
     uint32_t time;     /* ms, for scrolling textures */
-    char title[320];
+    char pad[260];     /* the bat's pad file, "" for the level's own */
+    PlayScreenResult result;
 } v;
 
 /* ------------------------------------------------------------------------ */
@@ -137,16 +134,43 @@ static int compare_names(const void *a, const void *b)
     return strcmp((const char *)a, (const char *)b);
 }
 
-static void find_packs(void)
+static void add_pack_folder(const char *name, bool is_dir, void *user)
 {
+    char (*folders)[64] = user;
     int i;
 
-    for (i = 0; i < PACK_FOLDER_COUNT; i++) {
+    if (!is_dir || SDL_strncasecmp(name, "Level", 5) != 0)
+        return;
+    for (i = 0; i < MAX_PACKS; i++) {
+        if (folders[i][0] == '\0') {
+            snprintf(folders[i], 64, "%s", name);
+            return;
+        }
+    }
+}
+
+static int compare_folders(const void *a, const void *b)
+{
+    const char *x = a, *y = b;
+    if (x[0] == '\0' || y[0] == '\0')
+        return (x[0] == '\0') - (y[0] == '\0');
+    return SDL_strcasecmp(x, y);
+}
+
+/* Every folder whose name starts with "Level" and holds levels, by name
+   (0x417b14), as the pack select page lists them. */
+static void find_packs(void)
+{
+    char folders[MAX_PACKS][64];
+    int i;
+
+    memset(folders, 0, sizeof(folders));
+    vfs_list("", add_pack_folder, folders);
+    qsort(folders, MAX_PACKS, sizeof(folders[0]), compare_folders);
+    for (i = 0; i < MAX_PACKS && folders[i][0] != '\0'; i++) {
         Pack *pack = &v.packs[v.pack_count];
 
-        if (!vfs_is_dir(k_pack_folders[i]))
-            continue;
-        pack->folder = k_pack_folders[i];
+        snprintf(pack->folder, sizeof(pack->folder), "%s", folders[i]);
         pack->levels = calloc(MAX_LEVELS, sizeof(*pack->levels));
         pack->level_count = 0;
         if (pack->levels == NULL)
@@ -184,55 +208,6 @@ static struct {
 /* ------------------------------------------------------------------------ */
 /* Turning a scene into GPU meshes                                          */
 /* ------------------------------------------------------------------------ */
-
-static unsigned texture_for_name(const char *name)
-{
-    char path[160];
-    if (!texture_find_image(name, path, sizeof(path))) {
-        if (name[0] != '\0')
-            log_warn("texture '%s' not found", name);
-        return render_texture(NULL);
-    }
-    return render_texture(path);
-}
-
-/*
- * A model from SkinMeshes: one part per material. override replaces the
- * texture of every part in override_frame ("" = all parts). keep, if not
- * NULL, picks the parts to draw.
- */
-static void build_model_mesh(RenderMesh *mesh, const XModel *model, uint32_t flags,
-                             const char *override, const char *override_frame,
-                             bool (*keep)(const XPart *part))
-{
-    int i;
-
-    if (!render_mesh_create(mesh, model->vertices, model->vertex_count))
-        return;
-    for (i = 0; i < model->part_count; i++) {
-        const XPart *xpart = &model->parts[i];
-        const XMaterial *material = xpart->material >= 0 ? &model->materials[xpart->material] : NULL;
-        RenderPart part;
-        bool overridden = override[0] != '\0' &&
-                          (override_frame[0] == '\0' || strcmp(xpart->frame, override_frame) == 0);
-
-        if (keep != NULL && !keep(xpart))
-            continue;
-        memset(&part, 0, sizeof(part));
-        part.first_vertex = xpart->first_vertex;
-        part.vertex_count = xpart->vertex_count;
-        part.flags = flags;
-        part.pose = i;
-        if (material != NULL) {
-            memcpy(part.diffuse, material->diffuse, sizeof(part.diffuse));
-            part.texture = texture_for_name(overridden ? override : material->texture);
-        } else {
-            part.diffuse[0] = part.diffuse[1] = part.diffuse[2] = part.diffuse[3] = 1.0f;
-            part.texture = texture_for_name(overridden ? override : "");
-        }
-        render_mesh_add_part(mesh, &part);
-    }
-}
 
 /* All brick batches go in one buffer, one part per texture script. */
 static void add_brick_part(const RenderPart *part, Vec3 centre)
@@ -295,7 +270,7 @@ static void build_brick_mesh(void)
             if (script->flags & TEXFLAG_ALPHA)
                 part.flags &= ~(uint32_t)RENDER_TWO_SIDED;
             part.texture = (script->flags & TEXFLAG_FAKE) ? render_texture(NULL)
-                                                           : texture_for_name(script->image);
+                                                           : asset_texture(script->image);
             /* movex/movey and scalex/scaley are steps per frame drawn (0x410110),
                taken at the original's ~60 fps. Water's scaley takes it from
                0.75 to 1.25 in 200 frames, so its ripples turn round every 3.3 s. */
@@ -385,7 +360,7 @@ static void build_background_mesh(void)
     int i;
 
     render_mesh_destroy(&v.background);
-    build_model_mesh(&v.background, &v.scene.background_model,
+    asset_model_mesh(&v.background, &v.scene.background_model,
                      0, v.scene.background_texture, "", NULL);
     /* The sky sphere is lit like everything else, but fon.x scales it up
        2.5 times in its frame, and Direct3D lights it with normals shrunk
@@ -408,7 +383,7 @@ static void build_background_mesh(void)
 static void build_board_mesh(void)
 {
     render_mesh_destroy(&v.board);
-    build_model_mesh(&v.board, &v.scene.board_model, 0, v.scene.board_texture, "Doska", NULL);
+    asset_model_mesh(&v.board, &v.scene.board_model, 0, v.scene.board_texture, "Doska", NULL);
 }
 
 static void reset_camera(void)
@@ -537,26 +512,6 @@ static bool bat_part_shown(const XPart *part, BatMode mode)
     return plain_bat_part(part) || (weapon != NULL && in_any_frame(part, weapon));
 }
 
-/* The bat model named by the level's pad file ("grdata"). */
-/* Pose every frame of a model at one time, as objects do with their age (0x401960). */
-static Mat4 *pose_model(const XModel *m, unsigned time)
-{
-    unsigned *times = malloc((size_t)(m->frame_count + 1) * sizeof(*times));
-    Mat4 *pose = malloc((size_t)(m->part_count + 1) * sizeof(*pose));
-    int i;
-
-    if (times == NULL || pose == NULL) {
-        free(times);
-        free(pose);
-        return NULL;
-    }
-    for (i = 0; i < m->frame_count; i++)
-        times[i] = time;
-    xmodel_pose(m, times, pose);
-    free(times);
-    return pose;
-}
-
 /* Set a frame's animation time and its children's, as 0x421a90 does. */
 static void set_frame_time(const XModel *m, unsigned *times, const char *name, unsigned time)
 {
@@ -647,7 +602,7 @@ static Mat4 *pose_bat(void)
 static void load_model(const char *path, XModel *model, RenderMesh *mesh)
 {
     if (xfile_load(model, path))
-        build_model_mesh(mesh, model, 0, "", "", NULL);
+        asset_model_mesh(mesh, model, 0, "", "", NULL);
     else
         log_warn("can't load the model %s", path);
 }
@@ -747,7 +702,7 @@ static void draw_animals(RenderPass kind, float t)
         if (b->drop != 0.0f)
             world = mat4_multiply(world, mat4_translation(0.0f, -b->drop, 0.0f));
         /* A cannon stands still between shots (0x4077b0). */
-        pose = pose_model(&v.animals[k].model,
+        pose = asset_pose(&v.animals[k].model,
                           b->animal->kind == MODEL_CANNON ? b->animation_ms : b->animation_ms + v.time);
         render_draw_posed(&v.animals[k].mesh, world, pose, kind, t);
         free(pose);
@@ -757,7 +712,9 @@ static void draw_animals(RenderPass kind, float t)
 static void load_bat_model(void)
 {
     char path[128];
-    const char *pad = v.scene.level.slots[LEVEL_SLOT_PAD];
+    /* The bat picked on the pack page (0x414579); started with --level,
+       the level's own. */
+    const char *pad = v.pad[0] != '\0' ? v.pad : v.scene.level.slots[LEVEL_SLOT_PAD];
     Config cfg;
 
     xfile_free(&v.bat_model);
@@ -769,7 +726,7 @@ static void load_bat_model(void)
     }
     v.turbine_time = XFRAME_REST;
     if (xfile_load(&v.bat_model, path))
-        build_model_mesh(&v.bat, &v.bat_model, 0, "", "", NULL);
+        asset_model_mesh(&v.bat, &v.bat_model, 0, "", "", NULL);
     else
         log_warn("can't load the bat model %s", path);
 }
@@ -818,26 +775,6 @@ static void play_sound(const char *name, int volume, int pan, void *user)
 {
     (void)user;
     audio_play(name, volume, pan);
-}
-
-static void update_title(void)
-{
-    char title[320];
-    const char *state = "";
-
-    if (!v.playing)
-        return;
-    switch (v.play.state) {
-    case PLAY_LEVEL_DONE: state = "  -  level complete!"; break;
-    case PLAY_GAME_OVER: state = "  -  game over (click to try again)"; break;
-    default: break;
-    }
-    snprintf(title, sizeof(title), "OpenMB2 - Score %d   Lives %d   Level %d   %s%s",
-             v.play.score, v.play.lives, v.level + 1, v.packs[v.pack].levels[v.level], state);
-    if (strcmp(title, v.title) != 0) {
-        snprintf(v.title, sizeof(v.title), "%s", title);
-        SDL_SetWindowTitle(v.window, title);
-    }
 }
 
 /* The level tunes are Music/mb0.txt to mb3.txt (0x41474f, 0x41c00a). */
@@ -950,65 +887,11 @@ static void load_level(int pack, int level)
     log_info("level %s: %d bricks (%d to break), %d other objects, board %s", path,
              v.scene.brick_count, v.play.bricks_left, v.scene.other_count,
              v.scene.level.slots[LEVEL_SLOT_BOARD]);
-    update_title();
 }
-
-/* ------------------------------------------------------------------------ */
 
 /* ------------------------------------------------------------------------ */
 /* Saved games                                                              */
 /* ------------------------------------------------------------------------ */
-
-/* A file in the game folder, which may not exist yet. */
-static void game_file_path(const char *name, char *out, size_t size)
-{
-    const char *root = vfs_root();
-    size_t n = root != NULL ? strlen(root) : 0;
-
-    if (vfs_real_path(name, out, size))
-        return;
-    snprintf(out, size, "%s%s%s", root != NULL ? root : ".",
-             n > 0 && (root[n - 1] == '/' || root[n - 1] == '\\') ? "" : "/", name);
-}
-
-static unsigned char *read_game_file(const char *name, size_t *size)
-{
-    char path[1024];
-    SDL_RWops *rw;
-    Sint64 length;
-    unsigned char *data;
-
-    game_file_path(name, path, sizeof(path));
-    rw = SDL_RWFromFile(path, "rb");
-    if (rw == NULL)
-        return NULL;
-    length = SDL_RWsize(rw);
-    data = length > 0 ? malloc((size_t)length) : NULL;
-    if (data != NULL && SDL_RWread(rw, data, 1, (size_t)length) != (size_t)length) {
-        free(data);
-        data = NULL;
-    }
-    SDL_RWclose(rw);
-    *size = (size_t)length;
-    return data;
-}
-
-static bool write_game_file(const char *name, const unsigned char *data, size_t size)
-{
-    char path[1024];
-    SDL_RWops *rw;
-    bool ok;
-
-    game_file_path(name, path, sizeof(path));
-    rw = SDL_RWFromFile(path, "wb");
-    if (rw == NULL) {
-        log_warn("can't write %s: %s", path, SDL_GetError());
-        return false;
-    }
-    ok = SDL_RWwrite(rw, data, 1, size) == size;
-    SDL_RWclose(rw);
-    return ok;
-}
 
 static bool in_level(void)
 {
@@ -1039,7 +922,7 @@ static void save_game(const char *name)
         snprintf(save->names[i], sizeof(save->names[i]), "%s", pack->levels[i]);
     /* Which levels are open: the original's own progress file if there is
        one, and every level up to this one. */
-    data = read_game_file(save->progress_file, &size);
+    data = userfile_read(save->progress_file, &size);
     if (data != NULL)
         save_decode_progress(data, size, save->progress);
     free(data);
@@ -1047,7 +930,7 @@ static void save_game(const char *name)
         save->progress[i][0] = 1;
 
     data = save_encode(save, &size);
-    if (data != NULL && write_game_file(name, data, size))
+    if (data != NULL && userfile_write(name, data, size))
         log_info("saved %s: %s level %d, score %d, lives %d", name, pack->folder, v.level + 1, v.score,
                  v.lives);
     free(data);
@@ -1064,7 +947,7 @@ static void load_game(const char *name)
 
     if (!in_level())
         return;
-    data = read_game_file(name, &size);
+    data = userfile_read(name, &size);
     if (data == NULL) {
         log_info("no %s to load", name);
         return;
@@ -1100,55 +983,100 @@ static void load_game(const char *name)
 
 bool play_screen_init(SDL_Window *window, const PlayScreenOptions *options)
 {
-    const char *start_level = options->start_level;
-    int pack = 0, level = 0, i, j;
-
     memset(&v, 0, sizeof(v));
     v.window = window;
     v.options = *options;
     v.lives = START_LIVES;
-    if (!render_init())
-        return false;
     find_packs();
     if (v.pack_count == 0) {
         log_error("no level packs found");
         return false;
     }
-
-    if (start_level != NULL) {
-        char wanted[256], candidate[256];
-        vfs_normalise(start_level, wanted, sizeof(wanted));
-        for (i = 0; i < v.pack_count; i++) {
-            for (j = 0; j < v.packs[i].level_count; j++) {
-                char path[256];
-                snprintf(path, sizeof(path), "%s/%s", v.packs[i].folder, v.packs[i].levels[j]);
-                vfs_normalise(path, candidate, sizeof(candidate));
-                if (strcmp(candidate, wanted) == 0) {
-                    pack = i;
-                    level = j;
-                }
-            }
-        }
-    }
     load_model("SkinMeshes/s_ball.x", &v.ball_model, &v.ball);
     load_model("SkinMeshes/s_explosive.x", &v.explosive_model, &v.explosive_ball);
     load_model("SkinMeshes/s_gipnoz.x", &v.hypnotic_model, &v.hypnotic_ball);
     v.test_prize = PRIZE_NONE + 1;
-    v.particle_texture = texture_for_name("particle.png");
-    v.bolt_texture = texture_for_name("lighting.png");
-    v.rubber_texture = texture_for_name("rubber.png");
-    v.explosion_texture = texture_for_name("explose.png");
-    v.shadow_texture = texture_for_name("bshadow.png");
-    v.glow_texture = texture_for_name("infravis.png");
-    v.billboard_texture = texture_for_name("Billboards.png");
+    v.particle_texture = asset_texture("particle.png");
+    v.bolt_texture = asset_texture("lighting.png");
+    v.rubber_texture = asset_texture("rubber.png");
+    v.explosion_texture = asset_texture("explose.png");
+    v.shadow_texture = asset_texture("bshadow.png");
+    v.glow_texture = asset_texture("infravis.png");
+    v.billboard_texture = asset_texture("Billboards.png");
     font_load(&v.text_font, "Text/text.txt");
     font_load(&v.service_font, "Text/service.txt");
-    v.font_texture = texture_for_name("font.png");
-    v.service_texture = texture_for_name("service.png");
-    v.icons_texture = texture_for_name("icons.png");
-    lang_load(options->language);
-    load_level(pack, level);
+    v.font_texture = asset_texture("font.png");
+    v.service_texture = asset_texture("service.png");
+    v.icons_texture = asset_texture("icons.png");
     return true;
+}
+
+int play_screen_pack_count(void)
+{
+    return v.pack_count;
+}
+
+const char *play_screen_pack_folder(int pack)
+{
+    return pack >= 0 && pack < v.pack_count ? v.packs[pack].folder : "";
+}
+
+void play_screen_set_options(float mouse_sensitivity, bool infravision)
+{
+    v.options.mouse_sensitivity = mouse_sensitivity;
+    v.options.infravision = infravision;
+}
+
+/* State 1 (0x418b70): a new game, 3 lives and no score. */
+bool play_screen_start(const char *folder, int level, const char *pad)
+{
+    int i;
+
+    for (i = 0; i < v.pack_count; i++) {
+        if (SDL_strcasecmp(v.packs[i].folder, folder) == 0) {
+            snprintf(v.pad, sizeof(v.pad), "%s", pad != NULL ? pad : "");
+            v.score = 0;
+            v.lives = START_LIVES;
+            v.result = PLAY_SCREEN_PLAYING;
+            if (level < 0 || level >= v.packs[i].level_count)
+                level = 0;
+            load_level(i, level);
+            return v.scene_loaded;
+        }
+    }
+    log_warn("no level pack %s", folder);
+    return false;
+}
+
+bool play_screen_start_file(const char *path)
+{
+    char wanted[256], candidate[256];
+    int i, j;
+
+    vfs_normalise(path, wanted, sizeof(wanted));
+    for (i = 0; i < v.pack_count; i++) {
+        for (j = 0; j < v.packs[i].level_count; j++) {
+            char file[256];
+            snprintf(file, sizeof(file), "%s/%s", v.packs[i].folder, v.packs[i].levels[j]);
+            vfs_normalise(file, candidate, sizeof(candidate));
+            if (strcmp(candidate, wanted) == 0)
+                return play_screen_start(v.packs[i].folder, j, NULL);
+        }
+    }
+    log_warn("no level %s", path);
+    return false;
+}
+
+void play_screen_stop(void)
+{
+    unload_level();
+    v.paused = false;
+    v.message_count = 0;
+}
+
+int play_screen_score(void)
+{
+    return v.playing ? v.play.score : v.score;
 }
 
 void play_screen_shutdown(void)
@@ -1170,7 +1098,6 @@ void play_screen_shutdown(void)
     render_mesh_destroy(&v.billboards);
     render_mesh_destroy(&v.hud);
     free(v.brick_centres);
-    lang_free();
     free(unblended.bricks);
     memset(&unblended, 0, sizeof(unblended));
     for (i = 0; i < SHOT_KINDS; i++) {
@@ -1194,8 +1121,33 @@ void play_screen_shutdown(void)
     }
     for (i = 0; i < v.pack_count; i++)
         free(v.packs[i].levels);
-    render_shutdown();
     memset(&v, 0, sizeof(v));
+}
+
+/* Finishing a level opens the next in s<pack>.sav (0x4197f1), which the
+   level pages read to show which can be played. */
+static void open_level(int level)
+{
+    int (*progress)[3] = calloc(SAVE_MAX_LEVELS, sizeof(*progress));
+    unsigned char *data;
+    char name[96];
+    size_t size;
+
+    if (progress == NULL)
+        return;
+    snprintf(name, sizeof(name), "s%s.sav", v.packs[v.pack].folder);
+    data = userfile_read(name, &size);
+    if (data != NULL)
+        save_decode_progress(data, size, progress);
+    free(data);
+    progress[0][0] = 1;
+    if (level < SAVE_MAX_LEVELS)
+        progress[level][0] = 1;
+    data = save_encode_progress((const int (*)[3])progress, &size);
+    if (data != NULL)
+        userfile_write(name, data, size);
+    free(data);
+    free(progress);
 }
 
 /* Testing levels by hand: jump straight to another one, with a new game. */
@@ -1219,8 +1171,7 @@ void play_screen_pause(void)
 
 bool play_screen_escape(void)
 {
-    /* Escape pauses; again, it leaves for the main menu (0x41bee4), which
-       for now means quitting. */
+    /* Escape pauses; again, it leaves for the main menu (0x41bee4). */
     if (v.paused || !can_pause())
         return false;
     v.paused = true;
@@ -1303,13 +1254,10 @@ void play_screen_handle_event(const SDL_Event *event)
     case SDL_MOUSEBUTTONDOWN:
         if (event->button.button == SDL_BUTTON_RIGHT) {
             v.dragging = true;
-        } else if (event->button.button == SDL_BUTTON_LEFT && v.playing) {
-            if (v.play.state == PLAY_GAME_OVER)
-                jump_to_level(v.pack, v.level);
-            else if (!v.camera.flying) {
-                play_click(&v.play);
-                play_hold_trigger(&v.play, true);
-            }
+        } else if (event->button.button == SDL_BUTTON_LEFT && v.playing && !v.camera.flying &&
+                   v.play.state != PLAY_GAME_OVER) {
+            play_click(&v.play);
+            play_hold_trigger(&v.play, true);
         }
         break;
     case SDL_MOUSEBUTTONUP:
@@ -1409,15 +1357,23 @@ static void update(uint32_t ms)
         v.fade += (float)ms * 0.001f;
         if (v.fade > 1.0f) {
             v.fade = 1.0f;
-            if (v.play.state == PLAY_LEVEL_DONE) {
-                /* Lives carry over (no extra life: Lives stays the same in the original). */
-                v.score = v.play.score;
-                v.lives = v.play.lives;
+            /* Lives carry over (no extra life: Lives stays the same in the original). */
+            v.score = v.play.score;
+            v.lives = v.play.lives;
+            if (v.play.state == PLAY_GAME_OVER) {
+                /* 0x8000 / 0x800: the menus take it from here. */
+                unload_level();
+                v.result = PLAY_SCREEN_GAME_OVER;
+            } else if (v.level + 1 >= v.packs[v.pack].level_count) {
+                /* State 0x2000 finds no next level: the end of the pack. */
+                open_level(v.level + 1);
+                unload_level();
+                v.result = PLAY_SCREEN_PACK_DONE;
+            } else {
+                open_level(v.level + 1);
                 load_level(v.pack, v.level + 1);
-                return;
             }
         }
-        update_title();
         return;
     }
     if (v.options.autoplay && !v.camera.flying)
@@ -1429,7 +1385,6 @@ static void update(uint32_t ms)
         build_brick_mesh();
         v.play.bricks_changed = false;
     }
-    update_title();
 }
 
 /*
@@ -2196,7 +2151,7 @@ static void draw_hud(int width, int height)
     render_draw(&v.hud, mat4_identity(), RENDER_PASS_ALL, 0.0f);
 }
 
-void play_screen_frame(int width, int height, uint32_t ms)
+PlayScreenResult play_screen_frame(int width, int height, uint32_t ms)
 {
     const Camera *c = &v.camera;
     Mat4 view, projection, identity, board;
@@ -2239,7 +2194,7 @@ void play_screen_frame(int width, int height, uint32_t ms)
     }
     render_begin(width, height, view, projection, &light);
     if (!v.scene_loaded)
-        return;
+        return v.result;
     if (v.playing && v.options.smooth)
         blend_positions();
     {
@@ -2247,9 +2202,9 @@ void play_screen_frame(int width, int height, uint32_t ms)
         Mat4 bat_matrix = mat4_identity(), ball_matrices[PLAY_MAX_BALLS];
         Mat4 prize_matrices[PLAY_MAX_PRIZES], *prize_poses[PLAY_MAX_PRIZES];
         const RenderMesh *ball_meshes[PLAY_MAX_BALLS];
-        Mat4 *bat_pose = NULL, *ball_pose = pose_model(&v.ball_model, (unsigned)v.time);
-        Mat4 *explosive_pose = pose_model(&v.explosive_model, (unsigned)v.time);
-        Mat4 *hypnotic_pose = pose_model(&v.hypnotic_model, (unsigned)v.time);
+        Mat4 *bat_pose = NULL, *ball_pose = asset_pose(&v.ball_model, (unsigned)v.time);
+        Mat4 *explosive_pose = asset_pose(&v.explosive_model, (unsigned)v.time);
+        Mat4 *hypnotic_pose = asset_pose(&v.hypnotic_model, (unsigned)v.time);
         const Mat4 *ball_poses[PLAY_MAX_BALLS];
         int pass;
 
@@ -2296,7 +2251,7 @@ void play_screen_frame(int width, int height, uint32_t ms)
                 prize_matrices[i] = mat4_multiply(
                     mat4_scaling(prize->scale, prize->scale, prize->scale),
                     mat4_translation(prize->position.x, prize->position.y, prize->position.z));
-                prize_poses[i] = pose_model(&v.prize_models[prize->kind], prize->age);
+                prize_poses[i] = asset_pose(&v.prize_models[prize->kind], prize->age);
             }
         }
         for (pass = 0; pass < 2; pass++) {
@@ -2391,4 +2346,5 @@ void play_screen_frame(int width, int height, uint32_t ms)
     if (v.playing && v.options.smooth)
         unblend_positions();
     draw_hud(width, height);
+    return v.result;
 }
