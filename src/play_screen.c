@@ -122,6 +122,22 @@ static void find_packs(void)
     }
 }
 
+/* What blend_positions() moved, to put back after drawing. */
+typedef struct UnblendedBrick {
+    Vec3 position;
+    float tip, scale;
+} UnblendedBrick;
+
+static struct {
+    Vec3 balls[PLAY_MAX_BALLS], prizes[PLAY_MAX_PRIZES], bullets[PLAY_MAX_BULLETS];
+    Vec3 pieces[BAT_PIECES];
+    float spins[PLAY_MAX_BALLS];
+    UnblendedBrick *bricks;     /* one per scene brick */
+    int brick_capacity;
+    bool bricks_saved;          /* bricks[] holds this frame's bricks */
+    bool bricks_blended;        /* the baked bricks are blended ones */
+} unblended;
+
 /* ------------------------------------------------------------------------ */
 /* Turning a scene into GPU meshes                                          */
 /* ------------------------------------------------------------------------ */
@@ -633,6 +649,8 @@ void play_screen_shutdown(void)
     render_mesh_destroy(&v.bullet_shadows);
     render_mesh_destroy(&v.strings);
     render_mesh_destroy(&v.billboards);
+    free(unblended.bricks);
+    memset(&unblended, 0, sizeof(unblended));
     for (i = 0; i < WEAPON_COUNT; i++) {
         render_mesh_destroy(&v.bullet_meshes[i]);
         xfile_free(&v.bullet_models[i]);
@@ -678,6 +696,7 @@ void play_screen_handle_event(const SDL_Event *event)
             break;
         case SDLK_F10: /* OpenMB2's own: smooth motion on or off */
             v.options.smooth = !v.options.smooth;
+            v.play.bricks_changed = true; /* bake them where they really are */
             log_info("smooth motion %s", v.options.smooth ? "on" : "off");
             break;
         case SDLK_F6: /* like the original: the next tune */
@@ -883,13 +902,57 @@ static void make_overlay(RenderMesh *mesh, const XVertex *quads, int n, unsigned
  * between steps would show them standing still, so for drawing each is
  * put part way from where it was before the last step to where it is
  * now, and put back afterwards. A ball on the bat goes with the bat,
- * which the mouse moves between steps.
+ * which the mouse moves between steps. Falling, tipping and shrinking
+ * bricks are blended too, which means baking the bricks again; a brick
+ * that finished tipping in the last step has jumped to its new place and
+ * is drawn there.
  */
-static struct {
-    Vec3 balls[PLAY_MAX_BALLS], prizes[PLAY_MAX_PRIZES], bullets[PLAY_MAX_BULLETS];
-    Vec3 pieces[BAT_PIECES];
-    float spins[PLAY_MAX_BALLS];
-} unblended;
+
+static bool brick_moved(int i)
+{
+    const SceneBrick *b = &v.scene.bricks[i];
+    const PlayBrick *pb = &v.play.bricks[i];
+
+    return !b->removed && b->roll == pb->roll_from &&
+           (b->position.x != pb->from.x || b->position.y != pb->from.y ||
+            b->tip != pb->tip_from || b->scale != pb->scale_from);
+}
+
+/* Blends the bricks that moved in the last step, and bakes them if any did. */
+static void blend_bricks(float t)
+{
+    int i;
+    bool any = false;
+
+    unblended.bricks_saved = false;
+    if (unblended.brick_capacity < v.scene.brick_count) {
+        UnblendedBrick *grown = realloc(unblended.bricks, sizeof(*grown) * (size_t)v.scene.brick_count);
+        if (grown == NULL)
+            return;
+        unblended.bricks = grown;
+        unblended.brick_capacity = v.scene.brick_count;
+    }
+    for (i = 0; i < v.scene.brick_count; i++) {
+        SceneBrick *b = &v.scene.bricks[i];
+        const PlayBrick *pb = &v.play.bricks[i];
+        unblended.bricks[i].position = b->position;
+        unblended.bricks[i].tip = b->tip;
+        unblended.bricks[i].scale = b->scale;
+        unblended.bricks_saved = true;
+        if (!brick_moved(i))
+            continue;
+        b->position = vec3_add(pb->from, vec3_scale(vec3_sub(b->position, pb->from), t));
+        b->tip = pb->tip_from + (b->tip - pb->tip_from) * t;
+        b->scale = pb->scale_from + (b->scale - pb->scale_from) * t;
+        any = true;
+    }
+    /* Bake when something is blended, and once more after, to leave it where it is. */
+    if (any || unblended.bricks_blended) {
+        scene_bake_bricks(&v.scene);
+        build_brick_mesh();
+    }
+    unblended.bricks_blended = any;
+}
 
 static Vec3 vec3_lerp(Vec3 a, Vec3 b, float t)
 {
@@ -923,6 +986,7 @@ static void blend_positions(void)
         unblended.pieces[i] = play->bat.pieces[i].position;
         play->bat.pieces[i].position = vec3_lerp(play->bat.pieces[i].from, play->bat.pieces[i].position, t);
     }
+    blend_bricks(t);
 }
 
 static void unblend_positions(void)
@@ -940,6 +1004,11 @@ static void unblend_positions(void)
         play->bullets[i].position = unblended.bullets[i];
     for (i = 0; i < BAT_PIECES; i++)
         play->bat.pieces[i].position = unblended.pieces[i];
+    for (i = 0; unblended.bricks_saved && i < v.scene.brick_count; i++) {
+        v.scene.bricks[i].position = unblended.bricks[i].position;
+        v.scene.bricks[i].tip = unblended.bricks[i].tip;
+        v.scene.bricks[i].scale = unblended.bricks[i].scale;
+    }
 }
 
 /* A camera-facing square of half size (w, h) around p. */

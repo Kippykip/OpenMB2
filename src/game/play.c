@@ -1342,6 +1342,31 @@ static void new_ball(Play *play)
     ball_add(play, vec3(play->bat.position.x, 0.0f, play->bat.position.z + 0.5f), true);
 }
 
+/* Where everything is before a step, for drawing between steps. */
+static void remember_positions(Play *play)
+{
+    int i;
+
+    for (i = 0; i < play->ball_count; i++) {
+        play->balls[i].from = play->balls[i].position;
+        play->balls[i].spin_from = play->balls[i].spin;
+    }
+    for (i = 0; i < play->prize_count; i++)
+        play->prizes[i].from = play->prizes[i].position;
+    for (i = 0; i < play->bullet_count; i++)
+        play->bullets[i].from = play->bullets[i].position;
+    for (i = 0; i < BAT_PIECES; i++)
+        play->bat.pieces[i].from = play->bat.pieces[i].position;
+    for (i = 0; i < play->scene->brick_count; i++) {
+        const SceneBrick *b = &play->scene->bricks[i];
+        PlayBrick *pb = &play->bricks[i];
+        pb->from = b->position;
+        pb->tip_from = b->tip;
+        pb->roll_from = b->roll;
+        pb->scale_from = b->scale;
+    }
+}
+
 bool play_start(Play *play, Scene *scene, int score, int lives, float mouse_sensitivity)
 {
     int i;
@@ -1384,6 +1409,7 @@ bool play_start(Play *play, Scene *scene, int score, int lives, float mouse_sens
     new_ball(play);
     load_prize_info(play);
     load_weapons(play);
+    remember_positions(play);
     return true;
 }
 
@@ -1552,23 +1578,6 @@ static void step(Play *play, uint32_t ms)
     default:
         break;
     }
-}
-
-/* Where everything is before a step, for drawing between steps. */
-static void remember_positions(Play *play)
-{
-    int i;
-
-    for (i = 0; i < play->ball_count; i++) {
-        play->balls[i].from = play->balls[i].position;
-        play->balls[i].spin_from = play->balls[i].spin;
-    }
-    for (i = 0; i < play->prize_count; i++)
-        play->prizes[i].from = play->prizes[i].position;
-    for (i = 0; i < play->bullet_count; i++)
-        play->bullets[i].from = play->bullets[i].position;
-    for (i = 0; i < BAT_PIECES; i++)
-        play->bat.pieces[i].from = play->bat.pieces[i].position;
 }
 
 float play_blend(const Play *play)

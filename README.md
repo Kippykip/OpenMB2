@@ -49,7 +49,8 @@ it is a level viewer:
 
 The game itself runs in fixed 18 ms steps, as the original does. On
 screens faster than that, OpenMB2 draws the balls, prizes and shots part
-way between their last two steps so they move smoothly; the rules are
+way between their last two steps so they move smoothly, and falling,
+tipping and shrinking bricks too; the rules are
 untouched. `--no-smooth` (or F10) draws them only where each step leaves
 them, like the original.
 

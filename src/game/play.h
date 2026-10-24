@@ -184,6 +184,9 @@ typedef struct PlayBrick {
     bool counts;          /* must be broken to finish the level */
     int cell_x, cell_y, cell_z; /* where it is in the grid; the drawn position catches up */
     float target_x, target_y;   /* where it is falling or tipping to */
+    /* Its drawn place, turn and size when the last step began, to draw between steps. */
+    Vec3 from;
+    float tip_from, roll_from, scale_from;
 } PlayBrick;
 
 typedef enum PlayState {
