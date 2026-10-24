@@ -56,7 +56,7 @@ static SceneBrick decode_brick(const LevelObject *object)
     return b;
 }
 
-static Mat4 brick_matrix(const SceneBrick *b)
+Mat4 scene_brick_matrix(const SceneBrick *b)
 {
     float rx = 0.0f, ry = 0.0f, rz = 0.0f;
 
@@ -221,7 +221,7 @@ static void bake_brick_at(Scene *scene, ModelCache *cache, const SceneBrick *b, 
         snprintf(path, sizeof(path), "Meshes/%dheight%d.x", b->model, b->height);
     model = cache_get(cache, path);
     if (model != NULL)
-        bake_model(scene, model, world, b->texture, b->tile, b->cracks, false, false);
+        bake_model(scene, model, world, b->texture, b->tile, b->cracks + b->flash, false, false);
 
     if (b->flags & 0x80) {
         snprintf(path, sizeof(path), "Meshes/%ddophgt%d.x", b->model, b->height < 1 ? 1 : b->height);
@@ -234,7 +234,7 @@ static void bake_brick_at(Scene *scene, ModelCache *cache, const SceneBrick *b, 
 
 static void bake_brick(Scene *scene, ModelCache *cache, const SceneBrick *b)
 {
-    bake_brick_at(scene, cache, b, brick_matrix(b));
+    bake_brick_at(scene, cache, b, scene_brick_matrix(b));
 }
 
 /* A crumb: the brick's own model and rotations, spun, shrunk and moved. */
@@ -246,7 +246,7 @@ static void bake_crumb(Scene *scene, const SceneCrumb *c)
     b.position = vec3(0.0f, 0.0f, 0.0f);
     b.scale = 1.0f;
     b.tip = 0.0f;
-    world = brick_matrix(&b);
+    world = scene_brick_matrix(&b);
     world = mat4_multiply(world, mat4_scaling(c->scale, c->scale, c->scale));
     world = mat4_multiply(world, mat4_rotation_axis(c->axis, c->angle));
     world = mat4_multiply(world, mat4_translation(c->position.x, c->position.y, c->position.z));
@@ -301,13 +301,45 @@ void scene_bake_bricks(Scene *scene)
         scene->batches[i].vertex_count = 0;
     for (i = 0; i < scene->brick_count; i++) {
         const SceneBrick *b = &scene->bricks[i];
-        if (!b->hidden && (!b->removed || b->dying_ms > 0))
+        if (!b->hidden && b->animal == NULL && (!b->removed || b->dying_ms > 0))
             bake_brick(scene, scene->models, b);
     }
     for (i = 0; i < scene->crumb_count; i++)
         bake_crumb(scene, &scene->crumbs[i]);
     /* In texture order, which is the order the original draws them in. */
     qsort(scene->batches, (size_t)scene->batch_count, sizeof(*scene->batches), compare_batches);
+}
+
+const SceneAnimal *scene_animal(int type)
+{
+    static const SceneAnimal animals[] = {
+        { 0xb8, "b_sheep.x", "Sheep1.ogg", "Sheep2.ogg" },
+        { 0xba, "b_sheep.x", "Sheep1.ogg", "Sheep2.ogg" },
+        { 0xbc, "b_elk.x", "Elk1.ogg", "Elk2.ogg" },
+        { 0xbe, "b_cow.x", "Cow1.ogg", "Cow2.ogg" },
+        { 0xc0, "b_ostrich.x", "Ostrich1.ogg", "Ostrich2.ogg" },
+        { 0xc2, "b_pinguin.x", "Pinguin1.ogg", "Pinguin2.ogg" },
+        { 0xc4, "b_boy.x", "Boy1.ogg", "Boy2.ogg" },
+        { 0xc6, "b_girl.x", "Girl1.ogg", "Girl2.ogg" },
+        { 0xc8, "b_camel.x", "Camel1.ogg", "Camel2.ogg" },
+        { 0xca, "b_jiraf.x", "Jiraf1.ogg", "Jiraf2.ogg" },
+        { 0xcc, "b_pig.x", "Pig1.ogg", "Pig2.ogg" },
+        { 0xce, "b_rabbit.x", "Rabbit1.ogg", "Rabbit2.ogg" },
+        { 0xd0, "b_bird.x", "Bird1.ogg", "Bird2.ogg" },
+        { 0xd2, "b_santa.x", "Santa1.ogg", "Santa2.ogg" },
+        { 0xd4, "b_alien.x", "Alien1.ogg", "Alien2.ogg" },
+        { 0xd6, "b_alien2.x", "Alien1.ogg", "Alien2.ogg" },
+        { 0xd8, "b_ufo.x", "StarShip1.ogg", "StarShip2.ogg" },
+        { 0xda, "b_butterfly.x", "Butterfly1.ogg", "Butterfly2.ogg" },
+        { 0xdc, "b_elephant.x", "Elephant1.ogg", "Elephant2.ogg" },
+        { 0xde, "b_crocodile.x", "Crocodile1.ogg", "Crocodile2.ogg" },
+    };
+    size_t i;
+
+    for (i = 0; i < sizeof(animals) / sizeof(animals[0]); i++)
+        if (animals[i].type == type)
+            return &animals[i];
+    return NULL;
 }
 
 bool scene_load(Scene *scene, const char *level_path, int random)
@@ -359,6 +391,11 @@ bool scene_load(Scene *scene, const char *level_path, int random)
             *b = decode_brick(object);
             /* Glass (type 0x18) is invisible until the ball first hits it. */
             b->hidden = object->type == 0x18;
+        } else if (scene_animal(object->type) != NULL) {
+            SceneBrick *b = &scene->bricks[scene->brick_count++];
+            *b = decode_brick(object);
+            b->animal = scene_animal(object->type);
+            b->animation_ms = (uint32_t)(rand() % 5000);
         } else if (object->type == 0x64 || object->type == 0x90 || object->type == 0x68 ||
                    object->type == 0x94) {
             SceneBillboard *bb = &scene->billboards[scene->billboard_count++];

@@ -118,12 +118,96 @@ static void grid_remove(Play *play, int index)
 
 /* Take a brick away, score it and count it (0x403cc0 / 0x403d20). */
 static void prize_roll(Play *play, Vec3 at, PrizeKind kind);
+static float random_range(float low, float range);
+
+/*
+ * A burst of puffs of one colour (0x41f330): 16 of them, fewer when many
+ * are already about, thrown up and out a little, each 0.5 to 0.75 across.
+ */
+static void particle_burst(Play *play, Vec3 at, uint32_t color)
+{
+    int n = play->particle_count > 256 ? 4 : play->particle_count > 128 ? 8 : play->particle_count > 64 ? 12 : 16;
+
+    while (n-- > 0 && play->particle_count < PLAY_MAX_PARTICLES) {
+        Particle *p = &play->particles[play->particle_count++];
+        p->position = p->from = at;
+        p->velocity = vec3(random_range(-0.15f, 0.3f), random_range(0.0f, 0.15f), random_range(-0.15f, 0.3f));
+        p->color = color;
+        p->size = random_range(0.5f, 0.25f);
+    }
+}
+
+/*
+ * An animal hit (0x407eb0) leaves the grid, counts as broken and cries
+ * out, then flies up rolling over. Blown up (0x408150) it also scores,
+ * may drop a prize and leaves a burst of puffs in its record's colour.
+ */
+static void animal_hit(Play *play, int index, bool blown_up)
+{
+    SceneBrick *b = &play->scene->bricks[index];
+    PlayBrick *pb = &play->bricks[index];
+    const uint8_t *raw = b->object->raw;
+
+    if (b->removed)
+        return;
+    b->removed = true;
+    grid_remove(play, index);
+    if (pb->counts)
+        play->bricks_left--;
+    if (blown_up) {
+        prize_roll(play, b->position, PRIZE_NONE);
+        play->score += pb->points * 100;
+        particle_burst(play, vec3(floorf(b->position.x), (float)(int)b->position.y, (float)(int)b->position.z),
+                       (uint32_t)raw[4] | (uint32_t)raw[5] << 8 | (uint32_t)raw[6] << 16 | (uint32_t)raw[7] << 24);
+    }
+    brick_sound(play, index, b->animal->hit_sound);
+    b->flying_ms = 1;
+    b->flip = 0.0f;
+    pb->climb = random_range(1.0f, 1.0f);
+}
+
+/*
+ * A hit animal climbs faster and faster while its own weight pulls it down
+ * 0.003 a ms, rolling over a quarter turn slowly then a quarter faster;
+ * after 2 s it is gone (0x407f50). Until then it sometimes makes its sound
+ * (every 4 to 19 s).
+ */
+static void animal_update(Play *play, int index, uint32_t ms, float dt)
+{
+    SceneBrick *b = &play->scene->bricks[index];
+    PlayBrick *pb = &play->bricks[index];
+
+    if (b->flying_ms > 0) {
+        b->flying_ms += ms;
+        if (b->flying_ms >= 2000) {
+            b->flying_ms = 0;
+            return;
+        }
+        b->position.y += pb->climb * dt;
+        pb->climb += 0.1f * dt;
+        if (b->flip < 3.14159265f)
+            b->flip += (b->flip < 1.5707964f ? 0.25f : 0.5f) * dt;
+        b->position.y -= 0.003f * (float)ms;
+        return;
+    }
+    if (b->removed)
+        return;
+    pb->idle_ms += ms;
+    if (pb->idle_ms > pb->call_ms) {
+        brick_sound(play, index, b->animal->idle_sound);
+        pb->call_ms = pb->idle_ms + 4000u + (uint32_t)(rand() % 15000);
+    }
+}
 
 static void brick_take(Play *play, int index)
 {
     SceneBrick *b = &play->scene->bricks[index];
     PlayBrick *pb = &play->bricks[index];
 
+    if (b->animal != NULL) {
+        animal_hit(play, index, true);
+        return;
+    }
     if (b->removed)
         return;
     b->removed = true;
@@ -169,6 +253,10 @@ static void brick_destroy(Play *play, int index)
 
     if (b->removed)
         return;
+    if (b->animal != NULL) {
+        animal_hit(play, index, false);
+        return;
+    }
     switch (b->object->type) {
     case 0x20: /* explosive */
         brick_sound(play, index, "Explosive.ogg");
@@ -202,6 +290,10 @@ static bool brick_hit(Play *play, int index, const Ball *ball)
 
     if (flags & BALL_EXPLOSIVE) {
         explode(play, b->position);
+        return !through;
+    }
+    if (b->animal != NULL) { /* a powerball goes on through (0x407e20) */
+        animal_hit(play, index, false);
         return !through;
     }
     switch (b->object->type) {
@@ -442,6 +534,8 @@ static void brick_move(Play *play, int index, uint32_t ms)
     const PlayBrick *pb = &play->bricks[index];
     float turn = 0.005f * (float)ms;
 
+    if (b->animal != NULL && b->removed) /* flying off: animal_update moves it */
+        return;
     if (b->tip > 0.0f) {
         b->tip -= turn;
         if (b->tip <= 0.0f) {
@@ -1357,6 +1451,8 @@ static void remember_positions(Play *play)
         play->bullets[i].from = play->bullets[i].position;
     for (i = 0; i < BAT_PIECES; i++)
         play->bat.pieces[i].from = play->bat.pieces[i].position;
+    for (i = 0; i < play->particle_count; i++)
+        play->particles[i].from = play->particles[i].position;
     for (i = 0; i < play->scene->brick_count; i++) {
         const SceneBrick *b = &play->scene->bricks[i];
         PlayBrick *pb = &play->bricks[i];
@@ -1391,6 +1487,11 @@ bool play_start(Play *play, Scene *scene, int score, int lives, float mouse_sens
         case 0x28: pb->points = 0; pb->hits_left = 4; break;
         case 0x30: pb->points = 12; pb->counts = false; pb->hits_left = 6; break;
         default: pb->points = 5; break;
+        }
+        if (scene->bricks[i].animal != NULL) {
+            pb->points = 22;
+            pb->idle_ms = (uint32_t)(rand() % 5000);
+            pb->call_ms = (uint32_t)(rand() % 15000);
         }
         if (pb->counts)
             play->bricks_left++;
@@ -1519,7 +1620,22 @@ static void step(Play *play, uint32_t ms)
     for (i = 0; i < play->scene->brick_count; i++) {
         brick_gravity(play, i);
         brick_move(play, i, ms);
+        if (play->scene->bricks[i].animal != NULL)
+            animal_update(play, i, ms, dt);
     }
+
+    /* Puffs fly, fall 0.05 a step, shrink 0.01 and bounce off the floor (0x41f3f0). */
+    for (i = 0, kept = 0; i < play->particle_count; i++) {
+        Particle *p = &play->particles[i];
+        p->position = vec3_add(p->position, vec3_scale(p->velocity, dt));
+        p->velocity.y -= 0.05f * dt;
+        p->size -= 0.01f * dt;
+        if (p->position.y < -0.75f)
+            p->velocity.y = fabsf(p->velocity.y) * 0.75f;
+        if (p->size >= 0.25f)
+            play->particles[kept++] = *p;
+    }
+    play->particle_count = kept;
 
     for (i = 0; i < play->ball_count; i++)
         ball_update(play, &play->balls[i], ms, dt);

@@ -41,6 +41,21 @@ typedef struct SceneBillboard {
     bool water;     /* a fountain; otherwise fire */
 } SceneBillboard;
 
+/*
+ * Animals (and people, aliens and the UFO), types 0xb8 to 0xde: a skinned
+ * model standing in the grid like a brick, with a sound when it is hit and
+ * one it makes now and then (factory 0x412180, class 0x407cd0).
+ */
+typedef struct SceneAnimal {
+    int type;
+    const char *model;      /* in SkinMeshes */
+    const char *hit_sound;
+    const char *idle_sound;
+} SceneAnimal;
+
+/* The animal an object type is, or NULL. */
+const SceneAnimal *scene_animal(int type);
+
 typedef struct SceneBrick {
     const LevelObject *object;
     Vec3 position; /* where the original places it: (x - 0.01, y, z) */
@@ -60,6 +75,15 @@ typedef struct SceneBrick {
     /* Hits taken by a strong brick: each moves its texture down one tile,
        to the next crack picture (0x4033c0). */
     int cracks;
+    /* Colour-changing and explosive bricks: rows their texture has moved on
+       so far, wrapping round the sheet (0x407880). */
+    int flash;
+    /* An animal: what it is, its animation's start (rand() % 5000 ms), and
+       once hit, how long it has been flying off and how far it has rolled. */
+    const SceneAnimal *animal;
+    uint32_t animation_ms;
+    uint32_t flying_ms;   /* 0 = not flying */
+    float flip;
 } SceneBrick;
 
 /*
@@ -118,6 +142,8 @@ void scene_randomize_background(Scene *scene, int random);
 
 /* Rebuild the brick batches from the bricks that are showing and the crumbs. */
 void scene_bake_bricks(Scene *scene);
+/* Where a brick's model goes: its rotations, roll, shrink and tip, then its place. */
+Mat4 scene_brick_matrix(const SceneBrick *b);
 
 /* A brick has broken: it starts shrinking, and crumbs and a flash fly off. */
 /* Start an explosion flash (the factory's object 0x40). */

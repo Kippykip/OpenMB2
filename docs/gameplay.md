@@ -369,3 +369,62 @@ u0 = (f >> 2) × 0.25 (+ 0.5 for water), v0 = (f & 3) × 0.25 + 1/512,
 each cell 0.25 across and 0.25 − 1/256 down. The quad faces the camera
 round (x, y − 0.5, z), from −1 to 1 across and −0.5 to 1.5 up, blended
 without depth writes (t_billboard).
+
+## Flashing bricks (0x407880)
+
+Colour-changing bricks (0x10) and explosive bricks (0x20) move their
+texture down one row of the sheet every 100 ms, round all its rows
+(1 / yfactor, 8 for the tilesets), so tileset 1's bright column runs
+through the rainbow. The clock is moved on as the bricks are drawn,
+twice a frame in play and once when paused, like fire's.
+
+## Animals (factory 0x412180, class 0x407cd0)
+
+Types 0xb8 to 0xde are animals (and people, aliens and a UFO): a model
+from SkinMeshes standing in the grid like a one-layer brick, turned only
+by the record's Y rotation bits. Each has a hit sound and an idle sound:
+
+| type | model | sounds |
+| --- | --- | --- |
+| 0xb8, 0xba | b_sheep.x | Sheep1/2 |
+| 0xbc | b_elk.x | Elk1/2 |
+| 0xbe | b_cow.x | Cow1/2 |
+| 0xc0 | b_ostrich.x | Ostrich1/2 |
+| 0xc2 | b_pinguin.x | Pinguin1/2 |
+| 0xc4 | b_boy.x | Boy1/2 |
+| 0xc6 | b_girl.x | Girl1/2 |
+| 0xc8 | b_camel.x | Camel1/2 |
+| 0xca | b_jiraf.x | Jiraf1/2 |
+| 0xcc | b_pig.x | Pig1/2 |
+| 0xce | b_rabbit.x | Rabbit1/2 |
+| 0xd0 | b_bird.x | Bird1/2 |
+| 0xd2 | b_santa.x | Santa1/2 |
+| 0xd4 | b_alien.x | Alien1/2 |
+| 0xd6 | b_alien2.x | Alien1/2 |
+| 0xd8 | b_ufo.x | StarShip1/2 |
+| 0xda | b_butterfly.x | Butterfly1/2 |
+| 0xdc | b_elephant.x | Elephant1/2 |
+| 0xde | b_crocodile.x | Crocodile1/2 |
+
+- Points 22 (2200), counted for the level end. They fall and tip like
+  bricks.
+- Animation: from rand() % 5000 ms, on the object clock (0x420c50).
+- Idle: its own clock starts at rand() % 5000; the idle sound plays when
+  it passes rand() % 15000, then every 4000 + rand() % 15000 ms.
+- Hit (0x407eb0: a ball, a bullet, a rocket, a neighbour's explosion):
+  counted as broken, leaves the grid, hit sound, no score or prize. A
+  powerball goes on through; any other ball bounces as off a brick
+  (0x407e20).
+- Blown up (0x408150: in the middle of an explosion): as hit, plus the
+  score and a prize roll, and a burst of 16 puffs (fewer when many are
+  about) at (floor(x), int(y), int(z)) in the colour of record bytes
+  4..7.
+- Flying off (0x407f50): velocity (0, 1 + rand, 0), climbing 0.1 × dt
+  faster each step while falling 0.003 a ms as bricks do; it rolls about
+  its own z axis 0.25 × dt a step up to a quarter turn, then 0.5 × dt up
+  to a half turn. It is gone after 2000 ms.
+
+Puffs (0x41f250, update 0x41f3f0): velocity (±0.15, 0..0.15, ±0.15),
+size 0.5..0.75; each step they move by velocity × dt, fall 0.05 × dt,
+shrink 0.01 × dt, bounce at y < −0.75 with 0.75 of their speed, and are
+gone below size 0.25. Drawn like trail spots, in their colour.

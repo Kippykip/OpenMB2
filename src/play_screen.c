@@ -57,13 +57,20 @@ static struct {
     int score, lives;  /* carried from level to level */
     int music;         /* which level tune is playing, 0-3 */
     RenderMesh shadows, glows, prize_glows, trail, bullet_shadows, strings, billboards;
-    uint32_t billboard_time;
+    uint32_t object_time;
     unsigned shadow_texture, glow_texture, particle_texture, rubber_texture, billboard_texture;
     XModel bullet_models[WEAPON_COUNT];
     RenderMesh bullet_meshes[WEAPON_COUNT];
     XModel prize_models[PRIZE_KINDS];
     RenderMesh prize_meshes[PRIZE_KINDS];
     bool prize_loaded[PRIZE_KINDS]; /* tried to load: models stay for every level */
+    /* Animal models, loaded the first time a level has one; they stay too. */
+    struct {
+        const SceneAnimal *animal;
+        XModel model;
+        RenderMesh mesh;
+    } animals[32];
+    int animal_count;
     int test_prize;                 /* the next kind F9 drops */
     unsigned turbine_time; /* the turbines' animation time, XFRAME_REST at first */
     XModel bat_model, ball_model, explosive_model, hypnotic_model;
@@ -132,6 +139,7 @@ static struct {
     Vec3 balls[PLAY_MAX_BALLS], prizes[PLAY_MAX_PRIZES], bullets[PLAY_MAX_BULLETS];
     Vec3 pieces[BAT_PIECES];
     float spins[PLAY_MAX_BALLS];
+    Vec3 particles[PLAY_MAX_PARTICLES];
     UnblendedBrick *bricks;     /* one per scene brick */
     int brick_capacity;
     bool bricks_saved;          /* bricks[] holds this frame's bricks */
@@ -472,6 +480,66 @@ static void load_bullet_models(void)
     }
 }
 
+/* The model for each kind of animal in the level. */
+static void load_animal_models(void)
+{
+    int i, k;
+
+    for (i = 0; i < v.scene.brick_count; i++) {
+        const SceneAnimal *animal = v.scene.bricks[i].animal;
+        char path[96];
+
+        if (animal == NULL)
+            continue;
+        for (k = 0; k < v.animal_count && v.animals[k].animal != animal; k++)
+            ;
+        if (k < v.animal_count || v.animal_count >= (int)(sizeof(v.animals) / sizeof(v.animals[0])))
+            continue;
+        v.animals[k].animal = animal;
+        v.animal_count++;
+        snprintf(path, sizeof(path), "SkinMeshes/%s", animal->model);
+        load_model(path, &v.animals[k].model, &v.animals[k].mesh);
+    }
+}
+
+static int animal_model(const SceneAnimal *animal)
+{
+    int k;
+
+    for (k = 0; k < v.animal_count; k++)
+        if (v.animals[k].animal == animal)
+            return k;
+    return -1;
+}
+
+/*
+ * Animals play their own animation from a random start, on the object
+ * clock (0x420c50). One flying off also rolls about its own z axis.
+ */
+static void draw_animals(RenderPass kind, float t)
+{
+    int i;
+
+    for (i = 0; i < v.scene.brick_count; i++) {
+        const SceneBrick *b = &v.scene.bricks[i];
+        int k = b->animal != NULL ? animal_model(b->animal) : -1;
+        Mat4 world, *pose;
+        Vec3 p = b->position;
+
+        if (k < 0 || (b->removed && b->flying_ms == 0))
+            continue;
+        world = scene_brick_matrix(b);
+        if (b->flip != 0.0f) {
+            world = mat4_multiply(world, mat4_translation(-p.x, -p.y, -p.z));
+            world = mat4_multiply(world, mat4_rotation_z(b->flip));
+            world = mat4_multiply(world, mat4_translation(p.x, p.y, p.z));
+        }
+        pose = pose_model(&v.animals[k].model, b->animation_ms + v.object_time);
+        render_draw_posed(&v.animals[k].mesh, world, pose, kind, t);
+        free(pose);
+    }
+}
+
 static void load_bat_model(void)
 {
     char path[128];
@@ -558,6 +626,8 @@ static void load_level(int pack, int level)
         log_error("can't load level %s", path);
         return;
     }
+    load_animal_models();
+    v.object_time = 0;
     v.scene_loaded = true;
 
     build_background_mesh();
@@ -659,6 +729,11 @@ void play_screen_shutdown(void)
     xfile_free(&v.ball_model);
     xfile_free(&v.explosive_model);
     xfile_free(&v.hypnotic_model);
+    for (i = 0; i < v.animal_count; i++) {
+        render_mesh_destroy(&v.animals[i].mesh);
+        xfile_free(&v.animals[i].model);
+    }
+    v.animal_count = 0;
     for (i = 0; i < PRIZE_KINDS; i++) {
         render_mesh_destroy(&v.prize_meshes[i]);
         xfile_free(&v.prize_models[i]);
@@ -754,8 +829,44 @@ void play_screen_handle_event(const SDL_Event *event)
     }
 }
 
+/*
+ * Colour-changing (0x10) and explosive (0x20) bricks step their texture
+ * down one row of the sheet every 100 ms of the object clock, round all
+ * of its rows (0x407880).
+ */
+static bool flash_bricks(void)
+{
+    bool changed = false;
+    int i;
+
+    for (i = 0; i < v.scene.brick_count; i++) {
+        SceneBrick *b = &v.scene.bricks[i];
+        const TextureScript *script;
+        int rows, flash;
+
+        if (b->removed || (b->object->type != 0x10 && b->object->type != 0x20))
+            continue;
+        script = textureset_get(&v.scene.textures, b->texture);
+        rows = script && script->yfactor > 0.0f ? (int)(1.0f / script->yfactor) : 1;
+        flash = (int)((v.object_time / 100u) % (uint32_t)(rows > 0 ? rows : 1));
+        if (b->flash != flash) {
+            b->flash = flash;
+            changed = true;
+        }
+    }
+    return changed;
+}
+
 static void update(uint32_t ms)
 {
+    if (flash_bricks()) {
+        if (v.playing) {
+            v.play.bricks_changed = true;
+        } else {
+            scene_bake_bricks(&v.scene);
+            build_brick_mesh();
+        }
+    }
     if (!v.playing)
         return;
     if (v.options.autoplay)
@@ -939,6 +1050,10 @@ static void blend_bricks(float t)
         unblended.bricks[i].tip = b->tip;
         unblended.bricks[i].scale = b->scale;
         unblended.bricks_saved = true;
+        if (b->animal != NULL && b->flying_ms > 0) { /* drawn as a model, not baked */
+            b->position = vec3_add(pb->from, vec3_scale(vec3_sub(b->position, pb->from), t));
+            continue;
+        }
         if (!brick_moved(i))
             continue;
         b->position = vec3_add(pb->from, vec3_scale(vec3_sub(b->position, pb->from), t));
@@ -986,6 +1101,10 @@ static void blend_positions(void)
         unblended.pieces[i] = play->bat.pieces[i].position;
         play->bat.pieces[i].position = vec3_lerp(play->bat.pieces[i].from, play->bat.pieces[i].position, t);
     }
+    for (i = 0; i < play->particle_count; i++) {
+        unblended.particles[i] = play->particles[i].position;
+        play->particles[i].position = vec3_lerp(play->particles[i].from, play->particles[i].position, t);
+    }
     blend_bricks(t);
 }
 
@@ -1004,6 +1123,8 @@ static void unblend_positions(void)
         play->bullets[i].position = unblended.bullets[i];
     for (i = 0; i < BAT_PIECES; i++)
         play->bat.pieces[i].position = unblended.pieces[i];
+    for (i = 0; i < play->particle_count; i++)
+        play->particles[i].position = unblended.particles[i];
     for (i = 0; unblended.bricks_saved && i < v.scene.brick_count; i++) {
         v.scene.bricks[i].position = unblended.bricks[i].position;
         v.scene.bricks[i].tip = unblended.bricks[i].tip;
@@ -1037,7 +1158,7 @@ static void build_billboards(Mat4 view)
     XVertex *quads;
     Vec3 right = vec3(view.m[0][0], view.m[1][0], view.m[2][0]);
     Vec3 up = vec3(view.m[0][1], view.m[1][1], view.m[2][1]);
-    unsigned frame = (v.billboard_time / 230u) & 7u;
+    unsigned frame = (v.object_time / 230u) & 7u;
     int i, k, n = v.scene.billboard_count;
 
     render_mesh_destroy(&v.billboards);
@@ -1233,26 +1354,28 @@ static void build_strings(void)
 /*
  * A powerball's trail: a camera-facing triangle of particle.png per spot,
  * 2.5 across, in the ball's colour, fading out as its 250 ms run out
- * (0x41f4e0).
+ * (0x41f4e0). Puffs are drawn the same way, in their own colour.
  */
 static void build_trail(Mat4 view)
 {
-    static XVertex tris[PLAY_MAX_TRAIL * 3];
+    static XVertex tris[(PLAY_MAX_TRAIL + PLAY_MAX_PARTICLES) * 3];
     static const float corner[3][4] = {
         { 0.0f, 1.0f, 0.5f, 0.0f }, { 1.0f, -0.5f, 1.0f, 1.0f }, { -1.0f, -0.5f, 0.0f, 1.0f }
     };
     Vec3 right = vec3(view.m[0][0], view.m[1][0], view.m[2][0]);
     Vec3 up = vec3(view.m[0][1], view.m[1][1], view.m[2][1]);
+    int spots = v.play.trail_count, n = spots + v.play.particle_count;
     RenderPart part;
     int i, k;
 
     render_mesh_destroy(&v.trail);
-    for (i = 0; i < v.play.trail_count; i++) {
+    for (i = 0; i < n; i++) {
+        Vec3 at = i < spots ? v.play.trail[i].position : v.play.particles[i - spots].position;
+        float size = i < spots ? v.play.trail[i].size : v.play.particles[i - spots].size;
         for (k = 0; k < 3; k++) {
             XVertex *t = &tris[i * 3 + k];
-            Vec3 p = vec3_add(v.play.trail[i].position,
-                              vec3_add(vec3_scale(right, v.play.trail[i].size * corner[k][0]),
-                                       vec3_scale(up, v.play.trail[i].size * corner[k][1])));
+            Vec3 p = vec3_add(at, vec3_add(vec3_scale(right, size * corner[k][0]),
+                                           vec3_scale(up, size * corner[k][1])));
             t->pos[0] = p.x;
             t->pos[1] = p.y;
             t->pos[2] = p.z;
@@ -1263,16 +1386,19 @@ static void build_trail(Mat4 view)
             t->uv[1] = corner[k][3];
         }
     }
-    if (v.play.trail_count == 0 || !render_mesh_create(&v.trail, tris, v.play.trail_count * 3))
+    if (n == 0 || !render_mesh_create(&v.trail, tris, n * 3))
         return;
-    for (i = 0; i < v.play.trail_count; i++) {
-        const TrailSpot *spot = &v.play.trail[i];
+    for (i = 0; i < n; i++) {
         memset(&part, 0, sizeof(part));
         part.first_vertex = i * 3;
         part.vertex_count = 3;
         part.texture = v.particle_texture;
-        /* The spot's alpha is its life left in ms. */
-        set_color(part.diffuse, (spot->color & 0xffffffu) | ((uint32_t)spot->life << 24));
+        if (i < spots) { /* a trail spot's alpha is its life left in ms */
+            const TrailSpot *spot = &v.play.trail[i];
+            set_color(part.diffuse, (spot->color & 0xffffffu) | ((uint32_t)spot->life << 24));
+        } else {
+            set_color(part.diffuse, v.play.particles[i - spots].color);
+        }
         part.flags = RENDER_ALPHA | RENDER_Z_DISABLE | RENDER_TINT | RENDER_TWO_SIDED;
         part.pose = -1;
         render_mesh_add_part(&v.trail, &part);
@@ -1287,12 +1413,13 @@ void play_screen_frame(int width, int height, uint32_t ms)
     float aspect;
     int i;
 
+    /* Fire, fountains and flashing bricks keep their own clock, moved on
+       each time they are drawn; the game draws them twice a frame while
+       playing and once when paused, so they animate twice as fast in play
+       (0x406600, 0x407880). */
+    v.object_time += v.playing ? ms * 2 : ms;
     update(ms);
     v.time += ms;
-    /* Fire and fountains keep their own clock, moved on each time they are
-       drawn; the game draws them twice a frame while playing and once when
-       paused, so they animate twice as fast in play (0x406600). */
-    v.billboard_time += v.playing ? ms * 2 : ms;
 
     orbit = mat4_yaw_pitch_roll(c->yaw, c->pitch, c->roll);
     eye = mat4_transform_point(orbit, vec3(0.0f, 0.0f, -c->distance * c->zoom));
@@ -1393,6 +1520,7 @@ void play_screen_frame(int width, int height, uint32_t ms)
                     render_draw(&v.bullet_shadows, identity, RENDER_PASS_BLENDED, t);
                 }
             }
+            draw_animals(kind, t);
             if (v.playing) {
                 if (v.play.bat.mode != BAT_DEAD && v.play.state != PLAY_GAME_OVER)
                     render_draw_posed(&v.bat, bat_matrix, bat_pose, kind, t);
