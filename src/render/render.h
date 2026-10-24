@@ -36,6 +36,10 @@ typedef struct RenderPart {
     uint32_t flags;
     float uv_speed[2]; /* texture scrolling, UV units per millisecond */
     int pose;          /* index into render_draw_posed()'s matrices, -1 for none */
+    /* How long its normals are once transformed; Direct3D leaves them
+       unnormalised, so a mesh scaled up in its file is lit more dimly.
+       0 means 1. */
+    float normal_length;
 } RenderPart;
 
 typedef struct RenderMesh {

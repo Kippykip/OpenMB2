@@ -198,7 +198,7 @@ static void rocket_hit(Play *play, int index)
     if (play->firework_count >= PLAY_MAX_FIREWORKS)
         return;
     f = &play->fireworks[play->firework_count++];
-    f->position = f->from = vec3(floorf(b->position.x), (float)(int)b->position.y, (float)(int)b->position.z);
+    f->position = f->from = vec3(ceilf(b->position.x), (float)(int)b->position.y, (float)(int)b->position.z);
     f->velocity = vec3(0.0f, 1.8f, 0.0f);
     f->color = record_color(b);
     f->age = 0;
@@ -234,7 +234,7 @@ static bool firework_update(Play *play, Firework *f, uint32_t ms, float dt)
 {
     f->age += ms;
     if (f->age > 1500) {
-        firework_burst(play, vec3(floorf(f->position.x), (float)(int)f->position.y, (float)(int)f->position.z),
+        firework_burst(play, vec3(ceilf(f->position.x), (float)(int)f->position.y, (float)(int)f->position.z),
                        f->color);
         sound_at(play, f->position, "Firework2.ogg");
         return false;
@@ -281,7 +281,7 @@ static void animal_hit(Play *play, int index, bool blown_up)
     if (blown_up) {
         prize_roll(play, b->position, PRIZE_NONE);
         play->score += pb->points * 100;
-        particle_burst(play, vec3(floorf(b->position.x), (float)(int)b->position.y, (float)(int)b->position.z),
+        particle_burst(play, vec3(ceilf(b->position.x), (float)(int)b->position.y, (float)(int)b->position.z),
                        record_color(b));
     }
     brick_sound(play, index, b->animal->hit_sound);
@@ -445,6 +445,8 @@ static bool brick_hit(Play *play, int index, const Ball *ball)
             if (b->object->type == 0x28) { /* shows the next crack (0x40854b) */
                 b->cracks++;
                 play->bricks_changed = true;
+            } else {
+                b->shining = true;
             }
             return true;
         }

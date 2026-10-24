@@ -278,11 +278,22 @@ static void build_background_mesh(void)
 
     render_mesh_destroy(&v.background);
     build_model_mesh(&v.background, &v.scene.background_model,
-                     RENDER_TWO_SIDED | RENDER_NOT_LIGHTED | RENDER_TINT, v.scene.background_texture, "", NULL);
+                     RENDER_TWO_SIDED, v.scene.background_texture, "", NULL);
+    /* The sky sphere is lit like everything else, but fon.x scales it up
+       2.5 times in its frame, and Direct3D lights it with normals shrunk
+       by as much (the inverse transpose, not normalised), so only its
+       lower part, facing up at the light, is lit at all, and dimly. */
     for (i = 0; i < v.background.part_count; i++) {
-        v.background.parts[i].diffuse[0] = v.background.parts[i].diffuse[1] = 0.6f;
-        v.background.parts[i].diffuse[2] = 0.6f;
-        v.background.parts[i].diffuse[3] = 1.0f;
+        const XModel *m = &v.scene.background_model;
+        const XPart *part = &m->parts[i < m->part_count ? i : 0];
+        if (part->frame_index >= 0) {
+            Mat4 b = m->frames[part->frame_index].bind;
+            float scale = cbrtf(fabsf(b.m[0][0] * (b.m[1][1] * b.m[2][2] - b.m[1][2] * b.m[2][1]) -
+                                      b.m[0][1] * (b.m[1][0] * b.m[2][2] - b.m[1][2] * b.m[2][0]) +
+                                      b.m[0][2] * (b.m[1][0] * b.m[2][1] - b.m[1][1] * b.m[2][0])));
+            if (scale > 0.0f)
+                v.background.parts[i].normal_length = 1.0f / scale;
+        }
     }
 }
 
@@ -893,7 +904,7 @@ void play_screen_handle_event(const SDL_Event *event)
  * down one row of the sheet every 100 ms of the object clock, round all
  * of its rows (0x407880).
  */
-static bool flash_bricks(void)
+static bool flash_bricks(uint32_t object_ms)
 {
     bool changed = false;
     int i;
@@ -903,11 +914,22 @@ static bool flash_bricks(void)
         const TextureScript *script;
         int rows, flash;
 
-        if (b->removed || (b->object->type != 0x10 && b->object->type != 0x20))
+        if (b->removed || (b->object->type != 0x10 && b->object->type != 0x20 && !b->shining))
             continue;
         script = textureset_get(&v.scene.textures, b->texture);
         rows = script && script->yfactor > 0.0f ? (int)(1.0f / script->yfactor) : 1;
-        flash = (int)((v.object_time / 100u) % (uint32_t)(rows > 0 ? rows : 1));
+        if (b->shining) {
+            /* Rows 0 to rows, 100 ms each, then back to the first. */
+            b->shine_ms += object_ms;
+            flash = (int)(b->shine_ms / 100u);
+            if (flash > rows) {
+                flash = 0;
+                b->shining = false;
+                b->shine_ms = 0;
+            }
+        } else {
+            flash = (int)((v.object_time / 100u) % (uint32_t)(rows > 0 ? rows : 1));
+        }
         if (b->flash != flash) {
             b->flash = flash;
             changed = true;
@@ -918,7 +940,7 @@ static bool flash_bricks(void)
 
 static void update(uint32_t ms)
 {
-    if (flash_bricks()) {
+    if (flash_bricks(v.playing ? ms * 2 : ms)) {
         if (v.playing) {
             v.play.bricks_changed = true;
         } else {

@@ -89,6 +89,10 @@ typedef struct SceneBrick {
     /* Colour-changing and explosive bricks: rows their texture has moved on
        so far, wrapping round the sheet (0x407880). */
     int flash;
+    /* Stone (type 0x30) shines through its texture's rows once each time a
+       hit doesn't break it (0x4083b0, 0x408300); ms into the shine. */
+    bool shining;
+    uint32_t shine_ms;
     /* An animal: what it is, its animation's start (rand() % 5000 ms), and
        once hit, how long it has been flying off and how far it has rolled. */
     const SceneAnimal *animal;

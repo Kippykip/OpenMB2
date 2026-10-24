@@ -419,7 +419,7 @@ by the record's Y rotation bits (0x04-0x20; the X and Z bits are ignored,
   (0x407e20).
 - Blown up (0x408150: in the middle of an explosion): as hit, plus the
   score and a prize roll, and a burst of 16 puffs (fewer when many are
-  about) at (floor(x), int(y), int(z)) in the colour of record bytes
+  about) at (ceil(x), int(y), int(z)) in the colour of record bytes
   4..7.
 - Flying off (0x407f50): velocity (0, 1 + rand, 0), climbing 0.1 × dt
   faster each step while falling 0.003 a ms as bricks do; it rolls about
@@ -457,7 +457,7 @@ A model brick (SkinMeshes/b_rocket.x, turned about Y only, like animals)
 that counts toward the level end. Hit by a ball, shot or explosion
 neighbour (slot 0x4c, 0x4079c0) it leaves the grid, counts as broken (no
 score, no prize), plays Firework1.ogg and makes a new object of type 0xa8
-from its own record at (floor x, int y, int z). A powerball bounces off it
+from its own record at (ceil x, int y, int z). A powerball bounces off it
 (slot 0x50 always returns 0). At the heart of an explosion (slot 0x40,
 0x407a70) the original forgets to count it as broken; OpenMB2 counts it.
 
@@ -467,7 +467,7 @@ cell, doesn't count) starts with velocity (0, 1.8, 0). Each step
 translated only. Every 25 ms it leaves a trail spot (the powerball trail
 list) at (x + −0.15..0.15, y − 1.25, z), size 0.75, in the record colour.
 After 1500 ms it is gone, plays Firework2.ogg and makes a type 0x50 record
-at its (floor x, int y, int z), which is a burst (0x40e0d0, list 0x4e3410,
+at its (ceil x, int y, int z), which is a burst (0x40e0d0, list 0x4e3410,
 0x800 slots):
 
 | | |
@@ -548,3 +548,31 @@ own place is the track's middle. Its update (0x408a80), clock += ms:
   world z through its place by 0.25·dt a step, 0.5·dt past π/2
   (M = M·T(−p)·RotationZ·T(p)); then its matrix's y translation drops
   0.5·dt a step.
+
+## Rounding helpers
+
+0x46df90 and 0x46d870 are the C runtime's SSE2 `floor` and `ceil`. Object
+x is the record's x − 0.01, so ceil gives back the record's x: where
+records are rebuilt from an object (rockets, firework bursts, animal
+puffs) they use ceil. The grid lookup (0x40dd50) uses floor.
+
+## Background lighting
+
+The sky sphere (SkinMeshes/fon.x) is drawn lit, with the scene's light
+(textureset.txt: ambient 0x60, diffuse 0xCC, direction 0 −4 1). Its frame
+scales it 2.5 times; Direct3D transforms normals by the inverse transpose
+of the world matrix and the game doesn't turn on D3DRS_NORMALIZENORMALS,
+so the normals come out 0.4 long. The upper sky gets only the ambient
+0.376, and the lower part, whose inward normals face the light, at most
+0.376 + 0.8·0.4 ≈ 0.7. Kippykip confirmed this with a plain white BG28.jpg:
+96 at the top of the screen and up to 166 at the bottom, with Gouraud
+corners visible.
+
+## Stone shine (type 0x30, class 0x408280)
+
+Stone (6 hits, 12 points, doesn't count) sets a shining flag when a hit
+doesn't break it (0x4083b0, Stone.ogg). While shining, its draw (0x408300)
+adds the object clock's ms to a timer; frame = timer / 100: past the
+texture's row count (1 / yfactor) it goes back to row 0 and stops,
+otherwise it shows that row (0x403590), so one shine runs through every
+row of the sheet.
