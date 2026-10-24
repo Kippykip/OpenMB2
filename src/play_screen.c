@@ -57,6 +57,8 @@ static struct {
     int score, lives;  /* carried from level to level */
     int music;         /* which level tune is playing, 0-3 */
     RenderMesh shadows, glows, prize_glows, trail, bullet_shadows, strings, billboards;
+    RenderMesh bolts;
+    unsigned bolt_texture;
     uint32_t object_time;
     unsigned shadow_texture, glow_texture, particle_texture, rubber_texture, billboard_texture;
     XModel bullet_models[WEAPON_COUNT];
@@ -714,6 +716,7 @@ bool play_screen_init(SDL_Window *window, const PlayScreenOptions *options)
     load_model("SkinMeshes/s_gipnoz.x", &v.hypnotic_model, &v.hypnotic_ball);
     v.test_prize = PRIZE_NONE + 1;
     v.particle_texture = texture_for_name("particle.png");
+    v.bolt_texture = texture_for_name("lighting.png");
     v.rubber_texture = texture_for_name("rubber.png");
     v.explosion_texture = texture_for_name("explose.png");
     v.shadow_texture = texture_for_name("bshadow.png");
@@ -736,6 +739,7 @@ void play_screen_shutdown(void)
     render_mesh_destroy(&v.glows);
     render_mesh_destroy(&v.prize_glows);
     render_mesh_destroy(&v.trail);
+    render_mesh_destroy(&v.bolts);
     render_mesh_destroy(&v.bullet_shadows);
     render_mesh_destroy(&v.strings);
     render_mesh_destroy(&v.billboards);
@@ -1460,6 +1464,55 @@ static void build_trail(Mat4 view)
     }
 }
 
+/*
+ * Teleporter lightning: the pieces of each ribbon from its tail to its
+ * head, lighting.png across it and mirrored piece to piece, unlit and
+ * over everything (t_lighting.txt; drawn by 0x40d540).
+ */
+static void build_bolts(void)
+{
+    static XVertex tris[PLAY_MAX_BOLTS * (BOLT_POINTS - 1) * 6];
+    static const int corner[6] = { 0, 2, 1, 1, 2, 3 };
+    RenderPart part;
+    int i, k, c, n = 0;
+
+    render_mesh_destroy(&v.bolts);
+    for (i = 0; i < v.play.bolt_count; i++) {
+        const Bolt *bolt = &v.play.bolts[i];
+        int head = (int)(bolt->time / 50), tail = head - (BOLT_POINTS - 1);
+        if (tail < 0)
+            tail = 0;
+        if (head < 1)
+            head = 1;
+        if (head > BOLT_POINTS - 1)
+            head = BOLT_POINTS - 1;
+        for (k = tail; k < head; k++) {
+            for (c = 0; c < 6; c++) {
+                int index = k * 2 + corner[c];
+                XVertex *t = &tris[n++];
+                t->pos[0] = bolt->vertices[index].x;
+                t->pos[1] = bolt->vertices[index].y;
+                t->pos[2] = bolt->vertices[index].z;
+                t->normal[0] = 0.0f;
+                t->normal[1] = 0.0f;
+                t->normal[2] = 1.0f;
+                t->uv[0] = (index & 1) ? 0.0f : 1.0f;
+                t->uv[1] = ((index / 2) & 1) ? 1.0f : 0.0f;
+            }
+        }
+    }
+    if (n == 0 || !render_mesh_create(&v.bolts, tris, n))
+        return;
+    memset(&part, 0, sizeof(part));
+    part.first_vertex = 0;
+    part.vertex_count = n;
+    part.texture = v.bolt_texture;
+    set_color(part.diffuse, 0xffffffffu);
+    part.flags = RENDER_ALPHA | RENDER_Z_DISABLE | RENDER_TINT | RENDER_TWO_SIDED;
+    part.pose = -1;
+    render_mesh_add_part(&v.bolts, &part);
+}
+
 void play_screen_frame(int width, int height, uint32_t ms)
 {
     const Camera *c = &v.camera;
@@ -1628,6 +1681,8 @@ void play_screen_frame(int width, int height, uint32_t ms)
             render_draw(&v.strings, identity, RENDER_PASS_BLENDED, t);
             build_trail(view);
             render_draw(&v.trail, identity, RENDER_PASS_BLENDED, t);
+            build_bolts();
+            render_draw(&v.bolts, identity, RENDER_PASS_BLENDED, t);
         }
         build_explosion_mesh(view);
         render_draw(&v.explosions, identity, RENDER_PASS_BLENDED, t);

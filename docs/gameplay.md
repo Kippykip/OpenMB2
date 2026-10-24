@@ -484,3 +484,41 @@ at its (floor x, int y, int z), which is a burst (0x40e0d0, list 0x4e3410,
 A spark is gone once its size is 0.25 or less, or its life below 0.
 The trail spot list's update (0x425e60) also has a bug: it shrinks the
 slot past the last spot instead of each spot, so spots keep their size.
+
+## Teleporters (types 0x84 and 0x88, classes 0x408710 and 0x408760)
+
+Model objects in the grid (SkinMeshes/b_teleportsrc.x, b_teleportdst.x)
+that don't count toward the level end and can't be broken: a hit takes
+them out of the grid and their blown-up handler (0x4087c0) puts them
+straight back. Nothing bounces off them.
+
+At the end of each ball update (0x402354) the object in the ball's cell
+gets the ball (slot 0x58), with no check of which face it crossed. The end
+(0x88) does nothing (0x4087b0). The start (0x84, 0x4087f0):
+
+- puts the ball at (record byte 6, byte 5, byte 4) as signed x, unsigned
+  y, signed z (bytes 4..5 and 6..7 read as two 16-bit numbers in the
+  files; levels don't always match the end's own cell, e.g. 004_Shahmati
+  lands one to the left of it);
+- sets ball flag 0x08 with an end age 1000 ms on (0x4018e0): until a step
+  after that, the ball's update stops after the stuck check (0x402212), so
+  it waits where it landed; its y is forced back to −0.5 once it moves;
+- sends it off in a new direction (0x402390): a turn by −0.5..0.5 if it
+  was last turned under 1 s ago, −0.8..0.8 if under 2 s, then always a turn
+  by −π..π. Each turn (0x402010) keeps the length of the whole velocity,
+  climb included, as the speed across the board;
+- throws lightning (0x4114c0, class 0x40d730) from (x + 0.5, y + 6, z)
+  snapped to the grid (0x40dd50: floor x, 2·floor(y/2), 2·floor(z/2) + 1)
+  to the landing cell + (0.5, 4, 0) cut to whole numbers;
+- plays Teleport.ogg.
+
+The lightning is a ribbon of 21 point pairs on a Hermite curve
+(D3DXVec3Hermite) from start to end with tangents (0, 2L, 0) and
+(0, −2L, 0), L the distance, at s = (k + 1)·0.05 for k = 0..20 (one step
+past the end, as written). Pair k is (p.x ± w, p.y, p.z), w = 0.1·min(k,
+20 − k); u is 1 on the + side, v is k & 1. Each update (0x40d5f0) moves
+every point but the first and last by −0.025..0.025 on each axis; its
+clock gives head = clamp(t/50, 1, 20) and tail = clamp(t/50 − 20, 0, 20),
+and the pieces tail..head are drawn (0x40d540) with t_lighting.txt
+(lighting.png, alpha, two-sided, no depth, unlit). It is gone when head
+equals tail, after 2 s.

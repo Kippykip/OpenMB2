@@ -28,12 +28,15 @@
 #define PLAY_MAX_SMOKE 2048     /* 0x800, as the original's smoke list */
 #define PLAY_MAX_SPARKS 2048    /* and its firework burst list */
 #define PLAY_MAX_FIREWORKS 32
+#define PLAY_MAX_BOLTS 8
+#define BOLT_POINTS 21
 #define PLAY_FOREVER 0xffffffffu
 
 /* Ball flags, with the original's values. */
 enum {
     BALL_STUCK = 0x02,     /* waiting on the bat */
     BALL_YOYO = 0x04,      /* on the rubber bat's string */
+    BALL_TELEPORTED = 0x08, /* waits where a teleporter sent it */
     BALL_POWER = 0x10,     /* goes through bricks */
     BALL_EXPLOSIVE = 0x20, /* blows bricks up */
     BALL_HYPNOTIC = 0x40,
@@ -52,6 +55,8 @@ typedef struct Ball {
     float spin_from;
     float wobble;         /* a hypnotic ball's swing, in radians of a sine */
     uint32_t explosive_end; /* the age a fire's explosive wears off at; PLAY_FOREVER for a prize's */
+    uint32_t wait_end;    /* a teleported ball moves on after this age */
+    uint32_t turn_time;   /* the age it was last sent off in a new direction */
 } Ball;
 
 /* The prizes, numbered as in the original. */
@@ -120,6 +125,16 @@ typedef struct Firework {
     uint32_t color;        /* the brick's record colour, ARGB */
     uint32_t age, spark_ms;
 } Firework;
+
+/*
+ * The lightning a teleporter throws to where it sends the ball (0x40d730):
+ * a ribbon of 20 pieces along an arch, drawn from its start and then
+ * taken back from it, 50 ms a piece.
+ */
+typedef struct Bolt {
+    Vec3 vertices[BOLT_POINTS * 2];
+    uint32_t time;
+} Bolt;
 
 /* A spot of a powerball's or a rocket's trail, fading over 250 ms. */
 typedef struct TrailSpot {
@@ -252,6 +267,8 @@ typedef struct Play {
     int spark_count;
     Firework fireworks[PLAY_MAX_FIREWORKS];
     int firework_count;
+    Bolt bolts[PLAY_MAX_BOLTS];
+    int bolt_count;
     Bullet bullets[PLAY_MAX_BULLETS];
     int bullet_count;
     BulletInfo bullet_info[WEAPON_COUNT];

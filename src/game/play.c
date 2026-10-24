@@ -265,10 +265,13 @@ static void animal_hit(Play *play, int index, bool blown_up)
     SceneBrick *b = &play->scene->bricks[index];
     PlayBrick *pb = &play->bricks[index];
 
-    if (b->animal->rocket) {
+    if (b->animal->kind == MODEL_ROCKET) {
         rocket_hit(play, index);
         return;
     }
+    /* Teleporters leave the grid and go straight back (0x403cc0, 0x4087c0). */
+    if (b->animal->kind != MODEL_ANIMAL)
+        return;
     if (b->removed)
         return;
     b->removed = true;
@@ -415,7 +418,7 @@ static bool brick_hit(Play *play, int index, const Ball *ball)
     }
     if (b->animal != NULL) { /* a powerball goes on through an animal (0x407e20), not a rocket (0x407990) */
         animal_hit(play, index, false);
-        return b->animal->rocket || !through;
+        return b->animal->kind == MODEL_ROCKET || !through;
     }
     switch (b->object->type) {
     case 0x18: /* glass: shows on the first hit, breaks on the second */
@@ -533,11 +536,117 @@ static void ball_vs_billboard(Play *play, Ball *ball, int index)
         sound(play, name, volume, (int)(p.x / play->scene->board.half_width * 100.0f));
 }
 
+/*
+ * Turning a ball about the vertical by an angle (0x402010). The original
+ * keeps the length of the whole velocity, climb and all, as its speed
+ * across the board.
+ */
+static void ball_turn(Ball *ball, float angle)
+{
+    Vec3 v = ball->velocity;
+    float a = atan2f(v.x, v.z) + angle;
+    float speed = sqrtf(v.x * v.x + v.y * v.y + v.z * v.z);
+
+    ball->velocity.x = sinf(a) * speed;
+    ball->velocity.z = cosf(a) * speed;
+}
+
+/*
+ * Sending a ball off in a new direction (0x402390): a nudge if it was sent
+ * off less than 2 s ago, then a turn by anything up to half a circle.
+ */
+static void ball_new_direction(Ball *ball)
+{
+    uint32_t since = ball->age - ball->turn_time;
+
+    if (since < 1000)
+        ball_turn(ball, random_range(-0.5f, 1.0f));
+    else if (since < 2000)
+        ball_turn(ball, random_range(-0.8f, 1.6f));
+    ball_turn(ball, random_range(-3.1415927f, 6.2831855f));
+    ball->turn_time = ball->age;
+}
+
+/*
+ * A teleporter's lightning (0x40d730) runs along a Hermite curve from
+ * above it to above where the ball lands, leaving upwards and arriving
+ * downwards, as a flat ribbon widest in the middle.
+ */
+static void bolt_add(Play *play, Vec3 from, Vec3 to)
+{
+    Vec3 d = vec3_sub(to, from);
+    float length = sqrtf(d.x * d.x + d.y * d.y + d.z * d.z);
+    Bolt *bolt;
+    int k;
+
+    if (play->bolt_count >= PLAY_MAX_BOLTS)
+        return;
+    bolt = &play->bolts[play->bolt_count++];
+    bolt->time = 0;
+    for (k = 0; k < BOLT_POINTS; k++) {
+        float s = (float)(k + 1) * 0.05f; /* (sic: runs a step past the end) */
+        float s2 = s * s, s3 = s2 * s;
+        float h1 = 2.0f * s3 - 3.0f * s2 + 1.0f, h2 = -2.0f * s3 + 3.0f * s2;
+        float h3 = s3 - 2.0f * s2 + s, h4 = s3 - s2;
+        float width = 0.1f * (float)(k < 10 ? k : BOLT_POINTS - 1 - k);
+        Vec3 p = vec3(h1 * from.x + h2 * to.x,
+                      h1 * from.y + h2 * to.y + (h3 - h4) * 2.0f * length,
+                      h1 * from.z + h2 * to.z);
+        bolt->vertices[k * 2] = vec3(p.x + width, p.y, p.z);
+        bolt->vertices[k * 2 + 1] = vec3(p.x - width, p.y, p.z);
+    }
+}
+
+/* The lightning crackles, its inside points jumping about, and is gone after 2 s (0x40d5f0). */
+static bool bolt_update(Bolt *bolt, uint32_t ms)
+{
+    int i;
+
+    for (i = 1; i < BOLT_POINTS * 2 - 1; i++) {
+        bolt->vertices[i].x += random_range(-0.025f, 0.05f);
+        bolt->vertices[i].y += random_range(-0.025f, 0.05f);
+        bolt->vertices[i].z += random_range(-0.025f, 0.05f);
+    }
+    bolt->time += ms;
+    return bolt->time / 50 < 2 * (BOLT_POINTS - 1);
+}
+
+/*
+ * A ball in a teleporter's cell (0x4087f0) is put at the cell in the
+ * teleporter's record (bytes 6, 5 and 4: x, y and z), waits there 1 s and
+ * then goes off in a new direction; lightning arcs from the teleporter.
+ */
+static void ball_teleport(Play *play, Ball *ball, int index)
+{
+    const SceneBrick *b = &play->scene->bricks[index];
+    const uint8_t *raw = b->object->raw;
+    Vec3 to = vec3((float)(int8_t)raw[6], (float)raw[5], (float)(int8_t)raw[4]);
+    Vec3 from = vec3(b->position.x + 0.5f, b->position.y + 6.0f, b->position.z);
+
+    ball->position = to;
+    ball->flags |= BALL_TELEPORTED;
+    ball->wait_end = ball->age + 1000;
+    ball_new_direction(ball);
+    /* Both ends go through an object record: the start is snapped to the
+       grid (0x40dd50), and both are cut to whole numbers. */
+    from = vec3(floorf(from.x), 2.0f * floorf(from.y * 0.5f), 2.0f * floorf(from.z * 0.5f) + 1.0f);
+    bolt_add(play, from, vec3((float)(int)(to.x + 0.5f), (float)(int)(to.y + 4.0f), (float)(int)to.z));
+    brick_sound(play, index, "Teleport.ogg");
+}
+
 static void ball_vs_brick(Play *play, Ball *ball)
 {
     int index = brick_at(play, ball->position);
     Vec3 v;
 
+    if (index >= 0 && play->scene->bricks[index].animal != NULL &&
+        play->scene->bricks[index].animal->kind >= MODEL_TELEPORT) {
+        /* A teleporter takes the ball wherever it is in its cell (0x402354);
+           where it arrives lets it go on through. */
+        if (play->scene->bricks[index].animal->kind == MODEL_TELEPORT)
+            ball_teleport(play, ball, index);
+        return;
+    }
     if (index < 0) {
         /* Fire and fountains let the ball through. */
         index = billboard_at(play, ball->position);
@@ -831,6 +940,12 @@ static void ball_update(Play *play, Ball *ball, uint32_t ms, float dt)
     if (ball->flags & BALL_STUCK) {
         ball->position.x = play->bat.position.x + ball->stuck_offset;
         ball->position.y = BALL_Y;
+        return;
+    }
+    /* A teleported ball waits, a step past its second (0x402212). */
+    if (ball->flags & BALL_TELEPORTED) {
+        if (ball->age > ball->wait_end)
+            ball->flags &= ~(uint32_t)BALL_TELEPORTED;
         return;
     }
     if (ball->flags & BALL_YOYO)
@@ -1619,6 +1734,8 @@ bool play_start(Play *play, Scene *scene, int score, int lives, float mouse_sens
             pb->points = 22;
             pb->idle_ms = (uint32_t)(rand() % 5000);
             pb->call_ms = (uint32_t)(rand() % 15000);
+            if (scene->bricks[i].animal->kind == MODEL_TELEPORT || scene->bricks[i].animal->kind == MODEL_TELEPORT_END)
+                pb->counts = false;
         }
         if (pb->counts)
             play->bricks_left++;
@@ -1747,7 +1864,7 @@ static void step(Play *play, uint32_t ms)
     for (i = 0; i < play->scene->brick_count; i++) {
         brick_gravity(play, i);
         brick_move(play, i, ms);
-        if (play->scene->bricks[i].animal != NULL && !play->scene->bricks[i].animal->rocket)
+        if (play->scene->bricks[i].animal != NULL && play->scene->bricks[i].animal->kind == MODEL_ANIMAL)
             animal_update(play, i, ms, dt);
         else if (play->scene->bricks[i].object->type == 0x38 && !play->scene->bricks[i].removed)
             fog_update(play, i, ms);
@@ -1782,6 +1899,11 @@ static void step(Play *play, uint32_t ms)
         play->smoke[kept++] = *p;
     }
     play->smoke_count = kept;
+
+    for (i = 0, kept = 0; i < play->bolt_count; i++)
+        if (bolt_update(&play->bolts[i], ms))
+            play->bolts[kept++] = play->bolts[i];
+    play->bolt_count = kept;
 
     for (i = 0, kept = 0; i < play->firework_count; i++)
         if (firework_update(play, &play->fireworks[i], ms, dt))

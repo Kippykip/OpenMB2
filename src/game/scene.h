@@ -45,17 +45,25 @@ typedef struct SceneBillboard {
  * Animals (and people, aliens and the UFO), types 0xb8 to 0xde: a skinned
  * model standing in the grid like a brick, with a sound when it is hit and
  * one it makes now and then (factory 0x412180, class 0x407cd0). The
- * firework rocket, type 0xa4 (class 0x407940), stands the same way.
+ * firework rocket, type 0xa4 (class 0x407940), and the teleporters, 0x84
+ * and 0x88 (0x408710, 0x408760), stand the same way.
  */
+typedef enum SceneModelKind {
+    MODEL_ANIMAL,
+    MODEL_ROCKET,
+    MODEL_TELEPORT,      /* sends a ball on to the cell in its record */
+    MODEL_TELEPORT_END   /* where it arrives: only for show */
+} SceneModelKind;
+
 typedef struct SceneAnimal {
     int type;
     const char *model;      /* in SkinMeshes */
     const char *hit_sound;
     const char *idle_sound;
-    bool rocket;            /* a firework rocket, not an animal */
+    SceneModelKind kind;
 } SceneAnimal;
 
-/* The animal (or rocket) an object type is, or NULL. */
+/* The animal, rocket or teleporter an object type is, or NULL. */
 const SceneAnimal *scene_animal(int type);
 
 typedef struct SceneBrick {

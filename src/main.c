@@ -320,6 +320,7 @@ int main(int argc, char **argv)
 {
     const char *game_folder = NULL;
     PlayScreenOptions options;
+    unsigned seed = (unsigned)time(NULL);
     int i;
 
     memset(&options, 0, sizeof(options));
@@ -337,6 +338,8 @@ int main(int argc, char **argv)
             options.smooth = false;
         else if (strcmp(argv[i], "--autoplay") == 0)
             options.autoplay = true;
+        else if (strcmp(argv[i], "--seed") == 0 && i + 1 < argc)
+            seed = (unsigned)strtoul(argv[++i], NULL, 10);
         else if (strcmp(argv[i], "--debug") == 0)
             log_set_level(LOG_DEBUG);
     }
@@ -364,7 +367,7 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    srand((unsigned)time(NULL));
+    srand(seed);
     audio_init(g_app.params.sound_volume, g_app.params.music_volume);
     options.mouse_sensitivity = g_app.params.mouse_sensitivity;
     options.infravision = g_app.params.infravision;
