@@ -395,6 +395,7 @@ bool scene_load(Scene *scene, const char *level_path, int random)
             SceneBrick *b = &scene->bricks[scene->brick_count++];
             *b = decode_brick(object);
             b->animal = scene_animal(object->type);
+            b->rotation &= 0x3c; /* turned about Y only (0x420b70) */
             b->animation_ms = (uint32_t)(rand() % 5000);
         } else if (object->type == 0x64 || object->type == 0x90 || object->type == 0x68 ||
                    object->type == 0x94) {

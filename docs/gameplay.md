@@ -382,7 +382,8 @@ twice a frame in play and once when paused, like fire's.
 
 Types 0xb8 to 0xde are animals (and people, aliens and a UFO): a model
 from SkinMeshes standing in the grid like a one-layer brick, turned only
-by the record's Y rotation bits. Each has a hit sound and an idle sound:
+by the record's Y rotation bits (0x04-0x20; the X and Z bits are ignored,
+0x420b70). Each has a hit sound and an idle sound:
 
 | type | model | sounds |
 | --- | --- | --- |
@@ -408,7 +409,8 @@ by the record's Y rotation bits. Each has a hit sound and an idle sound:
 
 - Points 22 (2200), counted for the level end. They fall and tip like
   bricks.
-- Animation: from rand() % 5000 ms, on the object clock (0x420c50).
+- Animation: from rand() % 5000 ms, at real speed (0x420c50; Kippykip saw
+  them at half the object clock's speed).
 - Idle: its own clock starts at rand() % 5000; the idle sound plays when
   it passes rand() % 15000, then every 4000 + rand() % 15000 ms.
 - Hit (0x407eb0: a ball, a bullet, a rocket, a neighbour's explosion):

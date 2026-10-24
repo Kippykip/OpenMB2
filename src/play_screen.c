@@ -258,12 +258,24 @@ static void build_brick_mesh(void)
     }
 }
 
-/* The background is seen from inside, and isn't lit (a guess, to check). */
+/*
+ * The background is seen from inside. The original shows it darker than
+ * its picture: about 0.65 of it at the bottom of the screen down to 0.5 at
+ * the top (measured from screenshots; how it gets that isn't known yet), so
+ * it is drawn at 0.6 all over.
+ */
 static void build_background_mesh(void)
 {
+    int i;
+
     render_mesh_destroy(&v.background);
     build_model_mesh(&v.background, &v.scene.background_model,
-                     RENDER_TWO_SIDED | RENDER_NOT_LIGHTED, v.scene.background_texture, "", NULL);
+                     RENDER_TWO_SIDED | RENDER_NOT_LIGHTED | RENDER_TINT, v.scene.background_texture, "", NULL);
+    for (i = 0; i < v.background.part_count; i++) {
+        v.background.parts[i].diffuse[0] = v.background.parts[i].diffuse[1] = 0.6f;
+        v.background.parts[i].diffuse[2] = 0.6f;
+        v.background.parts[i].diffuse[3] = 1.0f;
+    }
 }
 
 static void build_board_mesh(void)
@@ -513,8 +525,9 @@ static int animal_model(const SceneAnimal *animal)
 }
 
 /*
- * Animals play their own animation from a random start, on the object
- * clock (0x420c50). One flying off also rolls about its own z axis.
+ * Animals play their own animation from a random start (0x420c50), at
+ * real speed (the original shows them slower than the object clock).
+ * One flying off also rolls about its own z axis.
  */
 static void draw_animals(RenderPass kind, float t)
 {
@@ -534,7 +547,7 @@ static void draw_animals(RenderPass kind, float t)
             world = mat4_multiply(world, mat4_rotation_z(b->flip));
             world = mat4_multiply(world, mat4_translation(p.x, p.y, p.z));
         }
-        pose = pose_model(&v.animals[k].model, b->animation_ms + v.object_time);
+        pose = pose_model(&v.animals[k].model, b->animation_ms + v.time);
         render_draw_posed(&v.animals[k].mesh, world, pose, kind, t);
         free(pose);
     }
