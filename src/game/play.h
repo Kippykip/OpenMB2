@@ -146,6 +146,9 @@ typedef struct TrailSpot {
 
 /* What the bat's weapons fire: the pad file names a Bullets/ file for each. */
 typedef enum Weapon { WEAPON_GUN, WEAPON_BAZOOKA, WEAPON_CANNON, WEAPON_COUNT } Weapon;
+/* A cannon brick's shot (Bullets/cannonbullet.txt) comes after the bat's weapons. */
+#define WEAPON_BRICK_CANNON WEAPON_COUNT
+#define SHOT_KINDS (WEAPON_COUNT + 1)
 
 typedef enum BulletKind {
     BULLET_BULLET = 1,     /* breaks or hits the brick it reaches */
@@ -172,6 +175,7 @@ typedef struct Bullet {
     uint32_t age;
     uint32_t trail_time;
     float spin;            /* about its own length, 0.01 a ms */
+    uint32_t wait_end;     /* it doesn't move before this age (0x408fc0) */
 } Bullet;
 
 /* A piece of a bat blown apart: one of the model's frames, flying off. */
@@ -278,7 +282,7 @@ typedef struct Play {
     int bolt_count;
     Bullet bullets[PLAY_MAX_BULLETS];
     int bullet_count;
-    BulletInfo bullet_info[WEAPON_COUNT];
+    BulletInfo bullet_info[SHOT_KINDS];
     uint32_t hypnotic_end;       /* hypnotic balls turn back at this time, 0 = none */
     PlayState state;
     uint32_t state_time;         /* ms in the current state */

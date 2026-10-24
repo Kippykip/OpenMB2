@@ -337,6 +337,7 @@ const SceneAnimal *scene_animal(int type)
         { 0x84, "b_teleportsrc.x", NULL, NULL, MODEL_TELEPORT },
         { 0x88, "b_teleportdst.x", NULL, NULL, MODEL_TELEPORT_END },
         { 0xb0, "b_train.x", "Train3.ogg", NULL, MODEL_TRAIN },
+        { 0xa0, "b_cannon.x", "br_cannon.ogg", NULL, MODEL_CANNON },
     };
     size_t i;
 

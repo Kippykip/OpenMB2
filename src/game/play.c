@@ -123,6 +123,7 @@ static void grid_remove(Play *play, int index)
 /* Take a brick away, score it and count it (0x403cc0 / 0x403d20). */
 static void prize_roll(Play *play, Vec3 at, PrizeKind kind);
 static float random_range(float low, float range);
+static void cannon_fire(Play *play, int index);
 
 /*
  * A burst of puffs of one colour (0x41f330): 16 of them, fewer when many
@@ -175,6 +176,21 @@ static uint32_t record_color(const SceneBrick *b)
     return (uint32_t)raw[4] | (uint32_t)raw[5] << 8 | (uint32_t)raw[6] << 16 | (uint32_t)raw[7] << 24;
 }
 
+/* A firework rocket (type 0xa8, 0x40bdd0) sets off straight up. */
+static void launch_firework(Play *play, Vec3 at, uint32_t color)
+{
+    Firework *f;
+
+    if (play->firework_count >= PLAY_MAX_FIREWORKS)
+        return;
+    f = &play->fireworks[play->firework_count++];
+    f->position = f->from = at;
+    f->velocity = vec3(0.0f, 1.8f, 0.0f);
+    f->color = color;
+    f->age = 0;
+    f->spark_ms = 0;
+}
+
 /*
  * A firework brick hit by anything (0x4079c0, 0x407a70) leaves the grid,
  * counts as broken (no score, no prize) and fires a rocket from its cell
@@ -186,7 +202,6 @@ static void rocket_hit(Play *play, int index)
 {
     SceneBrick *b = &play->scene->bricks[index];
     PlayBrick *pb = &play->bricks[index];
-    Firework *f;
 
     if (b->removed)
         return;
@@ -195,14 +210,9 @@ static void rocket_hit(Play *play, int index)
     if (pb->counts)
         play->bricks_left--;
     brick_sound(play, index, b->animal->hit_sound);
-    if (play->firework_count >= PLAY_MAX_FIREWORKS)
-        return;
-    f = &play->fireworks[play->firework_count++];
-    f->position = f->from = vec3(ceilf(b->position.x), (float)(int)b->position.y, (float)(int)b->position.z);
-    f->velocity = vec3(0.0f, 1.8f, 0.0f);
-    f->color = record_color(b);
-    f->age = 0;
-    f->spark_ms = 0;
+    /* Made from a record at its cell, so back at x - 0.01. */
+    launch_firework(play, vec3(ceilf(b->position.x) - 0.01f, (float)(int)b->position.y, (float)(int)b->position.z),
+                    record_color(b));
 }
 
 /*
@@ -415,6 +425,10 @@ static bool brick_hit(Play *play, int index, const Ball *ball)
     if (flags & BALL_EXPLOSIVE) {
         explode(play, b->position);
         return !through;
+    }
+    if (b->animal != NULL && b->animal->kind == MODEL_CANNON) {
+        cannon_fire(play, index);
+        return true;
     }
     if (b->animal != NULL) { /* a powerball goes on through an animal (0x407e20), not a rocket (0x407990) */
         animal_hit(play, index, false);
@@ -722,7 +736,8 @@ static void ball_vs_brick(Play *play, Ball *ball)
     Vec3 v;
 
     if (index >= 0 && play->scene->bricks[index].animal != NULL &&
-        play->scene->bricks[index].animal->kind >= MODEL_TELEPORT) {
+        (play->scene->bricks[index].animal->kind == MODEL_TELEPORT ||
+         play->scene->bricks[index].animal->kind == MODEL_TELEPORT_END)) {
         /* A teleporter takes the ball wherever it is in its cell (0x402354);
            where it arrives lets it go on through. */
         if (play->scene->bricks[index].animal->kind == MODEL_TELEPORT)
@@ -1545,24 +1560,60 @@ static void load_weapons(Play *play)
         play->bullet_info[w].delay = config_get_int(&cfg, keys[w][1], 0);
     }
     config_free(&cfg);
+    load_bullet_info(&play->bullet_info[WEAPON_BRICK_CANNON], "Bullets/cannonbullet.txt");
 }
 
-/* A shot leaves the bat straight ahead (0x411610, 0x409430). */
-static void fire(Play *play, Weapon weapon, Vec3 at)
+/*
+ * A shot leaves at an angle about the vertical, 0 straight ahead
+ * (0x411610, 0x409430).
+ */
+static Bullet *fire_at(Play *play, int weapon, Vec3 at, float angle)
 {
     const BulletInfo *info = &play->bullet_info[weapon];
     Bullet *bullet;
     Vec3 v = info->velocity;
+    float speed = sqrtf(vec3_dot(v, v));
 
     if (play->bullet_count >= PLAY_MAX_BULLETS)
-        return;
+        return NULL;
     bullet = &play->bullets[play->bullet_count++];
     memset(bullet, 0, sizeof(*bullet));
-    bullet->weapon = weapon;
+    bullet->weapon = (Weapon)weapon;
     bullet->position = bullet->from = at;
-    /* Turned to face ahead, keeping its whole speed. */
-    bullet->velocity = vec3(0.0f, v.y, sqrtf(vec3_dot(v, v)));
+    /* Turned to face its way, keeping its whole speed across the board. */
+    bullet->velocity = vec3(sinf(angle) * speed, v.y, cosf(angle) * speed);
     bullet->bounce = bullet->velocity;
+    return bullet;
+}
+
+static void fire(Play *play, Weapon weapon, Vec3 at)
+{
+    fire_at(play, weapon, at, 0.0f);
+}
+
+/*
+ * A cannon brick hit by a ball or a shot (0x4076e0) fires a cannon ball
+ * the way it is turned, from just below its middle, unless it is still
+ * recoiling from the last one. The ball waits 400 ms, while the cannon
+ * plays its recoil, before it moves.
+ */
+static void cannon_fire(Play *play, int index)
+{
+    SceneBrick *b = &play->scene->bricks[index];
+    float angle = 0.0f;
+    Bullet *shot;
+
+    if (b->animation_ms != 0)
+        return;
+    if (b->rotation & 0x04) angle += 3.1415927f / 8.0f;
+    if (b->rotation & 0x08) angle += 3.1415927f / 4.0f;
+    if (b->rotation & 0x10) angle += 3.1415927f / 2.0f;
+    if (b->rotation & 0x20) angle += 3.1415927f;
+    brick_sound(play, index, b->animal->hit_sound);
+    shot = fire_at(play, WEAPON_BRICK_CANNON, vec3(b->position.x, b->position.y - 0.15f, b->position.z), angle);
+    if (shot != NULL)
+        shot->wait_end = 400;
+    b->animation_ms = 1;
 }
 
 /*
@@ -1625,6 +1676,8 @@ static bool bullet_update(Play *play, Bullet *bullet, uint32_t ms, float dt)
     bullet->spin += (float)ms * 0.01f;
     if (bullet->age > 5000)
         return false;
+    if (bullet->age < bullet->wait_end)
+        return true;
     bullet->position = vec3_add(bullet->position, vec3_scale(bullet->velocity, dt));
     if (bullet->position.y <= -0.75f) {
         bullet->position.y = -0.74f;
@@ -1654,6 +1707,21 @@ static bool bullet_update(Play *play, Bullet *bullet, uint32_t ms, float dt)
         bullet->trail_time = bullet->age + 20;
     }
 
+    /* A shot near a train knocks it out at once, without the roll (0x4092b0, 0x408f75). */
+    for (index = 0; index < play->scene->brick_count; index++) {
+        SceneBrick *b = &play->scene->bricks[index];
+        Vec3 d;
+        if (b->animal == NULL || b->animal->kind != MODEL_TRAIN || b->removed)
+            continue;
+        d = vec3_sub(b->position, bullet->position);
+        if (sqrtf(vec3_dot(d, d)) >= 2.0f)
+            continue;
+        b->removed = true;
+        if (play->bricks[index].counts)
+            play->bricks_left--;
+        brick_sound(play, index, b->animal->hit_sound);
+    }
+
     index = brick_at(play, bullet->position);
     if (index < 0) {
         /* Fire and fountains stop bullets and cannon balls, not rockets. */
@@ -1662,6 +1730,14 @@ static bool bullet_update(Play *play, Bullet *bullet, uint32_t ms, float dt)
             return true;
         if (info->kind != BULLET_BULLET)
             explode(play, play->scene->billboards[index].position);
+        return false;
+    }
+    /* A cannon brick's own balls go through cannons; anything else fires
+       one and is gone (0x409267). */
+    if (play->scene->bricks[index].animal != NULL && play->scene->bricks[index].animal->kind == MODEL_CANNON) {
+        if (info->kind == BULLET_SMALL_CANNON)
+            return true;
+        cannon_fire(play, index);
         return false;
     }
     switch (info->kind) {
@@ -1818,8 +1894,11 @@ bool play_start(Play *play, Scene *scene, int score, int lives, float mouse_sens
             pb->points = 22;
             pb->idle_ms = (uint32_t)(rand() % 5000);
             pb->call_ms = (uint32_t)(rand() % 15000);
-            if (scene->bricks[i].animal->kind == MODEL_TELEPORT || scene->bricks[i].animal->kind == MODEL_TELEPORT_END)
+            if (scene->bricks[i].animal->kind == MODEL_TELEPORT || scene->bricks[i].animal->kind == MODEL_TELEPORT_END ||
+                scene->bricks[i].animal->kind == MODEL_CANNON)
                 pb->counts = false;
+            if (scene->bricks[i].animal->kind == MODEL_CANNON)
+                scene->bricks[i].animation_ms = 0; /* still until it fires */
             if (scene->bricks[i].animal->kind == MODEL_TRAIN) {
                 const uint8_t *raw = scene->bricks[i].object->raw;
                 pb->centre = scene->bricks[i].position;
@@ -1841,6 +1920,18 @@ bool play_start(Play *play, Scene *scene, int score, int lives, float mouse_sens
         }
         if (scene->bricks[i].animal == NULL || scene->bricks[i].animal->kind != MODEL_TRAIN)
             grid_place(play, i);
+    }
+
+    /* Rockets (0xa8) and explosion flashes (0x40) placed in a level go off
+       as the level starts, like any other object the factory makes. */
+    for (i = 0; i < scene->level.object_count; i++) {
+        const LevelObject *o = &scene->level.objects[i];
+        Vec3 at = vec3((float)o->x - 0.01f, (float)o->y, (float)o->z);
+        if (o->type == 0x40)
+            scene_add_explosion(scene, at);
+        else if (o->type == 0xa8)
+            launch_firework(play, at, (uint32_t)o->raw[4] | (uint32_t)o->raw[5] << 8 |
+                                          (uint32_t)o->raw[6] << 16 | (uint32_t)o->raw[7] << 24);
     }
 
     play->bat.position = vec3(0.0f, 0.0f, scene->board.bat_line);
@@ -1958,6 +2049,14 @@ static void step(Play *play, uint32_t ms)
         if (play->scene->bricks[i].animal != NULL && play->scene->bricks[i].animal->kind == MODEL_TRAIN) {
             train_update(play, i, ms, dt);
             continue;
+        }
+        /* A cannon's recoil plays at a third of the object clock, which
+           runs twice as fast as the game while playing (0x4077b0). */
+        if (play->scene->bricks[i].animal != NULL && play->scene->bricks[i].animal->kind == MODEL_CANNON &&
+            play->scene->bricks[i].animation_ms != 0) {
+            play->scene->bricks[i].animation_ms += ms / 3 * 2;
+            if (play->scene->bricks[i].animation_ms > 200)
+                play->scene->bricks[i].animation_ms = 0;
         }
         brick_gravity(play, i);
         brick_move(play, i, ms);

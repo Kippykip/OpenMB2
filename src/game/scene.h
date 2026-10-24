@@ -53,7 +53,8 @@ typedef enum SceneModelKind {
     MODEL_ROCKET,
     MODEL_TELEPORT,      /* sends a ball on to the cell in its record */
     MODEL_TELEPORT_END,  /* where it arrives: only for show */
-    MODEL_TRAIN          /* runs round an ellipse, out of the grid (0x408900) */
+    MODEL_TRAIN,         /* runs round an ellipse, out of the grid (0x408900) */
+    MODEL_CANNON         /* fires a cannon ball when hit (0x407650) */
 } SceneModelKind;
 
 typedef struct SceneAnimal {

@@ -576,3 +576,27 @@ adds the object clock's ms to a timer; frame = timer / 100: past the
 texture's row count (1 / yfactor) it goes back to row 0 and stops,
 otherwise it shows that row (0x403590), so one shine runs through every
 row of the sheet.
+
+## Cannon bricks (type 0xa0, class 0x407650)
+
+A model (SkinMeshes/b_cannon.x) in the grid that doesn't count and can't be
+broken (its blown-up handler puts it back, like a teleporter). Hit by a
+ball, or by any shot but its own kind (slot 0x50, 0x4076e0), unless still
+recoiling it plays br_cannon.ogg and fires Bullets/cannonbullet.txt
+(smallcannonbullet, yadro.x) from (x, y − 0.15, z), turned about y by its
+record's rotation bits 0x04/0x08/0x10/0x20 (π/8, π/4, π/2, π), and the
+ball bounces. The shot waits 400 ms (0x408fc0: bullet flag 8 until its
+clock passes) before it moves. The recoil (slot 0x30, 0x4077b0) runs the
+model's animation at a third of the object clock from 1 until past 200,
+then the cannon can fire again; otherwise the model stands still. A shot
+that reaches a cannon (0x409267): a smallcannonbullet goes through, any
+other shot fires the cannon and is gone. Shots also check the ball list
+(slot 1): one within 2 of a train removes it at once.
+
+## Objects placed in levels
+
+Only types 0x40 and 0xa8 of the factory's non-brick objects appear in the
+stock levels (0x48, 0x4c, 0x50 never do). A 0x40 record is the explosion
+flash (0x405fb0: explose.png, 75 ms a frame, 16 frames, then gone), so it
+flashes once as the level starts (021_Police, 070_Losi). A 0xa8 record is
+a firework rocket, which takes off at once (!12_Bomb).

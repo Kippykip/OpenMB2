@@ -62,8 +62,8 @@ static struct {
     int train_sounds[64];   /* each train brick's engine loop, by brick */
     uint32_t object_time;
     unsigned shadow_texture, glow_texture, particle_texture, rubber_texture, billboard_texture;
-    XModel bullet_models[WEAPON_COUNT];
-    RenderMesh bullet_meshes[WEAPON_COUNT];
+    XModel bullet_models[SHOT_KINDS];
+    RenderMesh bullet_meshes[SHOT_KINDS];
     XModel firework_model;
     RenderMesh firework_mesh;
     XModel prize_models[PRIZE_KINDS];
@@ -499,7 +499,7 @@ static void load_bullet_models(void)
 {
     int w;
 
-    for (w = 0; w < WEAPON_COUNT; w++) {
+    for (w = 0; w < SHOT_KINDS; w++) {
         char path[96];
 
         render_mesh_destroy(&v.bullet_meshes[w]);
@@ -571,7 +571,9 @@ static void draw_animals(RenderPass kind, float t)
         }
         if (b->drop != 0.0f)
             world = mat4_multiply(world, mat4_translation(0.0f, -b->drop, 0.0f));
-        pose = pose_model(&v.animals[k].model, b->animation_ms + v.time);
+        /* A cannon stands still between shots (0x4077b0). */
+        pose = pose_model(&v.animals[k].model,
+                          b->animal->kind == MODEL_CANNON ? b->animation_ms : b->animation_ms + v.time);
         render_draw_posed(&v.animals[k].mesh, world, pose, kind, t);
         free(pose);
     }
@@ -789,7 +791,7 @@ void play_screen_shutdown(void)
     render_mesh_destroy(&v.billboards);
     free(unblended.bricks);
     memset(&unblended, 0, sizeof(unblended));
-    for (i = 0; i < WEAPON_COUNT; i++) {
+    for (i = 0; i < SHOT_KINDS; i++) {
         render_mesh_destroy(&v.bullet_meshes[i]);
         xfile_free(&v.bullet_models[i]);
     }
