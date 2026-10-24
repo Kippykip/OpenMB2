@@ -26,6 +26,7 @@ typedef struct PlayScreenOptions {
     float mouse_sensitivity; /* from params.txt */
     bool autoplay;           /* the bat follows the ball, for testing */
     bool infravision;        /* from params.txt: show balls through walls */
+    bool intro;              /* fly the camera in at the start of a level */
     bool smooth;             /* draw moving things between game steps (OpenMB2's own) */
 } PlayScreenOptions;
 

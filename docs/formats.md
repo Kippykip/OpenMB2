@@ -193,8 +193,42 @@ view = `LookAtLH(eye, (0, 0, look-at z), up (0, 1, 0))`. Projection is
 the picture is stretched to the screen. Dragging with the right
 button turns it by 0.005 per mouse step, yaw clamped to ±60° and pitch to
 15°–90°; the wheel adds lZ × 0.00001 to the zoom, clamped to 0.25–1.75
-(camera 0x48f088: 0x409ed0, 0x409e80, 0x409f20). The intro flies in along one of 15
-built-in spline paths (rand() % 15); OpenMB2 doesn't do that yet.
+(camera 0x48f088: 0x409ed0, 0x409e80, 0x409f20).
+
+### Level intro and fade-out
+
+At the start of a level (0x409f70) the camera flies in for 4 s: the eye
+follows `D3DXVec3Hermite(p1, t1, p2, t2, s)`, s += frame ms × 0.00025,
+looking at (0, 0, look-at z) with up (0, 1, 0), and p2 is the usual eye.
+One of 15 paths is picked with rand() % 15; with d the board's camera
+distance (p1; t1; t2):
+
+| # | p1 | t1 | t2 |
+|---|---|---|---|
+| 0 | (d, 0, d) | (0, d, 0) | (−2d, −d, 0) |
+| 1 | (−d, 0, d) | (0, d, 0) | (2d, −d, 0) |
+| 2 | (d, 0, 0) | (d, d, d) | (−d, d, −d) |
+| 3 | (−d, 0, 0) | (−d, d, d) | (d, d, −d) |
+| 4 | (d, 0, −d) | (d, d, d) | (−d, −d, 0) |
+| 5 | (−d, 0, −d) | (−d, d, d) | (d, −d, 0) |
+| 6 | (−d, d, −d) | (d, d, d) | (d, −d, 0) |
+| 7 | (d, d, −d) | (−d, d, d) | (−d, −d, 0) |
+| 8 | (0, d, 0) | (0, 0, d) | (0, −d, 0) |
+| 9 | (d, d, 0) | (0, −d, d) | (−d, d, 0) |
+| 10 | (−d, d, 0) | (0, −d, d) | (d, d, 0) |
+| 11 | (−1.75d, d, 0) | (0, d, d) | (d, 2d, 0) |
+| 12 | (1.75d, d, 0) | (0, d, d) | (−d, 2d, 0) |
+| 13 | (−d, d, 0) | (2d, d, −2d) | (−2d, −d, 2d) |
+| 14 | (d, d, 0) | (−2d, d, −2d) | (2d, −d, 2d) |
+
+While it flies, dragging and the wheel do nothing and a click can't serve
+or fire (0x4055e0); the bat still moves.
+
+When the last brick goes (state 0x4000) or the last life (0x800 / 0x8000)
+the game stops updating and, over 1 s of frame time (0x41b515), the
+light's diffuse and ambient colours are blended towards 0.05 in every
+channel; unlit things such as the HUD keep their brightness. Then the
+next level loads (or the game goes on to the menus).
 
 ## Models, `.x` (confirmed)
 

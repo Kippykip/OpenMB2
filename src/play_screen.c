@@ -39,10 +39,15 @@ typedef struct Pack {
 typedef struct Camera {
     float look_z, distance, zoom;
     float yaw, pitch, roll;
+    /* The fly-in at the start of a level: a Hermite curve from p1 to p2
+       (the usual eye) with tangents t1 and t2, over 4 s. */
+    bool flying;
+    float flight;
+    Vec3 p1, t1, p2, t2;
 } Camera;
 
 #define START_LIVES 3
-#define LEVEL_DONE_MS 2000 /* guess: how long before the next level */
+#define FADE_LEVEL 0.05f /* what the light fades to as a level ends */
 
 static struct {
     SDL_Window *window;
@@ -85,6 +90,7 @@ static struct {
     RenderLight light;
     Camera camera;
     bool dragging;
+    float fade; /* 0 to 1 as the light dies at the end of a level */
     uint32_t time;     /* ms, for scrolling textures */
     char title[320];
 } v;
@@ -314,6 +320,73 @@ static void reset_camera(void)
     v.camera.yaw = 0.0f;
     v.camera.pitch = 0.8727f; /* 50 degrees */
     v.camera.roll = 0.05f;
+    v.camera.flying = false;
+}
+
+static Vec3 camera_orbit_eye(const Camera *c)
+{
+    Mat4 orbit = mat4_yaw_pitch_roll(c->yaw, c->pitch, c->roll);
+    return mat4_transform_point(orbit, vec3(0.0f, 0.0f, -c->distance * c->zoom));
+}
+
+/*
+ * A level opens with the camera flying in along one of 15 paths picked at
+ * random (0x409f70). Each starts at p1 with tangent t1 and ends at the
+ * usual eye with tangent t2, all in units of the board's camera distance.
+ * While it flies the camera can't be turned or zoomed and the ball can't
+ * be served (0x4055e0).
+ */
+static void start_flight(void)
+{
+    static const float paths[15][3][3] = {
+        { { 1, 0, 1 }, { 0, 1, 0 }, { -2, -1, 0 } },
+        { { -1, 0, 1 }, { 0, 1, 0 }, { 2, -1, 0 } },
+        { { 1, 0, 0 }, { 1, 1, 1 }, { -1, 1, -1 } },
+        { { -1, 0, 0 }, { -1, 1, 1 }, { 1, 1, -1 } },
+        { { 1, 0, -1 }, { 1, 1, 1 }, { -1, -1, 0 } },
+        { { -1, 0, -1 }, { -1, 1, 1 }, { 1, -1, 0 } },
+        { { -1, 1, -1 }, { 1, 1, 1 }, { 1, -1, 0 } },
+        { { 1, 1, -1 }, { -1, 1, 1 }, { -1, -1, 0 } },
+        { { 0, 1, 0 }, { 0, 0, 1 }, { 0, -1, 0 } },
+        { { 1, 1, 0 }, { 0, -1, 1 }, { -1, 1, 0 } },
+        { { -1, 1, 0 }, { 0, -1, 1 }, { 1, 1, 0 } },
+        { { -1.75f, 1, 0 }, { 0, 1, 1 }, { 1, 2, 0 } },
+        { { 1.75f, 1, 0 }, { 0, 1, 1 }, { -1, 2, 0 } },
+        { { -1, 1, 0 }, { 2, 1, -2 }, { -2, -1, 2 } },
+        { { 1, 1, 0 }, { -2, 1, -2 }, { 2, -1, 2 } },
+    };
+    const float (*path)[3] = paths[rand() % 15];
+    float d = v.camera.distance;
+
+    v.camera.p1 = vec3(path[0][0] * d, path[0][1] * d, path[0][2] * d);
+    v.camera.t1 = vec3(path[1][0] * d, path[1][1] * d, path[1][2] * d);
+    v.camera.t2 = vec3(path[2][0] * d, path[2][1] * d, path[2][2] * d);
+    v.camera.p2 = camera_orbit_eye(&v.camera);
+    v.camera.flight = 0.0f;
+    v.camera.flying = true;
+}
+
+/* Moves the fly-in on by a frame's time; it lands after 4 s (0x4099e0). */
+static void update_flight(uint32_t ms)
+{
+    if (!v.camera.flying)
+        return;
+    v.camera.flight += (float)ms * 0.00025f;
+    if (v.camera.flight > 1.0f)
+        v.camera.flying = false;
+}
+
+static Vec3 camera_eye(const Camera *c)
+{
+    float s = c->flight, s2 = s * s, s3 = s2 * s;
+
+    if (!c->flying)
+        return camera_orbit_eye(c);
+    /* D3DXVec3Hermite */
+    return vec3_add(vec3_add(vec3_scale(c->p1, 2.0f * s3 - 3.0f * s2 + 1.0f),
+                             vec3_scale(c->t1, s3 - 2.0f * s2 + s)),
+                    vec3_add(vec3_scale(c->p2, -2.0f * s3 + 3.0f * s2),
+                             vec3_scale(c->t2, s3 - s2)));
 }
 
 /*
@@ -715,6 +788,9 @@ static void load_level(int pack, int level)
     if (play_start(&v.play, &v.scene, v.score, v.lives, v.options.mouse_sensitivity)) {
         v.play.sound = play_sound;
         v.playing = true;
+        v.fade = 0.0f;
+        if (v.options.intro)
+            start_flight();
         load_prize_models();
         load_bullet_models();
         if (v.firework_mesh.buffer == 0)
@@ -873,7 +949,7 @@ void play_screen_handle_event(const SDL_Event *event)
         } else if (event->button.button == SDL_BUTTON_LEFT && v.playing) {
             if (v.play.state == PLAY_GAME_OVER)
                 jump_to_level(v.pack, v.level);
-            else {
+            else if (!v.camera.flying) {
                 play_click(&v.play);
                 play_hold_trigger(&v.play, true);
             }
@@ -886,7 +962,7 @@ void play_screen_handle_event(const SDL_Event *event)
             play_hold_trigger(&v.play, false);
         break;
     case SDL_MOUSEMOTION:
-        if (v.dragging) {
+        if (v.dragging && !v.camera.flying) {
             /* The original turns the camera by 0.005 per mouse step, yaw
                within ±60° and pitch from 15° to 90° (0x409ed0, 0x409e80). */
             v.camera.yaw += (float)event->motion.xrel * 0.005f;
@@ -900,6 +976,8 @@ void play_screen_handle_event(const SDL_Event *event)
         }
         break;
     case SDL_MOUSEWHEEL:
+        if (v.camera.flying)
+            break;
         /* Zoom stays within 0.25 to 1.75 of the board's distance (0x409f20).
            The original moves out with the wheel forward, by a step too small
            to notice; here forward moves in, by 0.1 a notch. */
@@ -961,9 +1039,29 @@ static void update(uint32_t ms)
             build_brick_mesh();
         }
     }
+    update_flight(ms);
     if (!v.playing)
         return;
-    if (v.options.autoplay)
+    /*
+     * When the last brick goes, or the last life, the game stops and the
+     * light fades over 1 s (0x41b515); then the next level loads.
+     */
+    if (v.play.state == PLAY_LEVEL_DONE || v.play.state == PLAY_GAME_OVER) {
+        v.fade += (float)ms * 0.001f;
+        if (v.fade > 1.0f) {
+            v.fade = 1.0f;
+            if (v.play.state == PLAY_LEVEL_DONE) {
+                /* Lives carry over (no extra life: Lives stays the same in the original). */
+                v.score = v.play.score;
+                v.lives = v.play.lives;
+                load_level(v.pack, v.level + 1);
+                return;
+            }
+        }
+        update_title();
+        return;
+    }
+    if (v.options.autoplay && !v.camera.flying)
         play_autopilot(&v.play);
     play_update(&v.play, ms);
     train_sounds(false);
@@ -971,13 +1069,6 @@ static void update(uint32_t ms)
         scene_bake_bricks(&v.scene);
         build_brick_mesh();
         v.play.bricks_changed = false;
-    }
-    if (v.play.state == PLAY_LEVEL_DONE && v.play.state_time >= LEVEL_DONE_MS) {
-        /* Next level; lives carry over (no extra life: Lives stays the same in the original). */
-        v.score = v.play.score;
-        v.lives = v.play.lives;
-        load_level(v.pack, v.level + 1);
-        return;
     }
     update_title();
 }
@@ -1588,7 +1679,8 @@ static void build_bolts(void)
 void play_screen_frame(int width, int height, uint32_t ms)
 {
     const Camera *c = &v.camera;
-    Mat4 orbit, view, projection, identity, board;
+    Mat4 view, projection, identity, board;
+    RenderLight light;
     Vec3 eye;
     float aspect;
     int i;
@@ -1601,8 +1693,7 @@ void play_screen_frame(int width, int height, uint32_t ms)
     update(ms);
     v.time += ms;
 
-    orbit = mat4_yaw_pitch_roll(c->yaw, c->pitch, c->roll);
-    eye = mat4_transform_point(orbit, vec3(0.0f, 0.0f, -c->distance * c->zoom));
+    eye = camera_eye(c);
     view = mat4_look_at_lh(eye, vec3(0.0f, 0.0f, c->look_z), vec3(0.0f, 1.0f, 0.0f));
     /*
      * The game passes aspect 1.0 for its 4:3 modes, so the picture is
@@ -1617,7 +1708,13 @@ void play_screen_frame(int width, int height, uint32_t ms)
     board = mat4_multiply(mat4_scaling(v.scene.board.scale_x, 1.0f, v.scene.board.scale_z),
                           mat4_translation(0.0f, v.scene.board_y, 0.0f));
 
-    render_begin(width, height, view, projection, &v.light);
+    /* The light (not unlit things such as the HUD) fades towards 0.05. */
+    light = v.light;
+    for (i = 0; i < 4; i++) {
+        light.ambient[i] += (FADE_LEVEL - light.ambient[i]) * v.fade;
+        light.diffuse[i] += (FADE_LEVEL - light.diffuse[i]) * v.fade;
+    }
+    render_begin(width, height, view, projection, &light);
     if (!v.scene_loaded)
         return;
     if (v.playing && v.options.smooth)

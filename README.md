@@ -54,6 +54,8 @@ tipping and shrinking bricks too; the rules are
 untouched. `--no-smooth` (or F10) draws them only where each step leaves
 them, like the original.
 
+Each level opens with the original's camera fly-in; `--no-intro` skips it.
+
 `mb2inspect` looks inside a game folder:
 
 ```

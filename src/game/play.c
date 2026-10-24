@@ -719,7 +719,8 @@ static void ball_teleport(Play *play, Ball *ball, int index)
     Vec3 to = vec3((float)(int8_t)raw[6], (float)raw[5], (float)(int8_t)raw[4]);
     Vec3 from = vec3(b->position.x + 0.5f, b->position.y + 6.0f, b->position.z);
 
-    ball->position = to;
+    /* Jump, without the screen blending it across the board. */
+    ball->position = ball->from = to;
     ball->flags |= BALL_TELEPORTED;
     ball->wait_end = ball->age + 1000;
     ball_new_direction(ball);
