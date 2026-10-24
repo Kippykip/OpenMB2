@@ -299,6 +299,10 @@ the score, then:
 
 ## Weapons (fire 0x4055e0, bullets 0x408fe0, update 0x409050, config 0x4094f0)
 
+The left button is read every frame (0x419875), so holding it fires
+again as soon as the weapon has reloaded.
+
+
 The pad file names a Bullets/ file and a delay for each weapon: bullets /
 bulletdelay (gun), rockets / rocketdelay (bazooka), torpedos / torpedodelay
 (cannon). A bullet file's keys act in file order on a velocity starting at
@@ -327,6 +331,9 @@ drawn spun about z by 0.01 a ms and turned about x by -atan2(vy, speed).
 
 ## Rubber bat (yo-yo)
 
+The string's texture, rubber.png, is white, but it shows as #606060.
+
+
 For 30 s the bat is rubber: a ball it hits gets flag 4 and rubbered.ogg
 plays. Such a ball is never pushed off flat angles, and each step, while it
 is 10 or more from the bat, its velocity gains (bat - ball) * distance * dt
@@ -354,7 +361,10 @@ Over the last 1000 ms of a timed explosive ball its alpha is
 explosive and hypnotic.
 
 Each is drawn from Billboards.png, a 4×4 grid: fire in the left two
-columns, water in the right two. Frame f = (time / 230) & 7;
+columns, water in the right two. Each keeps a clock that its draw
+(0x406600) moves on by the frame time; it is drawn twice a frame in
+play and once while paused, so it runs at double speed in play.
+Frame f = (clock / 230) & 7;
 u0 = (f >> 2) × 0.25 (+ 0.5 for water), v0 = (f & 3) × 0.25 + 1/512,
 each cell 0.25 across and 0.25 − 1/256 down. The quad faces the camera
 round (x, y − 0.5, z), from −1 to 1 across and −0.5 to 1.5 up, blended

@@ -1421,6 +1421,11 @@ void play_click(Play *play)
     bat_fire(play);
 }
 
+void play_hold_trigger(Play *play, bool held)
+{
+    play->trigger = held;
+}
+
 static void step(Play *play, uint32_t ms)
 {
     float dt = (float)ms * 0.01f;
@@ -1462,6 +1467,9 @@ static void step(Play *play, uint32_t ms)
         if (play->bat.weapon_time >= 500)
             play->bat.weapon_time = 250;
     }
+    /* The game reads the button every frame, so holding it keeps firing (0x419875). */
+    if (play->trigger && play->state == PLAY_RUNNING && play->time >= play->bat.ready_time)
+        bat_fire(play);
     if (play->bat.mode == BAT_RUBBER && play->time > play->bat.rubber_end) {
         release_yoyo(play);
         play->bat.mode = BAT_NORMAL;

@@ -57,6 +57,7 @@ static struct {
     int score, lives;  /* carried from level to level */
     int music;         /* which level tune is playing, 0-3 */
     RenderMesh shadows, glows, prize_glows, trail, bullet_shadows, strings, billboards;
+    uint32_t billboard_time;
     unsigned shadow_texture, glow_texture, particle_texture, rubber_texture, billboard_texture;
     XModel bullet_models[WEAPON_COUNT];
     RenderMesh bullet_meshes[WEAPON_COUNT];
@@ -699,13 +700,17 @@ void play_screen_handle_event(const SDL_Event *event)
         } else if (event->button.button == SDL_BUTTON_LEFT && v.playing) {
             if (v.play.state == PLAY_GAME_OVER)
                 jump_to_level(v.pack, v.level);
-            else
+            else {
                 play_click(&v.play);
+                play_hold_trigger(&v.play, true);
+            }
         }
         break;
     case SDL_MOUSEBUTTONUP:
         if (event->button.button == SDL_BUTTON_RIGHT)
             v.dragging = false;
+        else if (event->button.button == SDL_BUTTON_LEFT)
+            play_hold_trigger(&v.play, false);
         break;
     case SDL_MOUSEMOTION:
         if (v.dragging) {
@@ -886,7 +891,7 @@ static void add_billboard(XVertex *out, Mat4 view, Vec3 p, float w, float h)
 /*
  * Fire and fountains (FireBrick / WaterBrick draw): an eight frame
  * animation from Billboards.png, a 4x4 grid, fire in the left half and
- * water in the right, one frame every 230 ms. Each faces the camera,
+ * water in the right, one frame every 230 ms of their clock. Each faces the camera,
  * 2 wide, from 1 above its cell to 1 below, and is blended without
  * depth writes (t_billboard).
  */
@@ -895,7 +900,7 @@ static void build_billboards(Mat4 view)
     XVertex *quads;
     Vec3 right = vec3(view.m[0][0], view.m[1][0], view.m[2][0]);
     Vec3 up = vec3(view.m[0][1], view.m[1][1], view.m[2][1]);
-    unsigned frame = ((unsigned)v.time / 230u) & 7u;
+    unsigned frame = (v.billboard_time / 230u) & 7u;
     int i, k, n = v.scene.billboard_count;
 
     render_mesh_destroy(&v.billboards);
@@ -1083,7 +1088,7 @@ static void build_strings(void)
         c[2] = vec3(anchor.x + w, anchor.y, anchor.z);
         c[3] = vec3(anchor.x - w, anchor.y, anchor.z);
         add_quad(&quads[n * 6], c);
-        colors[n++] = 0xffffffffu;
+        colors[n++] = 0xff606060u; /* rubber.png is white; the string shows as #606060 */
     }
     make_tinted_quads(&v.strings, quads, colors, n, v.rubber_texture, 0);
 }
@@ -1147,6 +1152,10 @@ void play_screen_frame(int width, int height, uint32_t ms)
 
     update(ms);
     v.time += ms;
+    /* Fire and fountains keep their own clock, moved on each time they are
+       drawn; the game draws them twice a frame while playing and once when
+       paused, so they animate twice as fast in play (0x406600). */
+    v.billboard_time += v.playing ? ms * 2 : ms;
 
     orbit = mat4_yaw_pitch_roll(c->yaw, c->pitch, c->roll);
     eye = mat4_transform_point(orbit, vec3(0.0f, 0.0f, -c->distance * c->zoom));

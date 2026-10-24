@@ -216,6 +216,7 @@ typedef struct Play {
     uint32_t time;               /* ms since the level started */
     float mouse_sensitivity;
     uint32_t pending_ms;         /* time not yet turned into a step */
+    bool trigger;                /* the fire button is held */
     bool bricks_changed;         /* the scene's bricks need rebaking */
     PlaySoundFn sound;
     void *sound_user;
@@ -231,6 +232,8 @@ void play_free(Play *play);
 /* Mouse movement in pixels, and the left button: releases the ball. */
 void play_mouse_move(Play *play, int dx);
 void play_click(Play *play);
+/* Holding the button keeps a weapon firing as fast as it reloads. */
+void play_hold_trigger(Play *play, bool held);
 
 /* Let time pass (in ms). */
 void play_update(Play *play, uint32_t ms);
