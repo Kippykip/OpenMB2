@@ -121,6 +121,7 @@ static struct {
     int modes[MAX_VIDEO_MODES][2];
     int mode_count, mode;
     bool video_pending; /* a mode picked, to take effect on leaving the page */
+    int pending_width, pending_height;
     /* The game to start. */
     char pack[64];
     char pad[MENU_PATH_SIZE];
@@ -377,8 +378,12 @@ static void load_page(const char *list, Page page)
 {
     /* The screen changes size once the options page is left, not while
        the arrows are being clicked. */
-    if (m.video_pending && m.video_changed != NULL)
-        m.video_changed();
+    if (m.video_pending && m.settings != NULL) {
+        m.settings->width = m.pending_width;
+        m.settings->height = m.pending_height;
+        if (m.video_changed != NULL)
+            m.video_changed();
+    }
     m.video_pending = false;
     /* The window may have been resized by hand since. */
     list_video_modes();
@@ -719,8 +724,8 @@ static void choose_video_mode(void)
         m.params->resolution = original;
     if (m.settings == NULL)
         return;
-    m.settings->width = width;
-    m.settings->height = height;
+    m.pending_width = width;
+    m.pending_height = height;
     m.video_pending = true;
 }
 

@@ -62,6 +62,7 @@ typedef struct App {
     bool playing;        /* a level, not the menus */
     bool focused;        /* the window has the keyboard */
     int mouse_mode;      /* what update_mouse_mode() last set, -1 for nothing yet */
+    bool resized;        /* the window changed size since the last frame */
 } App;
 
 static App g_app;
@@ -272,8 +273,10 @@ static void remember_window(void)
     if (flags & (SDL_WINDOW_FULLSCREEN | SDL_WINDOW_MINIMIZED))
         return;
     g_app.settings.maximized = (flags & SDL_WINDOW_MAXIMIZED) != 0;
-    if (g_app.settings.maximized)
+    /* Only a size the window really took, never one still on its way. */
+    if (g_app.settings.maximized || !g_app.resized)
         return;
+    g_app.resized = false;
     SDL_GetWindowSize(g_app.window, &width, &height);
     video_size(&want_width, &want_height);
     /* Left at the size asked for, 0 x 0 goes on following params.txt. */
@@ -408,7 +411,9 @@ static void handle_event(const SDL_Event *event)
         }
         break;
     case SDL_WINDOWEVENT:
-        if (event->window.event == SDL_WINDOWEVENT_FOCUS_GAINED) {
+        if (event->window.event == SDL_WINDOWEVENT_RESIZED) {
+            g_app.resized = true;
+        } else if (event->window.event == SDL_WINDOWEVENT_FOCUS_GAINED) {
             set_mouse_mode(true);
         } else if (event->window.event == SDL_WINDOWEVENT_FOCUS_LOST) {
             set_mouse_mode(false);
