@@ -127,6 +127,7 @@ Mausgeschw.
 Spiel
 Video
 Sound
+Joystick
 
 /// NAG-SCREEN ///
 Testversion

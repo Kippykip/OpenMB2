@@ -2,7 +2,6 @@ CMenuItemButton
 {
   width: 187
   height: 40
-  flipped
   texture: Options.png
   color: FFFFFFFF
   id: navigate
@@ -10,5 +9,5 @@ CMenuItemButton
   texturex: 0
   texturey: 0
   textindex: 6
-  pos: 0 -108
+  pos: 0 -180
 }

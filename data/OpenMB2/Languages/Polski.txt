@@ -129,6 +129,7 @@ Czuàoæâ myszy
 Rozgrywka
 Grafika
 Dçwiäk
+Joystick
 
 /// NAG-SCREEN ///
 Wersja testowa

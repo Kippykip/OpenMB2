@@ -127,6 +127,7 @@ Souris
 Jeu
 Vid‰o
 Son
+Joystick
 
 /// NAG-SCREEN ///
 Version d'essai

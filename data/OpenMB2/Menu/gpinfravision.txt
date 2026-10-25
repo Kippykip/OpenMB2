@@ -11,5 +11,5 @@ CMenuItemCheckbox
   texturex: 0
   texturey: 0
   textindex: 54
-  pos: 0 -38
+  pos: 0 10
 }

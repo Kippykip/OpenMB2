@@ -127,6 +127,7 @@ Mouse speed
 Gameplay Options
 Video Options
 Audio Options
+Joystick Options
 
 /// NAG-SCREEN ///
 Trial version

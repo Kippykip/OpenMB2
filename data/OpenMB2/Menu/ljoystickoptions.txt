@@ -1,0 +1,6 @@
+List
+{
+  menuitem: Menu/joycheck.txt
+  menuitem: Menu/joyback.txt
+  menuitem: Menu/joypanel.txt
+}

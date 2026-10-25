@@ -3,5 +3,6 @@ List
   menuitem: Menu/optgameplay.txt
   menuitem: Menu/optvideo.txt
   menuitem: Menu/optaudio.txt
+  menuitem: Menu/optjoystick.txt
   menuitem: Menu/optmainmenu.txt
 }
