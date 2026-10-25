@@ -50,6 +50,8 @@ static struct {
     float time;
     float plate_alpha, ball_alpha, plane_alpha;
     float bat_z;
+    bool kicked;          /* the bat has hit the ball */
+    unsigned bounce_ms;   /* since then */
     Mat4 view;
     Particle *particles;
     int particle_count;
@@ -244,13 +246,21 @@ static void draw_logo_frame(const char *name, float alpha, bool lit, const Mat4 
     render_draw_posed(&subset, world, pose, RENDER_PASS_ALL, 0.0f);
 }
 
-/* The fans spin; the rest of the bat holds still. */
+/*
+ * The bat's own update runs as in a game (0x404f4f): the fans spin, and
+ * the plate, hands and springs take the bounce's time, 0 when there is
+ * none. At 5 seconds the bat kicks the ball into the logo with the bounce
+ * a hit in the middle gives (0x41b14a): keys 1-150 at a third of real
+ * time.
+ */
 static void draw_bat(uint32_t ms)
 {
+    static const char *const bounce_frames[] = { "Plashka", "L_Hand",    "R_Hand",
+                                                 "L_Ressore", "R_Ressore", "Magnit" };
     const XModel *model = &in.bat_model;
-    unsigned *times;
+    unsigned *times, bounce = 0;
     Mat4 *pose;
-    int f;
+    int f, k;
 
     if (in.bat.buffer == 0)
         return;
@@ -260,19 +270,26 @@ static void draw_bat(uint32_t ms)
     if (in.bat_z > -1.75f)
         in.bat_z = -1.75f;
 
+    if (in.time > 5000.0f && !in.kicked) {
+        in.kicked = true;
+        in.bounce_ms = 0;
+    } else if (in.kicked) {
+        in.bounce_ms += ms;
+    }
+    if (in.kicked && 1 + in.bounce_ms / 3 <= 150)
+        bounce = 1 + in.bounce_ms / 3;
+
     times = malloc((size_t)(model->frame_count + 1) * sizeof(*times));
     pose = malloc((size_t)(model->part_count + 1) * sizeof(*pose));
     if (times != NULL && pose != NULL) {
         for (f = 0; f < model->frame_count; f++) {
-            int up = f;
+            const char *name = model->frames[f].name;
             times[f] = XFRAME_REST;
-            for (; up >= 0; up = model->frames[up].parent) {
-                if (strcmp(model->frames[up].name, "L_Fan") == 0 ||
-                    strcmp(model->frames[up].name, "R_Fan") == 0) {
-                    times[f] = (unsigned)in.time;
-                    break;
-                }
-            }
+            if (strcmp(name, "L_Fan") == 0 || strcmp(name, "R_Fan") == 0)
+                times[f] = (unsigned)in.time;
+            for (k = 0; k < 6; k++)
+                if (strcmp(name, bounce_frames[k]) == 0)
+                    times[f] = bounce;
         }
         xmodel_pose(model, times, pose);
         render_draw_posed(&in.bat,

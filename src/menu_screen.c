@@ -120,6 +120,7 @@ static struct {
     void (*video_changed)(void);
     int modes[MAX_VIDEO_MODES][2];
     int mode_count, mode;
+    bool video_pending; /* a mode picked, to take effect on leaving the page */
     /* The game to start. */
     char pack[64];
     char pad[MENU_PATH_SIZE];
@@ -372,6 +373,11 @@ static void stop_screw(void)
 /* A page from its list file, with the logos (0x418670, 0x418b70). */
 static void load_page(const char *list, Page page)
 {
+    /* The screen changes size once the options page is left, not while
+       the arrows are being clicked. */
+    if (m.video_pending && m.video_changed != NULL)
+        m.video_changed();
+    m.video_pending = false;
     stop_screw();
     menu_list_clear(&m.list);
     if (list != NULL)
@@ -711,8 +717,7 @@ static void choose_video_mode(void)
         return;
     m.settings->width = width;
     m.settings->height = height;
-    if (m.video_changed != NULL)
-        m.video_changed();
+    m.video_pending = true;
 }
 
 void menu_screen_set_settings(Settings *settings, void (*changed)(void))

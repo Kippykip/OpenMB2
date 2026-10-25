@@ -50,7 +50,8 @@ void menu_screen_set_wide(bool wide);
 /*
  * openmb2.ini's settings: the options page's video mode offers every size
  * the display has and keeps the one picked there (params.txt's resolution
- * too, when it is one of the original's), then calls changed().
+ * too, when it is one of the original's), then calls changed() once the
+ * page is left.
  */
 void menu_screen_set_settings(Settings *settings, void (*changed)(void));
 
