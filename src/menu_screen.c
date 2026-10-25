@@ -113,6 +113,11 @@ static struct {
        through, so opening the options could move a slider.) */
     bool wait_release;
     float view_width, view_height;
+    /* Where on the screen the menus go, in pixels from the bottom left:
+       4:3 between black bars, or (--wide-menus) all of it. */
+    int viewport[4];
+    int screen_width, screen_height;
+    bool wide;
     /* The game to start. */
     char pack[64];
     char pad[MENU_PATH_SIZE];
@@ -947,7 +952,7 @@ static void load_prize(PrizeKind kind)
  * corner of the screen (x, y, width, height in pixels of the 800x600
  * screen), seen from (s/2, s, -s) for senswdth s.
  */
-static void draw_help_views(int width, int height)
+static void draw_help_views(void)
 {
     int i, pass;
     bool any = false;
@@ -971,10 +976,10 @@ static void draw_help_views(int width, int height)
         }
         left = item->x - 400.0f + m.view_width * 0.5f;
         bottom = 300.0f - item->y - item->height + m.view_height * 0.5f;
-        render_viewport((int)(left / m.view_width * (float)width + 0.5f),
-                        (int)(bottom / m.view_height * (float)height + 0.5f),
-                        (int)(item->width / m.view_width * (float)width + 0.5f),
-                        (int)(item->height / m.view_height * (float)height + 0.5f));
+        render_viewport(m.viewport[0] + (int)(left / m.view_width * (float)m.viewport[2] + 0.5f),
+                        m.viewport[1] + (int)(bottom / m.view_height * (float)m.viewport[3] + 0.5f),
+                        (int)(item->width / m.view_width * (float)m.viewport[2] + 0.5f),
+                        (int)(item->height / m.view_height * (float)m.viewport[3] + 0.5f));
         view = mat4_look_at_lh(vec3(0.5f * s, s, -s), vec3(0.0f, 0.0f, 0.0f), vec3(0.0f, 1.0f, 0.0f));
         projection = mat4_perspective_fov_lh(3.14159265f / 4.0f, 1.0f, 1.0f, 1000.0f);
         render_set_camera(view, projection, &m.light);
@@ -985,7 +990,7 @@ static void draw_help_views(int width, int height)
         free(pose);
     }
     if (any) {
-        render_viewport(0, 0, width, height);
+        render_viewport(m.viewport[0], m.viewport[1], m.viewport[2], m.viewport[3]);
         render_set_camera(mat4_identity(), mat4_identity(), &m.light);
         render_begin_2d(m.view_width, m.view_height);
     }
@@ -1272,6 +1277,11 @@ void menu_screen_show_end_of_pack(int score)
     audio_play_music("Music/enter.txt");
 }
 
+void menu_screen_set_wide(bool wide)
+{
+    m.wide = wide;
+}
+
 void menu_screen_game(const char **folder, int *level, const char **pad)
 {
     *folder = m.pack;
@@ -1334,10 +1344,15 @@ static void update_mouse(void)
         m.wait_release = false;
     m.button = m.button_down && !m.wait_release;
     SDL_GetWindowSize(m.window, &w, &h);
-    if (w <= 0 || h <= 0)
+    if (w <= 0 || h <= 0 || m.viewport[2] <= 0 || m.viewport[3] <= 0)
         return;
-    m.mouse_x = ((float)x / (float)w - 0.5f) * m.view_width;
-    m.mouse_y = (0.5f - (float)y / (float)h) * m.view_height;
+    /* From window points to pixels from the bottom left, then into the menus. */
+    {
+        float px = (float)x * (float)m.screen_width / (float)w;
+        float py = (float)m.screen_height - (float)y * (float)m.screen_height / (float)h;
+        m.mouse_x = ((px - (float)m.viewport[0]) / (float)m.viewport[2] - 0.5f) * m.view_width;
+        m.mouse_y = ((py - (float)m.viewport[1]) / (float)m.viewport[3] - 0.5f) * m.view_height;
+    }
 }
 
 /* splash.png at its own size, fading out over about a second (0x41ab9a). */
@@ -1370,13 +1385,28 @@ MenuAction menu_screen_frame(int width, int height, uint32_t ms)
     /* Sized like the HUD: 600 high, wider on a wider screen. */
     m.view_width = 800.0f;
     m.view_height = 600.0f;
-    if (width * 3 >= height * 4)
-        m.view_width = 600.0f * (float)width / (float)(height > 0 ? height : 1);
-    else
-        m.view_height = 800.0f * (float)height / (float)(width > 0 ? width : 1);
+    m.screen_width = width;
+    m.screen_height = height;
+    m.viewport[0] = m.viewport[1] = 0;
+    m.viewport[2] = width;
+    m.viewport[3] = height;
+    if (m.wide) {
+        /* 600 high, wider on a wider screen, like the HUD. */
+        if (width * 3 >= height * 4)
+            m.view_width = 600.0f * (float)width / (float)(height > 0 ? height : 1);
+        else
+            m.view_height = 800.0f * (float)height / (float)(width > 0 ? width : 1);
+    } else if (width * 3 > height * 4) {
+        m.viewport[2] = height * 4 / 3;
+        m.viewport[0] = (width - m.viewport[2]) / 2;
+    } else if (width * 3 < height * 4) {
+        m.viewport[3] = width * 3 / 4;
+        m.viewport[1] = (height - m.viewport[3]) / 2;
+    }
     update_mouse();
 
     render_begin(width, height, identity, identity, &m.light);
+    render_viewport(m.viewport[0], m.viewport[1], m.viewport[2], m.viewport[3]);
     render_begin_2d(m.view_width, m.view_height);
     batch_begin();
 
@@ -1385,11 +1415,12 @@ MenuAction menu_screen_frame(int width, int height, uint32_t ms)
         return m.action;
     }
     if (m.page == PAGE_INTRO) {
-        if (!intro_frame(width, height, ms, &m.light))
+        if (!intro_frame(width, height, m.viewport, ms, &m.light))
             show_main();
         else
             return m.action;
         render_begin(width, height, identity, identity, &m.light);
+        render_viewport(m.viewport[0], m.viewport[1], m.viewport[2], m.viewport[3]);
         render_begin_2d(m.view_width, m.view_height);
     }
 
@@ -1401,7 +1432,7 @@ MenuAction menu_screen_frame(int width, int height, uint32_t ms)
     draw_backdrop(ms);
     draw_pictures();
     batch_draw();
-    draw_help_views(width, height);
+    draw_help_views();
     {
         int i;
         for (i = 0; i < m.list.count; i++)

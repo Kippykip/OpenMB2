@@ -18,6 +18,8 @@
  *   --screenshot  save a frame as a .bmp and quit (for testing); with
  *                 --run-ms, after playing that long in steady 18 ms frames
  *   --autoplay    the bat follows the ball by itself (for testing)
+ *   --wide-menus  fill the screen with the menus instead of keeping them
+ *                 4:3 between black bars
  */
 #include "audio/audio.h"
 #include "core/config.h"
@@ -425,6 +427,7 @@ int main(int argc, char **argv)
     const char *game_folder = NULL, *start_level = NULL, *start_menu = NULL;
     PlayScreenOptions options;
     unsigned seed = (unsigned)time(NULL);
+    bool wide_menus = false;
 
     g_app.mouse_mode = -1;
     int i;
@@ -450,6 +453,8 @@ int main(int argc, char **argv)
             options.intro = false;
         else if (strcmp(argv[i], "--original-glass") == 0)
             options.sort_glass = false;
+        else if (strcmp(argv[i], "--wide-menus") == 0)
+            wide_menus = true;
         else if (strcmp(argv[i], "--autoplay") == 0)
             options.autoplay = true;
         else if (strcmp(argv[i], "--seed") == 0 && i + 1 < argc)
@@ -491,6 +496,7 @@ int main(int argc, char **argv)
         shutdown_app();
         return 1;
     }
+    menu_screen_set_wide(wide_menus);
     lang_load(g_app.params.language);
 
     g_app.running = true;

@@ -17,8 +17,10 @@
 
 /* Load SkinMeshes/LOGO.X and the bat; false if the logo isn't there. */
 bool intro_start(void);
-/* Draw the next frame (clearing the screen); false once it is over. */
-bool intro_frame(int width, int height, uint32_t ms, const RenderLight *light);
+/* Draw the next frame, clearing the width x height screen and drawing in
+   viewport (x, y, width, height in pixels from the bottom left); false
+   once it is over. */
+bool intro_frame(int width, int height, const int viewport[4], uint32_t ms, const RenderLight *light);
 /* Free the models; also safe when it never started. */
 void intro_stop(void);
 

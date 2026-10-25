@@ -332,7 +332,7 @@ static void draw_logo(uint32_t ms)
     free(pose);
 }
 
-bool intro_frame(int width, int height, uint32_t ms, const RenderLight *light)
+bool intro_frame(int width, int height, const int viewport[4], uint32_t ms, const RenderLight *light)
 {
     RenderLight lit = *light;
     Mat4 projection;
@@ -350,12 +350,13 @@ bool intro_frame(int width, int height, uint32_t ms, const RenderLight *light)
     /* The original's 4:3 picture squeezed into a square projection, wider
        on a wider screen. */
     projection = mat4_perspective_fov_lh(PI / 4.0f,
-                                         (float)width * 3.0f / (float)(4 * (height > 0 ? height : 1)),
+                                         (float)viewport[2] * 3.0f / (float)(4 * (viewport[3] > 0 ? viewport[3] : 1)),
                                          1.0f, 1000.0f);
     /* The scene's ambient adds to the light's (0x41a8c3). */
     for (i = 0; i < 3; i++)
         lit.ambient[i] = fminf(lit.ambient[i] + 34.0f / 255.0f, 1.0f);
     render_begin(width, height, in.view, projection, &lit);
+    render_viewport(viewport[0], viewport[1], viewport[2], viewport[3]);
     if (in.time > 2000.0f)
         draw_bat(ms);
     draw_logo(ms);

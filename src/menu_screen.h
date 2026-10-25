@@ -43,6 +43,9 @@ void menu_screen_show_end_of_pack(int score);
 void menu_screen_handle_event(const SDL_Event *event);
 MenuAction menu_screen_frame(int width, int height, uint32_t ms);
 
+/* Fill a screen of another shape instead of keeping 4:3 between black bars. */
+void menu_screen_set_wide(bool wide);
+
 /* What MENU_ACTION_PLAY plays: a pack folder, a level in it, the bat's pad file. */
 void menu_screen_game(const char **folder, int *level, const char **pad);
 
