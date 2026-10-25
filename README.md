@@ -46,7 +46,7 @@ are the original's own files, so both games share them. In a level:
 | Space | reset the camera |
 | F10 | smooth motion on / off |
 | Alt+Enter | fullscreen |
-| Escape | pause; again for the main menu |
+| Escape | pause (which frees the mouse); again for the main menu |
 | S / L | save / load the game (default.save, shared with the original) |
 | Shift+1-3 / 1-3 | save / load the hidden quick slots |
 | Shift+F11 | skip the level (a developers' cheat in the original) |
@@ -68,11 +68,6 @@ The original draws bricks texture by texture, so from some angles glass
 shows over glass in front of it, or a solid brick behind shows through.
 OpenMB2 draws solid bricks first and glass from the back forwards;
 `--original-glass` goes back to the original's order.
-
-In the original, the click that opens a menu page also clicks whatever
-is under the pointer on the new page (opening the options can move the
-mouse speed slider). OpenMB2 waits for the button to come up first;
-`--original-clicks` lets the click through again.
 
 `mb2inspect` looks inside a game folder:
 

@@ -109,9 +109,9 @@ static struct {
     bool button;        /* the left button, as the items see it */
     bool button_down;   /* the left button itself */
     /* A click that opens a page doesn't go on to click what is under it
-       there: the button has to come up first. The original lets it
-       through (--original-clicks). */
-    bool wait_release, original_clicks;
+       there: the button has to come up first. (The original lets it
+       through, so opening the options could move a slider.) */
+    bool wait_release;
     float view_width, view_height;
     /* The game to start. */
     char pack[64];
@@ -198,29 +198,52 @@ enum { ORDER_TEXT = 0, ORDER_SERVICE = 1, ORDER_CURSOR = 2 };
 
 /*
  * Text on the text font (or the service font). clip > 0 keeps only the
- * letters within that distance of the middle, as the running line does.
+ * letters within that distance of the middle, as the running line does,
+ * and fades out those in the last 25 units, by where each letter's right
+ * edge is (0x4275b2).
  */
 static void batch_text_clipped(bool service, float x, float y, float scale, int align, const char *text,
                                uint32_t color, float clip)
 {
     const Font *font = service ? &m.service_font : &m.text_font;
-    int first = batch.vertex_count, n, i, kept = 0;
+    unsigned texture = service ? m.service_texture : m.font_texture;
+    int order = service ? ORDER_SERVICE : ORDER_TEXT;
+    int first = batch.vertex_count, n, i, kept = 0, faded = 0;
+    XVertex edge[6 * 8];
+    uint32_t edge_alpha[8];
 
     if (text == NULL || text[0] == '\0')
         return;
     n = font_layout(font, x, y, scale, align, text, batch.vertices + first, BATCH_VERTICES - first);
     for (i = 0; i + 6 <= n; i += 6) {
-        float centre = (batch.vertices[first + i].pos[0] + batch.vertices[first + i + 1].pos[0] +
-                        batch.vertices[first + i + 2].pos[0]) / 3.0f;
-        if (clip > 0.0f && (centre < -clip || centre > clip))
-            continue;
+        if (clip > 0.0f) {
+            float right = batch.vertices[first + i].pos[0], d;
+            int k;
+            for (k = 1; k < 6; k++)
+                right = fmaxf(right, batch.vertices[first + i + k].pos[0]);
+            d = fabsf(right);
+            if (d > clip)
+                continue;
+            if (d > clip - 25.0f) {
+                if (faded < 8) {
+                    memcpy(&edge[faded * 6], &batch.vertices[first + i], 6 * sizeof(XVertex));
+                    edge_alpha[faded++] = (uint32_t)((clip - d) * 10.0f);
+                }
+                continue;
+            }
+        }
         if (kept != i)
             memmove(&batch.vertices[first + kept], &batch.vertices[first + i], 6 * sizeof(XVertex));
         kept += 6;
     }
     batch.vertex_count += kept;
-    batch_part(service ? ORDER_SERVICE : ORDER_TEXT, service ? m.service_texture : m.font_texture,
-               color, first, kept);
+    batch_part(order, texture, color, first, kept);
+    for (i = 0; i < faded && batch.vertex_count + 6 <= BATCH_VERTICES; i++) {
+        first = batch.vertex_count;
+        memcpy(&batch.vertices[first], &edge[i * 6], 6 * sizeof(XVertex));
+        batch.vertex_count += 6;
+        batch_part(order, texture, edge_alpha[i] << 24 | (color & 0xffffffu), first, 6);
+    }
 }
 
 static void batch_text(float x, float y, float scale, int align, const char *text, uint32_t color)
@@ -350,7 +373,7 @@ static void load_page(const char *list, Page page)
     prepare_items();
     m.page = page;
     m.page_time = 0;
-    m.wait_release = !m.original_clicks;
+    m.wait_release = true;
     SDL_StopTextInput();
 }
 
@@ -1247,11 +1270,6 @@ void menu_screen_show_end_of_pack(int score)
     m.score = score;
     navigate("Menu/lendgame.txt");
     audio_play_music("Music/enter.txt");
-}
-
-void menu_screen_set_original_clicks(bool on)
-{
-    m.original_clicks = on;
 }
 
 void menu_screen_game(const char **folder, int *level, const char **pad)

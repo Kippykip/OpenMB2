@@ -43,10 +43,6 @@ void menu_screen_show_end_of_pack(int score);
 void menu_screen_handle_event(const SDL_Event *event);
 MenuAction menu_screen_frame(int width, int height, uint32_t ms);
 
-/* Let the click that opens a page click on the new page too, as the
-   original does. */
-void menu_screen_set_original_clicks(bool on);
-
 /* What MENU_ACTION_PLAY plays: a pack folder, a level in it, the bat's pad file. */
 void menu_screen_game(const char **folder, int *level, const char **pad);
 

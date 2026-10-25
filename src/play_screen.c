@@ -1163,6 +1163,11 @@ static bool can_pause(void)
     return in_level();
 }
 
+bool play_screen_paused(void)
+{
+    return v.paused;
+}
+
 void play_screen_pause(void)
 {
     if (can_pause())

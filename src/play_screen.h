@@ -58,6 +58,7 @@ void play_screen_handle_event(const SDL_Event *event);
 bool play_screen_escape(void);
 /* Pause if a level is being played (e.g. when the window loses focus). */
 void play_screen_pause(void);
+bool play_screen_paused(void);
 
 /* Advance the game by ms and draw it. */
 PlayScreenResult play_screen_frame(int width, int height, uint32_t ms);

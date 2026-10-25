@@ -58,6 +58,8 @@ typedef struct App {
     int run_ms;          /* with screenshot_path: game time to play first */
     uint32_t last_ticks;
     bool playing;        /* a level, not the menus */
+    bool focused;        /* the window has the keyboard */
+    int mouse_mode;      /* what update_mouse_mode() last set, -1 for nothing yet */
 } App;
 
 static App g_app;
@@ -247,14 +249,27 @@ static void save_screenshot(const char *path, int width, int height)
     SDL_FreeSurface(surface);
 }
 
-/* The bat takes the mouse while a level is played; the menus draw their
-   own pointer where the system's is. */
+/*
+ * The bat takes the mouse while a level is played; the menus draw their
+ * own pointer where the system's is. Paused, the mouse is let go with
+ * the system's pointer, which the original keeps hidden and held.
+ */
+static void update_mouse_mode(void)
+{
+    bool paused = g_app.playing && play_screen_paused();
+    int mode = !g_app.focused ? 0 : g_app.playing && !paused ? 1 : paused ? 2 : 3;
+
+    if (g_app.screenshot_path != NULL || mode == g_app.mouse_mode)
+        return;
+    g_app.mouse_mode = mode;
+    SDL_SetRelativeMouseMode(mode == 1 ? SDL_TRUE : SDL_FALSE);
+    SDL_ShowCursor(mode == 1 || mode == 3 ? SDL_DISABLE : SDL_ENABLE);
+}
+
 static void set_mouse_mode(bool focused)
 {
-    if (g_app.screenshot_path != NULL)
-        return;
-    SDL_SetRelativeMouseMode(focused && g_app.playing ? SDL_TRUE : SDL_FALSE);
-    SDL_ShowCursor(focused ? SDL_DISABLE : SDL_ENABLE);
+    g_app.focused = focused;
+    update_mouse_mode();
 }
 
 static void show_menus(void)
@@ -317,6 +332,7 @@ static void handle_event(const SDL_Event *event)
 
 static void frame(int width, int height, uint32_t ms)
 {
+    update_mouse_mode();
     if (g_app.playing) {
         switch (play_screen_frame(width, height, ms)) {
         case PLAY_SCREEN_GAME_OVER: {
@@ -409,7 +425,8 @@ int main(int argc, char **argv)
     const char *game_folder = NULL, *start_level = NULL, *start_menu = NULL;
     PlayScreenOptions options;
     unsigned seed = (unsigned)time(NULL);
-    bool original_clicks = false;
+
+    g_app.mouse_mode = -1;
     int i;
 
     memset(&options, 0, sizeof(options));
@@ -433,8 +450,6 @@ int main(int argc, char **argv)
             options.intro = false;
         else if (strcmp(argv[i], "--original-glass") == 0)
             options.sort_glass = false;
-        else if (strcmp(argv[i], "--original-clicks") == 0)
-            original_clicks = true;
         else if (strcmp(argv[i], "--autoplay") == 0)
             options.autoplay = true;
         else if (strcmp(argv[i], "--seed") == 0 && i + 1 < argc)
@@ -476,7 +491,6 @@ int main(int argc, char **argv)
         shutdown_app();
         return 1;
     }
-    menu_screen_set_original_clicks(original_clicks);
     lang_load(g_app.params.language);
 
     g_app.running = true;
