@@ -206,6 +206,9 @@ cmake --build build
 - **Windows from Linux:** add
   `-DCMAKE_TOOLCHAIN_FILE=cmake/mingw-w64-x86_64.cmake` (needs MinGW-w64).
 - **Linux:** install `libsdl2-dev` first to skip the download.
+- **ARM64 handhelds (muOS, PortMaster):** add
+  `-DCMAKE_TOOLCHAIN_FILE=cmake/aarch64-linux-gnu.cmake -DSDL2_DIR=<aarch64 SDL2>/lib/cmake/SDL2`
+  (needs `gcc-aarch64-linux-gnu`). The game links to the device's own SDL2.
 - **Web:** `emcmake cmake -S . -B build-web && cmake --build build-web`
   (game files will need to be packaged or uploaded; that comes in
   a later version).
