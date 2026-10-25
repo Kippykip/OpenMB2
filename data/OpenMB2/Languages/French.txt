@@ -124,6 +124,9 @@ Panth‰on
 Balle € rayons X
 Textures basse r‰solution
 Souris
+Jeu
+Vid‰o
+Son
 
 /// NAG-SCREEN ///
 Version d'essai

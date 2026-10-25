@@ -1,0 +1,14 @@
+CMenuItemButton
+{
+  width: 187
+  height: 40
+  flipped
+  texture: Options.png
+  color: FFFFFFFF
+  id: navigate
+  script: Menu/lvideooptions.txt
+  texturex: 0
+  texturey: 0
+  textindex: 58
+  pos: 0 36
+}

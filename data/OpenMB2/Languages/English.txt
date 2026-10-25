@@ -124,6 +124,9 @@ Hall of Fame
 Enable X-Ray Ball
 Low resolution textures
 Mouse speed
+Gameplay Options
+Video Options
+Audio Options
 
 /// NAG-SCREEN ///
 Trial version

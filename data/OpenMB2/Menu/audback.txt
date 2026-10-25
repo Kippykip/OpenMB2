@@ -1,0 +1,15 @@
+CMenuItemButton
+{
+  width: 96
+  height: 48
+  offset: 0.625 0.8125
+  size: 0.375 0.1875
+  texture: Options.png
+  color: FFFFFFFF
+  id: navigate
+  script: Menu/loptions.txt
+  texturex: 0
+  texturey: 0
+  textindex: 3
+  pos: 0 6
+}

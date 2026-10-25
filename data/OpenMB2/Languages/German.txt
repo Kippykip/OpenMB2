@@ -124,6 +124,9 @@ Bestenliste
 R–ntgenball aktivieren
 Spielfeld f. niedr. Auflsg.
 Mausgeschw.
+Spiel
+Video
+Sound
 
 /// NAG-SCREEN ///
 Testversion

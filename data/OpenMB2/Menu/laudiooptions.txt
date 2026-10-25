@@ -1,0 +1,8 @@
+List
+{
+  menuitem: Menu/audsound.txt
+  menuitem: Menu/audmusic.txt
+  menuitem: Menu/audback.txt
+  menuitem: Menu/panel2.txt
+  menuitem: Menu/audpanel.txt
+}

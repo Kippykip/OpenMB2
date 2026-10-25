@@ -1,0 +1,6 @@
+List
+{
+  menuitem: Menu/vidmode.txt
+  menuitem: Menu/vidback.txt
+  menuitem: Menu/vidpanel.txt
+}

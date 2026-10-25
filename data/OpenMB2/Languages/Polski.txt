@@ -126,6 +126,9 @@ Rekordy
 Wàåcz rentgen kulki
 Niska rozdzielczoæâ tekstur
 Czuàoæâ myszy
+Rozgrywka
+Grafika
+Dçwiäk
 
 /// NAG-SCREEN ///
 Wersja testowa

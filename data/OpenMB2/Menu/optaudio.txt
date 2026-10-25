@@ -1,0 +1,13 @@
+CMenuItemButton
+{
+  width: 187
+  height: 40
+  texture: Options.png
+  color: FFFFFFFF
+  id: navigate
+  script: Menu/laudiooptions.txt
+  texturex: 0
+  texturey: 0
+  textindex: 59
+  pos: 0 -36
+}
