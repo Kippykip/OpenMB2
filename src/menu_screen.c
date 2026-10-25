@@ -106,7 +106,12 @@ static struct {
     float ticker_x;
     /* The mouse, in the 800x600 screen. */
     float mouse_x, mouse_y;
-    bool button;
+    bool button;        /* the left button, as the items see it */
+    bool button_down;   /* the left button itself */
+    /* A click that opens a page doesn't go on to click what is under it
+       there: the button has to come up first. The original lets it
+       through (--original-clicks). */
+    bool wait_release, original_clicks;
     float view_width, view_height;
     /* The game to start. */
     char pack[64];
@@ -345,6 +350,7 @@ static void load_page(const char *list, Page page)
     prepare_items();
     m.page = page;
     m.page_time = 0;
+    m.wait_release = !m.original_clicks;
     SDL_StopTextInput();
 }
 
@@ -1243,6 +1249,11 @@ void menu_screen_show_end_of_pack(int score)
     audio_play_music("Music/enter.txt");
 }
 
+void menu_screen_set_original_clicks(bool on)
+{
+    m.original_clicks = on;
+}
+
 void menu_screen_game(const char **folder, int *level, const char **pad)
 {
     *folder = m.pack;
@@ -1280,11 +1291,11 @@ void menu_screen_handle_event(const SDL_Event *event)
         break;
     case SDL_MOUSEBUTTONDOWN:
         if (event->button.button == SDL_BUTTON_LEFT)
-            m.button = true;
+            m.button_down = true;
         break;
     case SDL_MOUSEBUTTONUP:
         if (event->button.button == SDL_BUTTON_LEFT)
-            m.button = false;
+            m.button_down = false;
         break;
     default:
         break;
@@ -1298,7 +1309,12 @@ static void update_mouse(void)
 {
     int x, y, w, h;
 
-    SDL_GetMouseState(&x, &y);
+    /* A release while a level had the mouse never reached us. */
+    if (!(SDL_GetMouseState(&x, &y) & SDL_BUTTON_LMASK))
+        m.button_down = false;
+    if (!m.button_down)
+        m.wait_release = false;
+    m.button = m.button_down && !m.wait_release;
     SDL_GetWindowSize(m.window, &w, &h);
     if (w <= 0 || h <= 0)
         return;

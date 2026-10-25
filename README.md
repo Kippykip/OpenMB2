@@ -69,6 +69,11 @@ shows over glass in front of it, or a solid brick behind shows through.
 OpenMB2 draws solid bricks first and glass from the back forwards;
 `--original-glass` goes back to the original's order.
 
+In the original, the click that opens a menu page also clicks whatever
+is under the pointer on the new page (opening the options can move the
+mouse speed slider). OpenMB2 waits for the button to come up first;
+`--original-clicks` lets the click through again.
+
 `mb2inspect` looks inside a game folder:
 
 ```

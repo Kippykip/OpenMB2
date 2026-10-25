@@ -409,6 +409,7 @@ int main(int argc, char **argv)
     const char *game_folder = NULL, *start_level = NULL, *start_menu = NULL;
     PlayScreenOptions options;
     unsigned seed = (unsigned)time(NULL);
+    bool original_clicks = false;
     int i;
 
     memset(&options, 0, sizeof(options));
@@ -432,6 +433,8 @@ int main(int argc, char **argv)
             options.intro = false;
         else if (strcmp(argv[i], "--original-glass") == 0)
             options.sort_glass = false;
+        else if (strcmp(argv[i], "--original-clicks") == 0)
+            original_clicks = true;
         else if (strcmp(argv[i], "--autoplay") == 0)
             options.autoplay = true;
         else if (strcmp(argv[i], "--seed") == 0 && i + 1 < argc)
@@ -473,6 +476,7 @@ int main(int argc, char **argv)
         shutdown_app();
         return 1;
     }
+    menu_screen_set_original_clicks(original_clicks);
     lang_load(g_app.params.language);
 
     g_app.running = true;
