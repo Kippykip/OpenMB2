@@ -1,0 +1,38 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 the OpenMB2 contributors
+
+// openmb2.exe's icon and the details Windows shows in its Properties.
+// Filled in by CMake from the project's version.
+
+#include <winver.h>
+
+1 ICON "@CMAKE_CURRENT_SOURCE_DIR@/res/icon.ico"
+
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION     @PROJECT_VERSION_MAJOR@,@PROJECT_VERSION_MINOR@,@PROJECT_VERSION_PATCH@,0
+PRODUCTVERSION  @PROJECT_VERSION_MAJOR@,@PROJECT_VERSION_MINOR@,@PROJECT_VERSION_PATCH@,0
+FILEFLAGSMASK   VS_FFI_FILEFLAGSMASK
+FILEFLAGS       0
+FILEOS          VOS_NT_WINDOWS32
+FILETYPE        VFT_APP
+FILESUBTYPE     VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "CompanyName",      "https://kippykip.com"
+            VALUE "FileDescription",  "MB2 Engine Re-implementation"
+            VALUE "FileVersion",      "@PROJECT_VERSION@.0"
+            VALUE "InternalName",     "openmb2"
+            VALUE "LegalCopyright",   "https://kippykip.com"
+            VALUE "OriginalFilename", "openmb2.exe"
+            VALUE "ProductName",      "OpenMB2"
+            VALUE "ProductVersion",   "@PROJECT_VERSION@.0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x0409, 1200
+    END
+END

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 cmake_minimum_required(VERSION 3.16)
-project(OpenMB2 VERSION 0.1.0 LANGUAGES C)
+project(OpenMB2 VERSION 1.0.0 LANGUAGES C)
 
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -113,6 +113,10 @@ add_executable(openmb2
 target_link_libraries(openmb2 PRIVATE openmb2_core)
 if(WIN32)
     target_link_libraries(openmb2 PRIVATE wininet)
+    # The icon and the version details in the exe's Properties.
+    enable_language(RC)
+    configure_file(res/openmb2.rc.in ${CMAKE_CURRENT_BINARY_DIR}/openmb2.rc @ONLY)
+    target_sources(openmb2 PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/openmb2.rc)
 endif()
 openmb2_warnings(openmb2)
 
