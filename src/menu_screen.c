@@ -547,7 +547,9 @@ static void save_scores(void)
 static void show_scores(int highlight)
 {
     m.highlight = highlight;
-    load_page("Menu/lonlhighscores.txt", PAGE_SCORES);
+    /* The earliest builds have no online scores, and the page is lhighscores. */
+    load_page(vfs_exists("Menu/lonlhighscores.txt") ? "Menu/lonlhighscores.txt" : "Menu/lhighscores.txt",
+              PAGE_SCORES);
     m.scroll = 66.0f;
 }
 
