@@ -883,7 +883,7 @@ static void load_level(int pack, int level)
     if (play_start(&v.play, &v.scene, v.score, v.lives, v.options.mouse_sensitivity)) {
         v.play.sound = play_sound;
         v.play.message = add_message;
-        v.play.exact_mouse = v.options.exact_mouse;
+        v.play.precise_mouse = v.options.precise_mouse;
         v.playing = true;
         v.fade = 0.0f;
         if (v.options.intro)

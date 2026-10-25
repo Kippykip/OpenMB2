@@ -73,9 +73,12 @@ The bats with one fan and with none have no bounce for a ball hitting
 near their ends, so in the original they stay still; OpenMB2 gives them
 their bounce from the middle, and `--original-bounce` keeps them still.
 
-The original scales each mouse movement by the sensitivity and drops
-the fraction, so below full sensitivity slow moves are lost. OpenMB2
-carries the fraction over to the next move; `--original-mouse` drops it.
+The original moves the bat in steps of about 1% of the board for each
+count from the mouse, and its sensitivity drops the fraction, so slow
+moves are lost and the bat jumps. OpenMB2 moves it by exactly what the
+mouse reports, and the sensitivity slider goes from 1/8 of the
+original's speed (left) to all of it (right), so the middle is about a
+third. `--original-mouse` brings back the original's movement.
 
 On a screen that isn't 4:3 the menus keep their shape between black
 bars; `--wide-menus` fills the screen instead, cutting off the
@@ -95,7 +98,7 @@ never reads it, so both games still share `params.txt`.
   `fullscreen` is `on`, `off` or `auto` (params.txt's window setting);
   `vsync` is `on` or `off`.
 - `[options]`: the switches above as `on`/`off`: `smooth`,
-  `level_intro`, `sort_glass`, `edge_bounce`, `exact_mouse`,
+  `level_intro`, `sort_glass`, `edge_bounce`, `precise_mouse`,
   `wide_menus`. A switch on
   the command line wins over the file for that run.
 

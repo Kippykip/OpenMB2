@@ -1971,15 +1971,16 @@ void play_mouse_move(Play *play, int dx)
 
     if (play->state != PLAY_RUNNING)
         return;
-    if (play->exact_mouse) {
-        /* Carry the part the original rounds away, so slow moves add up. */
-        float scaled = (float)dx * play->mouse_sensitivity + play->mouse_rest;
-        dx = (int)scaled;
-        play->mouse_rest = scaled - (float)dx;
+    if (play->precise_mouse) {
+        /* The original moves 0.18 per mouse count at most, a step of about
+           1% of the board, and rounds slow moves away. Here nothing is
+           rounded, and the slider's 0.5 to 1.0 spans 1/8 of that speed to
+           all of it: 0.125 * 8^((sensitivity - 0.5) * 2). */
+        move = (float)dx * 0.18f * 0.125f * powf(8.0f, (play->mouse_sensitivity - 0.5f) * 2.0f);
     } else {
         dx = (int)((float)dx * play->mouse_sensitivity);
+        move = (float)dx * 0.18f;
     }
-    move = (float)dx * 0.18f;
     bat->position.x += move;
     bat->tilt = (int)((float)bat->tilt - move * 70.0f);
     if (bat->tilt > 299) bat->tilt = 299;

@@ -291,8 +291,7 @@ typedef struct Play {
     uint32_t state_time;         /* ms in the current state */
     uint32_t time;               /* ms since the level started */
     float mouse_sensitivity;
-    bool exact_mouse;            /* keep what rounding drops (OpenMB2's own) */
-    float mouse_rest;            /* the part of a pixel not yet moved */
+    bool precise_mouse;          /* finer, unrounded bat moves (OpenMB2's own) */
     uint32_t pending_ms;         /* time not yet turned into a step */
     bool trigger;                /* the fire button is held */
     bool bricks_changed;         /* the scene's bricks need rebaking */

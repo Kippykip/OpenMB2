@@ -608,7 +608,7 @@ int main(int argc, char **argv)
     options.intro = g_app.settings.level_intro && !no_intro;
     options.sort_glass = g_app.settings.sort_glass && !original_glass;
     options.edge_bounce = g_app.settings.edge_bounce && !original_bounce;
-    options.exact_mouse = g_app.settings.exact_mouse && !original_mouse;
+    options.precise_mouse = g_app.settings.precise_mouse && !original_mouse;
     wide_menus = wide_menus || g_app.settings.wide_menus;
     log_game_contents();
 
