@@ -512,20 +512,14 @@ static bool bat_part_shown(const XPart *part, BatMode mode)
     return plain_bat_part(part) || (weapon != NULL && in_any_frame(part, weapon));
 }
 
-/* Set a frame's animation time and its children's, as 0x421a90 does. */
+/* Set one frame's animation time, as 0x421a90 does; the frames inside
+   it keep their own times, but move with it. */
 static void set_frame_time(const XModel *m, unsigned *times, const char *name, unsigned time)
 {
-    int frame = xmodel_find_frame(m, name), i;
+    int frame = xmodel_find_frame(m, name);
 
-    if (frame < 0)
-        return;
-    for (i = frame; i < m->frame_count; i++) {
-        int up = i;
-        while (up > frame)
-            up = m->frames[up].parent;
-        if (up == frame)
-            times[i] = time;
-    }
+    if (frame >= 0)
+        times[frame] = time;
 }
 
 /*
@@ -550,10 +544,8 @@ static void shape_bat(Mat4 *pose)
 }
 
 /*
- * The fans spin on the game clock; while the bat leans, the turbines take
- * the lean's time. Setting a frame's time sets its children's too, so the
- * turbines go first and the fans inside keep spinning, as they do in the
- * original game.
+ * The fans spin on the game clock; while the bat leans, the body and the
+ * turbines take the lean's time, and the fans inside go on spinning.
  */
 static Mat4 *pose_bat(void)
 {
@@ -570,6 +562,9 @@ static Mat4 *pose_bat(void)
     for (i = 0; i < m->frame_count; i++)
         times[i] = XFRAME_REST;
     if (v.turbine_time != XFRAME_REST) {
+        /* The body leans too (0x4051a1): only a little on the bat with
+           fans, which lean their turbines, but a lot on the one without. */
+        set_frame_time(m, times, "Corpus", v.turbine_time);
         set_frame_time(m, times, "L_Turbine", v.turbine_time);
         set_frame_time(m, times, "R_Turbine", v.turbine_time);
     }
