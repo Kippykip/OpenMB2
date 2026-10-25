@@ -400,17 +400,29 @@ static void load_page(const char *list, Page page)
     SDL_StopTextInput();
 }
 
+/* The language picked, and its font for the menus and the HUD. */
+static void load_language(void)
+{
+    char text[160], image[160];
+
+    lang_load(m.language);
+    lang_font(text, sizeof(text), image, sizeof(image));
+    font_load(&m.text_font, text);
+    m.font_texture = asset_texture(image);
+    play_screen_load_font();
+}
+
 /* 0x80: a page a button names; the language may have changed. */
 static void navigate(const char *list)
 {
-    lang_load(m.language);
+    load_language();
     load_page(list, PAGE_MENU);
 }
 
 static void show_main(void)
 {
     intro_stop();
-    lang_load(m.language);
+    load_language();
     load_page("Menu/lmainmenu.txt", PAGE_MENU);
     audio_play_music("Music/menu.txt");
 }
@@ -422,7 +434,7 @@ static void show_packs(void)
     float dy = 30.0f, offset = 10.0f;
     MenuItem *item;
 
-    lang_load(m.language);
+    load_language();
     menu_list_clear(&m.list);
     menu_list_load(&m.list, "Menu/lselectlevel.txt");
     menu_list_load(&m.list, "logos.txt");
@@ -756,7 +768,7 @@ void menu_screen_set_settings(Settings *settings, void (*changed)(void))
     m.video_changed = changed;
     list_video_modes();
     find_language();
-    lang_load(m.language);
+    load_language();
 }
 
 /* -1 over the left arrow, 1 over the right one, 0 elsewhere. */
@@ -1321,9 +1333,8 @@ bool menu_screen_init(SDL_Window *window, Params *params, bool intro)
     memcpy(m.light.direction, m.textures.light_dir, sizeof(m.light.direction));
     memcpy(m.light.ambient, m.textures.ambient, sizeof(m.light.ambient));
     memcpy(m.light.diffuse, m.textures.diffuse, sizeof(m.light.diffuse));
-    font_load(&m.text_font, "Text/text.txt");
     font_load(&m.service_font, "Text/service.txt");
-    m.font_texture = asset_texture("font.png");
+    load_language();
     m.service_texture = asset_texture("service.png");
     m.cursor_texture = asset_texture("Cursor.dds");
     m.splash_texture = render_texture("splash.png");

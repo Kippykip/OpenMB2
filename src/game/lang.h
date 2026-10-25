@@ -45,6 +45,13 @@ int lang_game_count(void);
 /* The place of the language with this name ("French"), or -1. */
 int lang_find(const char *name);
 
+/*
+ * The font for the language: Text/Text_<name>.txt and Textures/Font_<name>.png
+ * when there are such files (in the OpenMB2 folder, for a language whose
+ * letters the game's font lacks), else the game's Text/text.txt and font.png.
+ */
+void lang_font(char *text, size_t text_size, char *image, size_t image_size);
+
 /* String number index, or fallback if the file doesn't have it. */
 const char *lang_text(int index, const char *fallback);
 

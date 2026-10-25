@@ -1,0 +1,115 @@
+{
+  height: 256
+  charwidth: 1 10
+  charwidth: 2 14
+  charwidth: 3 13
+  charwidth: 4 15
+  charwidth: 5 13
+  charwidth: 6 15
+  charwidth: 7 13
+  charwidth: 8 14
+  charwidth: 9 15
+  charwidth: 0 14
+  charwidth: A 13
+  charwidth: B 15
+  charwidth: C 14
+  charwidth: D 13
+  charwidth: E 13
+  charwidth: F 15
+  charwidth: G 14
+  charwidth: H 15
+  charwidth: I 8
+  charwidth: J 13
+  charwidth: K 13
+  charwidth: L 12
+  charwidth: M 19
+  charwidth: N 13
+  charwidth: O 13
+  charwidth: P 13
+  charwidth: Q 14
+  charwidth: R 13
+  charwidth: S 14
+  charwidth: T 15
+  charwidth: U 13
+  charwidth: V 14
+  charwidth: W 19
+  charwidth: X 13
+  charwidth: Y 13
+  charwidth: Z 12
+  
+  chr: charcode: 33 x1: 0 y1: 224 x2: 5 y2: 256
+  chr: charcode: 46 x1: 8 y1: 224 x2: 16 y2: 256
+  chr: charcode: 44 x1: 16 y1: 224 x2: 24 y2: 256
+  chr: charcode: 58 x1: 24 y1: 224 x2: 32 y2: 256
+  chr: charcode: 59 x1: 32 y1: 224 x2: 40 y2: 256
+  chr: charcode: 40 x1: 40 y1: 224 x2: 48 y2: 256
+  chr: charcode: 41 x1: 52 y1: 224 x2: 64 y2: 256
+  chr: charcode: 34 x1: 64 y1: 224 x2: 76 y2: 256
+  chr: charcode: 95 x1: 76 y1: 224 x2: 96 y2: 256
+  chr: charcode: 38 x1: 96 y1: 224 x2: 114 y2: 256
+  chr: charcode: 42 x1: 118 y1: 224 x2: 128 y2: 256
+  chr: charcode: 45 x1: 118 y1: 224 x2: 128 y2: 256
+  chr: charcode: 37 x1: 128 y1: 224 x2: 146 y2: 256
+  chr: charcode: 39 x1: 150 y1: 224 x2: 158 y2: 256
+  charwidth: ! 5
+  charwidth: , 8
+  charwidth: . 8
+  charwidth: : 8
+  charwidth: ; 8
+  charwidth: ( 10
+  charwidth: ) 10
+  charwidth: " 12
+  charwidth: _ 19
+  charwidth: & 18
+  charwidth: * 10
+  charwidth: - 10
+  charwidth: % 20
+  charwidth: ' 8
+  chr: charcode: 60 x1: 0 y1: 192 x2: 32 y2: 224
+  chr: charcode: 62 x1: 32 y1: 192 x2: 64 y2: 224
+  chr: charcode: 93 x1: 64 y1: 192 x2: 96 y2: 224
+  chr: charcode: 91 x1: 96 y1: 192 x2: 128 y2: 224
+  chr: charcode: 124 x1: 160 y1: 192 x2: 192 y2: 224
+  chr: charcode: 218 x1: 128 y1: 192 x2: 170 y2: 224
+  chr: charcode: 219 x1: 170 y1: 192 x2: 213 y2: 224
+  chr: charcode: 220 x1: 213 y1: 192 x2: 256 y2: 224
+  charwidth: < 31
+  charwidth: > 31
+  charwidth: [ 31
+  charwidth: ] 31
+  charwidth: \ 18
+  charwidth: | 32
+  charwidth: Ä 14
+  charwidth: Å 15
+  charwidth: Ç 15
+  charwidth: É 14
+  charwidth: Ñ 19
+  charwidth: Ö 14
+  charwidth: Ü 14
+  charwidth: á 20
+  charwidth: à 14
+  charwidth: â 17
+  charwidth: ä 17
+  charwidth: ã 15
+  charwidth: å 17
+  charwidth: ç 19
+  charwidth: é 15
+  charwidth: è 14
+  charwidth: ê 17
+  charwidth: ë 14
+  charwidth: í 14
+  charwidth: ì 15
+  charwidth: î 15
+  charwidth: ï 19
+  charwidth: ñ 14
+  charwidth: ó 17
+  charwidth: ò 13
+  charwidth: ô 18
+  charwidth: ö 20
+  charwidth: õ 17
+  charwidth: ú 19
+  charwidth: ù 14
+  charwidth: û 15
+  charwidth: ü 19
+  chr: charcode: 160 x1: 160 y1: 160 x2: 174 y2: 192
+}

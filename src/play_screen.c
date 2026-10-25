@@ -1032,9 +1032,8 @@ bool play_screen_init(SDL_Window *window, const PlayScreenOptions *options)
     v.shadow_texture = asset_texture("bshadow.png");
     v.glow_texture = asset_texture("infravis.png");
     v.billboard_texture = asset_texture("Billboards.png");
-    font_load(&v.text_font, "Text/text.txt");
+    play_screen_load_font();
     font_load(&v.service_font, "Text/service.txt");
-    v.font_texture = asset_texture("font.png");
     v.service_texture = asset_texture("service.png");
     v.icons_texture = asset_texture("icons.png");
     return true;
@@ -1048,6 +1047,15 @@ int play_screen_pack_count(void)
 const char *play_screen_pack_folder(int pack)
 {
     return pack >= 0 && pack < v.pack_count ? v.packs[pack].folder : "";
+}
+
+void play_screen_load_font(void)
+{
+    char text[160], image[160];
+
+    lang_font(text, sizeof(text), image, sizeof(image));
+    font_load(&v.text_font, text);
+    v.font_texture = asset_texture(image);
 }
 
 void play_screen_set_options(float mouse_sensitivity, bool infravision)

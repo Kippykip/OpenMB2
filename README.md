@@ -94,12 +94,16 @@ without the folder OpenMB2 plays the game as it is. `params.txt`, saves
 and scores are always the game's own, shared with the original.
 
 `data/OpenMB2` here holds what OpenMB2 adds; copy it into the game
-folder. For now that is a French translation, `Languages/French.txt`.
+folder. For now that is French and Russian (`Languages/French.txt`,
+`Languages/Russian.txt`).
 Languages only the OpenMB2 folder has come after the game's own on the
 options page, and picking one is kept in `openmb2.ini` (`language`)
 rather than params.txt, so the original never sees a language it
 doesn't have. Language files use the game's font, which keeps its
-accented letters at 0x80 on (à is 0x80, é is 0x89, ü is 0x9c).
+accented letters at 0x80 on (à is 0x80, é is 0x89, ü is 0x9c). A
+language whose letters the font lacks brings its own:
+`Textures/Font_<language>.png` and `Text/Text_<language>.txt` are used
+while it is picked. Russian's font puts а to я at 0x80 to 0xa0.
 
 ### openmb2.ini
 

@@ -16,6 +16,7 @@
 static struct {
     char *data;
     const char *slots[LANG_SLOTS];
+    char name[128]; /* "English" */
 } g_lang;
 
 /* Where each section's lines start (0x418950). */
@@ -143,6 +144,7 @@ bool lang_load(int index)
         index = 0;
     snprintf(path, sizeof(path), "Languages/%s", list.names[index]);
     g_lang.data = vfs_read(path, NULL);
+    lang_name(index, g_lang.name, sizeof(g_lang.name));
     if (g_lang.data == NULL) {
         log_warn("lang: can't read %s", path);
         return false;
@@ -172,6 +174,19 @@ bool lang_load(int index)
     }
     log_info("lang: %s", path);
     return true;
+}
+
+void lang_font(char *text, size_t text_size, char *image, size_t image_size)
+{
+    char path[200];
+
+    snprintf(text, text_size, "Text/Text_%s.txt", g_lang.name);
+    if (g_lang.name[0] == '\0' || !vfs_exists(text))
+        snprintf(text, text_size, "Text/text.txt");
+    snprintf(image, image_size, "Font_%s.png", g_lang.name);
+    snprintf(path, sizeof(path), "Textures/%s", image);
+    if (g_lang.name[0] == '\0' || !vfs_exists(path))
+        snprintf(image, image_size, "font.png");
 }
 
 void lang_free(void)
