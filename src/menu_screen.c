@@ -1123,16 +1123,22 @@ static void draw_enter_name(uint32_t ms)
 }
 
 /* Cursor.dds: 16 frames of a turning pointer, 50 ms each, its point at
-   the top left. */
+   the top left. It goes over the black bars too, out to the window's
+   edges, so they can be reached; this draws what is queued first. */
 static void draw_cursor(void)
 {
     int frame = (int)(m.time / 50) & 15;
     float u = (float)(frame / 4) * 0.25f + 1.0f / 256.0f, v = (float)(frame % 4) * 0.25f + 1.0f / 256.0f;
     float x = m.mouse_x, y = m.mouse_y;
-    float right = m.view_width * 0.5f - 32.0f, top = m.view_height * 0.5f;
+    float width = m.view_width * (float)m.screen_width / (float)(m.viewport[2] > 0 ? m.viewport[2] : 1);
+    float height = m.view_height * (float)m.screen_height / (float)(m.viewport[3] > 0 ? m.viewport[3] : 1);
+    float right = width * 0.5f - 32.0f, top = height * 0.5f;
 
+    batch_draw();
+    render_viewport(0, 0, m.screen_width, m.screen_height);
+    render_begin_2d(width, height);
     if (x > right) x = right;
-    if (x < -m.view_width * 0.5f) x = -m.view_width * 0.5f;
+    if (x < -width * 0.5f) x = -width * 0.5f;
     if (y > top) y = top;
     if (y < 32.0f - top) y = 32.0f - top;
     batch_quad(ORDER_CURSOR, m.cursor_texture, x, y, x + 32.0f, y - 32.0f, u, v, u + 0.25f - 2.0f / 256.0f,
