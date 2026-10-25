@@ -308,13 +308,29 @@ static bool create_window(void)
     return create_gl_context();
 }
 
+static void save_params(void);
+static void save_settings(void);
+
+/* Alt+Enter, kept for next time: in params.txt's window setting when
+   openmb2.ini follows it (so the original goes the same way), or else
+   in openmb2.ini. */
 static void toggle_fullscreen(void)
 {
-    bool maximized = g_app.settings.maximized;
+    bool maximized = g_app.settings.maximized, fullscreen;
 
     apply_video(!is_fullscreen());
-    if (!is_fullscreen() && maximized)
+    fullscreen = is_fullscreen();
+    if (!fullscreen && maximized)
         SDL_MaximizeWindow(g_app.window);
+    if (g_app.screenshot_path != NULL)
+        return;
+    if (g_app.settings.fullscreen == FULLSCREEN_AUTO) {
+        g_app.params.windowed = !fullscreen;
+        save_params();
+    } else {
+        g_app.settings.fullscreen = fullscreen ? FULLSCREEN_ON : FULLSCREEN_OFF;
+        save_settings();
+    }
 }
 
 /* ------------------------------------------------------------------------ */
