@@ -129,11 +129,12 @@ Video Options
 Audio Options
 Joystick Options
 Skip Transitions
-Windowed
-VSync
+Windowed Mode
+Enable VSync
 Interpolate Frames
 Enable Vibration
 Sensitivity
+Auto
 
 /// NAG-SCREEN ///
 Trial version

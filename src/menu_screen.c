@@ -775,13 +775,16 @@ static void list_video_modes(void)
             add_video_mode(width, height);
         }
     } else {
+        /* 0 x 0, first: "Auto", the desktop's size in full screen and
+           params.txt's video mode in a window. */
+        add_video_mode(0, 0);
         for (i = 0; i < SDL_GetNumDisplayModes(display < 0 ? 0 : display); i++) {
             SDL_DisplayMode mode;
             if (SDL_GetDisplayMode(display < 0 ? 0 : display, i, &mode) == 0 && mode.w >= 640 && mode.h >= 480)
                 add_video_mode(mode.w, mode.h);
         }
     }
-    if (m.settings != NULL && m.settings->width > 0 && m.settings->height > 0) {
+    if (m.settings != NULL) {
         width = m.settings->width;
         height = m.settings->height;
     } else {
@@ -1060,7 +1063,9 @@ static void draw_item_text(const MenuItem *item, const ItemState *state)
         int side = select_side(item), value = *select_value(item);
         batch_text(item->x - 4.0f, item->y - 2.0f, 0.6f, FONT_RIGHT, lang_text(item->name_text, ""),
                    0xff000000u);
-        if (item->video_mode && value >= 0 && value < m.mode_count)
+        if (item->video_mode && value >= 0 && value < m.mode_count && m.modes[value][0] == 0)
+            snprintf(text, sizeof(text), "%s", lang_text(LANG_AUTO, "Auto"));
+        else if (item->video_mode && value >= 0 && value < m.mode_count)
             snprintf(text, sizeof(text), "%d * %d", m.modes[value][0], m.modes[value][1]);
         else if (item->video_mode)
             text[0] = '\0';

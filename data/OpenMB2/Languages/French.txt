@@ -130,10 +130,11 @@ Son
 Joystick
 Passer les intros
 Mode fenätre
-VSync
+Activer VSync
 Interpoler les images
 Vibrations
 Joystick
+Auto
 
 /// NAG-SCREEN ///
 Version d'essai

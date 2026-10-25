@@ -147,8 +147,9 @@ and `[online]`.
   (0.5 to 1), `xray_ball`, and `skip_transitions` to start levels
   without the camera's flight in.
 - `[video]`: `width` and `height` set any window size (or the screen
-  mode in full screen); 0 x 0 uses params.txt's video mode. The options
-  page offers every size your display has and saves the one picked here.
+  mode in full screen); 0 x 0 is "Auto": the desktop's own size in full
+  screen, params.txt's video mode in a window. The options page offers
+  Auto and every size your display has, and saves the one picked here.
   A window you resize or maximise opens the same way next time
   (`maximized`). `windowed`, `vsync`, and `interpolate` (smooth motion
   between game steps; F10 switches it for the run).

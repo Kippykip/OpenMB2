@@ -132,10 +132,11 @@ DÁwi‰k
 Joystick
 Bez intro
 Tryb okna
-VSync
+W‡Âcz VSync
 Interpolacja klatek
 W‡Âcz wibracje
 Joystick
+Auto
 
 /// NAG-SCREEN ///
 Wersja testowa

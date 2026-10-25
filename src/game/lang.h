@@ -25,6 +25,7 @@ enum {
     LANG_YOYO_OVER = 21,
     LANG_FIRE_HINT = 24,       /* two lines */
     LANG_WATER_HINT = 26,      /* two lines */
+    LANG_AUTO = 67,            /* OpenMB2's own: the video mode "Auto" */
     LANG_PRIZES = 0x80         /* + PrizeKind */
 };
 

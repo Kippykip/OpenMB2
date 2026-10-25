@@ -130,10 +130,11 @@ Sound
 Joystick
 Intros œberspringen
 Fenstermodus
-VSync
+VSync aktivieren
 Bilder interpolieren
 Vibration aktivieren
 Joystick
+Auto
 
 /// NAG-SCREEN ///
 Testversion
