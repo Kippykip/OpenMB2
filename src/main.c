@@ -630,7 +630,6 @@ int main(int argc, char **argv)
     }
     menu_screen_set_wide(wide_menus);
     menu_screen_set_settings(&g_app.settings, video_changed);
-    lang_load(g_app.params.language);
 
     g_app.running = true;
     g_app.last_ticks = SDL_GetTicks();

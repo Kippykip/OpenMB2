@@ -21,6 +21,7 @@ void settings_set_defaults(Settings *settings)
     settings->edge_bounce = true;
     settings->precise_mouse = true;
     settings->wide_menus = false;
+    settings->language[0] = '\0';
 }
 
 static bool same(const char *a, const char *b)
@@ -71,6 +72,8 @@ static void set(Settings *s, const char *section, const char *key, const char *v
             s->precise_mouse = parse_bool(value, s->precise_mouse);
         else if (same(key, "wide_menus"))
             s->wide_menus = parse_bool(value, s->wide_menus);
+        else if (same(key, "language"))
+            snprintf(s->language, sizeof(s->language), "%s", value);
     }
 }
 
@@ -157,8 +160,11 @@ int settings_format(const Settings *s, char *out, size_t size)
                     "; Finer bat moves, from 1/8 of the original's speed (off: --original-mouse)\n"
                     "precise_mouse = %s\n"
                     "; Fill a wide screen with the menus, not 4:3 (on: --wide-menus)\n"
-                    "wide_menus = %s\n",
+                    "wide_menus = %s\n"
+                    "; A language only in the OpenMB2 folder's Languages; empty uses\n"
+                    "; params.txt's, which the original game shares\n"
+                    "language = %s\n",
                     s->width, s->height, on_off(s->maximized), fullscreen[s->fullscreen], on_off(s->vsync),
                     on_off(s->smooth), on_off(s->level_intro), on_off(s->sort_glass),
-                    on_off(s->edge_bounce), on_off(s->precise_mouse), on_off(s->wide_menus));
+                    on_off(s->edge_bounce), on_off(s->precise_mouse), on_off(s->wide_menus), s->language);
 }

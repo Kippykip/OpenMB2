@@ -30,7 +30,8 @@ enum {
 
 /*
  * Load the language at this place in the Languages folder, sorted by name
- * (params.txt's "language"), or the first one if there are fewer.
+ * (params.txt's "language"), or the first one if there are fewer. Those
+ * only the OpenMB2 folder has come after the game's own.
  */
 bool lang_load(int index);
 void lang_free(void);
@@ -38,6 +39,11 @@ void lang_free(void);
 /* How many languages there are, and one's name ("English"), for the options page. */
 int lang_count(void);
 bool lang_name(int index, char *out, size_t size);
+/* How many of them are the game's own; the rest, only in the OpenMB2
+   folder, come after them and are kept out of params.txt. */
+int lang_game_count(void);
+/* The place of the language with this name ("French"), or -1. */
+int lang_find(const char *name);
 
 /* String number index, or fallback if the file doesn't have it. */
 const char *lang_text(int index, const char *fallback);

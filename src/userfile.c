@@ -15,7 +15,7 @@ static void user_path(const char *name, char *out, size_t size)
     const char *root = vfs_root();
     size_t n = root != NULL ? strlen(root) : 0;
 
-    if (vfs_real_path(name, out, size))
+    if (vfs_game_path(name, out, size))
         return;
     snprintf(out, size, "%s%s%s", root != NULL ? root : ".",
              n > 0 && (root[n - 1] == '/' || root[n - 1] == '\\') ? "" : "/", name);

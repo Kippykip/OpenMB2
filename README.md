@@ -84,6 +84,23 @@ On a screen that isn't 4:3 the menus keep their shape between black
 bars; `--wide-menus` fills the screen instead, cutting off the
 background's edges.
 
+### The OpenMB2 folder
+
+A folder named `OpenMB2` in the game folder is read before the game's
+own files: `OpenMB2/Menu/lmainmenu.txt` is used in place of
+`Menu/lmainmenu.txt`, and a file the game doesn't have is added. The
+game's files stay untouched, so the original still runs as it was, and
+without the folder OpenMB2 plays the game as it is. `params.txt`, saves
+and scores are always the game's own, shared with the original.
+
+`data/OpenMB2` here holds what OpenMB2 adds; copy it into the game
+folder. For now that is a French translation, `Languages/French.txt`.
+Languages only the OpenMB2 folder has come after the game's own on the
+options page, and picking one is kept in `openmb2.ini` (`language`)
+rather than params.txt, so the original never sees a language it
+doesn't have. Language files use the game's font, which keeps its
+accented letters at 0x80 on (à is 0x80, é is 0x89, ü is 0x9c).
+
 ### openmb2.ini
 
 OpenMB2 keeps its own settings in `openmb2.ini` next to `params.txt`,
@@ -99,7 +116,8 @@ never reads it, so both games still share `params.txt`.
   `vsync` is `on` or `off`.
 - `[options]`: the switches above as `on`/`off`: `smooth`,
   `level_intro`, `sort_glass`, `edge_bounce`, `precise_mouse`,
-  `wide_menus`. A switch on
+  `wide_menus`, and `language` for one only the OpenMB2 folder has.
+  A switch on
   the command line wins over the file for that run.
 
 `mb2inspect` looks inside a game folder:

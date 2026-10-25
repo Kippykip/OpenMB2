@@ -31,6 +31,7 @@ static const struct {
 typedef struct Names {
     char names[MAX_LANGUAGES][128];
     int count;
+    int game_count; /* the game's own, before those only the OpenMB2 folder has */
 } Names;
 
 static int compare_nocase(const char *a, const char *b)
@@ -53,17 +54,54 @@ static void add_name(const char *name, bool is_dir, void *user)
     snprintf(list->names[list->count++], sizeof(list->names[0]), "%s", name);
 }
 
+static bool is_added(const char *name)
+{
+    char path[160];
+
+    snprintf(path, sizeof(path), "Languages/%s", name);
+    return vfs_is_added(path);
+}
+
+/* By name, with the languages only the OpenMB2 folder has after the
+   game's, so params.txt's numbers mean the same to both games. */
 static int compare_names(const void *a, const void *b)
 {
+    bool added_a = is_added(a), added_b = is_added(b);
+
+    if (added_a != added_b)
+        return added_a ? 1 : -1;
     return compare_nocase((const char *)a, (const char *)b);
 }
 
 /* The original lists them with FindFirstFile, which goes by name on NTFS. */
 static void list_languages(Names *list)
 {
+    int i;
+
     list->count = 0;
     vfs_list("Languages", add_name, list);
     qsort(list->names, (size_t)list->count, sizeof(list->names[0]), compare_names);
+    for (i = 0; i < list->count && !is_added(list->names[i]); i++)
+        ;
+    list->game_count = i;
+}
+
+int lang_game_count(void)
+{
+    Names list;
+    list_languages(&list);
+    return list.game_count;
+}
+
+int lang_find(const char *name)
+{
+    char found[128];
+    int i;
+
+    for (i = 0; name != NULL && name[0] != '\0' && lang_name(i, found, sizeof(found)); i++)
+        if (compare_nocase(found, name) == 0)
+            return i;
+    return -1;
 }
 
 int lang_count(void)

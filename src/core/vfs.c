@@ -18,11 +18,15 @@
 
 #define VFS_MAX_PATH  1024
 #define VFS_MAX_DEPTH 8
+/* Files in this folder of the game folder are read in place of the game's
+   own, so OpenMB2 can add to the game without changing its files. */
+#define VFS_ADDED     "openmb2/"
 
 typedef struct VfsEntry {
     char *key;   /* normalised path, used for lookups */
     char *real;  /* path relative to the root, with the real case */
     bool is_dir;
+    bool added;  /* from the OpenMB2 folder, standing in for the game's own */
 } VfsEntry;
 
 static struct {
@@ -95,9 +99,8 @@ static void join_path(char *out, size_t out_size, const char *a, const char *b)
 /* Building the index                                                       */
 /* ------------------------------------------------------------------------ */
 
-static void add_entry(const char *relative, bool is_dir)
+static void push_entry(const char *key, const char *relative, bool is_dir, bool added)
 {
-    char key[VFS_MAX_PATH];
     VfsEntry *entry;
 
     if (g_vfs.count == g_vfs.capacity) {
@@ -111,13 +114,25 @@ static void add_entry(const char *relative, bool is_dir)
         g_vfs.capacity = new_capacity;
     }
 
-    vfs_normalise(relative, key, sizeof(key));
     entry = &g_vfs.entries[g_vfs.count++];
     entry->key = copy_string(key);
     entry->real = copy_string(relative);
     entry->is_dir = is_dir;
-    if (!is_dir)
+    entry->added = added;
+    if (!is_dir && !added)
         g_vfs.file_count++;
+}
+
+static void add_entry(const char *relative, bool is_dir)
+{
+    char key[VFS_MAX_PATH];
+    size_t added = strlen(VFS_ADDED);
+
+    vfs_normalise(relative, key, sizeof(key));
+    push_entry(key, relative, is_dir, false);
+    /* A file under OpenMB2/ is also listed under its path without it. */
+    if (strncmp(key, VFS_ADDED, added) == 0 && key[added] != '\0')
+        push_entry(key + added, relative, is_dir, true);
 }
 
 static void scan_folder(const char *relative, int depth);
@@ -233,6 +248,15 @@ static int compare_entries(const void *a, const void *b)
     return strcmp(ea->key, eb->key);
 }
 
+/* The same, with the OpenMB2 folder's copy of a path before the game's. */
+static int compare_layers(const void *a, const void *b)
+{
+    const VfsEntry *ea = a;
+    const VfsEntry *eb = b;
+    int order = strcmp(ea->key, eb->key);
+    return order != 0 ? order : (int)eb->added - (int)ea->added;
+}
+
 bool vfs_mount(const char *root_dir)
 {
     int i, kept;
@@ -254,17 +278,19 @@ bool vfs_mount(const char *root_dir)
         return false;
     }
 
-    qsort(g_vfs.entries, (size_t)g_vfs.count, sizeof(VfsEntry), compare_entries);
+    qsort(g_vfs.entries, (size_t)g_vfs.count, sizeof(VfsEntry), compare_layers);
 
     /*
      * On case-sensitive systems two files can differ only by case
      * ("Menu/Exit.txt" and "Menu/EXIT.TXT"). Windows would only ever see
-     * one of them, so keep the first and drop the rest.
+     * one of them, so keep the first and drop the rest. A path can still
+     * be there twice: the OpenMB2 folder's copy first, then the game's.
      */
     kept = 0;
     for (i = 0; i < g_vfs.count; i++) {
         VfsEntry *entry = &g_vfs.entries[i];
-        if (kept > 0 && strcmp(g_vfs.entries[kept - 1].key, entry->key) == 0) {
+        if (kept > 0 && strcmp(g_vfs.entries[kept - 1].key, entry->key) == 0 &&
+            g_vfs.entries[kept - 1].added == entry->added) {
             log_warn("vfs: ignoring '%s' (same name as '%s')",
                      entry->real, g_vfs.entries[kept - 1].real);
             if (!entry->is_dir)
@@ -297,18 +323,35 @@ void vfs_unmount(void)
 /* Lookups                                                                  */
 /* ------------------------------------------------------------------------ */
 
+/* The OpenMB2 folder's copy of a path if there is one, else the game's. */
 static const VfsEntry *find_entry(const char *game_path)
 {
     char key[VFS_MAX_PATH];
     VfsEntry probe;
+    const VfsEntry *entry;
 
     if (g_vfs.count == 0)
         return NULL;
 
     vfs_normalise(game_path, key, sizeof(key));
     probe.key = key;
-    return bsearch(&probe, g_vfs.entries, (size_t)g_vfs.count,
-                   sizeof(VfsEntry), compare_entries);
+    entry = bsearch(&probe, g_vfs.entries, (size_t)g_vfs.count,
+                    sizeof(VfsEntry), compare_entries);
+    while (entry != NULL && entry > g_vfs.entries && strcmp(entry[-1].key, key) == 0)
+        entry--;
+    return entry;
+}
+
+/* The game's own copy of a path, never the OpenMB2 folder's. */
+static const VfsEntry *find_game_entry(const char *game_path)
+{
+    const VfsEntry *entry = find_entry(game_path);
+
+    if (entry != NULL && entry->added) {
+        const VfsEntry *next = entry + 1;
+        entry = next < g_vfs.entries + g_vfs.count && strcmp(next->key, entry->key) == 0 ? next : NULL;
+    }
+    return entry;
 }
 
 const char *vfs_root(void)
@@ -333,15 +376,30 @@ bool vfs_is_dir(const char *game_path)
     return entry != NULL && entry->is_dir;
 }
 
-bool vfs_real_path(const char *game_path, char *out, size_t out_size)
+static bool real_path(const VfsEntry *entry, char *out, size_t out_size)
 {
-    const VfsEntry *entry = find_entry(game_path);
     int written;
 
     if (entry == NULL)
         return false;
     written = snprintf(out, out_size, "%s/%s", g_vfs.root, entry->real);
     return written >= 0 && (size_t)written < out_size;
+}
+
+bool vfs_real_path(const char *game_path, char *out, size_t out_size)
+{
+    return real_path(find_entry(game_path), out, out_size);
+}
+
+bool vfs_game_path(const char *game_path, char *out, size_t out_size)
+{
+    return real_path(find_game_entry(game_path), out, out_size);
+}
+
+bool vfs_is_added(const char *game_path)
+{
+    const VfsEntry *entry = find_entry(game_path);
+    return entry != NULL && entry->added && find_game_entry(game_path) == NULL;
 }
 
 void *vfs_read(const char *game_path, size_t *out_size)
@@ -403,6 +461,8 @@ int vfs_list(const char *game_dir, VfsListFn fn, void *user)
         }
         if (strchr(rest, '/') != NULL)
             continue; /* deeper than a direct child */
+        if (i > 0 && strcmp(g_vfs.entries[i - 1].key, entry->key) == 0)
+            continue; /* the game's copy of one the OpenMB2 folder has */
 
         /* Report the real name, which is the last part of the real path. */
         name = strrchr(entry->real, '/');

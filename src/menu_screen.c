@@ -120,6 +120,7 @@ static struct {
     void (*video_changed)(void);
     int modes[MAX_VIDEO_MODES][2];
     int mode_count, mode;
+    int language; /* the place of the language in use, see lang.h */
     bool video_pending; /* a mode picked, to take effect on leaving the page */
     int pending_width, pending_height;
     /* The game to start. */
@@ -402,14 +403,14 @@ static void load_page(const char *list, Page page)
 /* 0x80: a page a button names; the language may have changed. */
 static void navigate(const char *list)
 {
-    lang_load(m.params->language);
+    lang_load(m.language);
     load_page(list, PAGE_MENU);
 }
 
 static void show_main(void)
 {
     intro_stop();
-    lang_load(m.params->language);
+    lang_load(m.language);
     load_page("Menu/lmainmenu.txt", PAGE_MENU);
     audio_play_music("Music/menu.txt");
 }
@@ -421,7 +422,7 @@ static void show_packs(void)
     float dy = 30.0f, offset = 10.0f;
     MenuItem *item;
 
-    lang_load(m.params->language);
+    lang_load(m.language);
     menu_list_clear(&m.list);
     menu_list_load(&m.list, "Menu/lselectlevel.txt");
     menu_list_load(&m.list, "logos.txt");
@@ -661,7 +662,7 @@ static int select_count(const MenuItem *item)
 
 static int *select_value(const MenuItem *item)
 {
-    return item->video_mode ? &m.mode : &m.params->language;
+    return item->video_mode ? &m.mode : &m.language;
 }
 
 static void add_video_mode(int width, int height)
@@ -729,11 +730,33 @@ static void choose_video_mode(void)
     m.video_pending = true;
 }
 
+/* params.txt's language, or openmb2.ini's if it is one only OpenMB2 has. */
+static void find_language(void)
+{
+    int added = m.settings != NULL ? lang_find(m.settings->language) : -1;
+
+    m.language = added >= lang_game_count() ? added : m.params->language;
+}
+
+/* A language picked on the options page: the original only knows its own. */
+static void choose_language(void)
+{
+    if (m.language < lang_game_count()) {
+        m.params->language = m.language;
+        if (m.settings != NULL)
+            m.settings->language[0] = '\0';
+    } else if (m.settings != NULL) {
+        lang_name(m.language, m.settings->language, sizeof(m.settings->language));
+    }
+}
+
 void menu_screen_set_settings(Settings *settings, void (*changed)(void))
 {
     m.settings = settings;
     m.video_changed = changed;
     list_video_modes();
+    find_language();
+    lang_load(m.language);
 }
 
 /* -1 over the left arrow, 1 over the right one, 0 elsewhere. */
@@ -765,6 +788,8 @@ static void update_select(MenuItem *item, ItemState *state)
     click_sound();
     if (item->video_mode)
         choose_video_mode();
+    else
+        choose_language();
 }
 
 static void update_slider(MenuItem *item, ItemState *state)
@@ -1285,6 +1310,7 @@ bool menu_screen_init(SDL_Window *window, Params *params, bool intro)
     memset(&m, 0, sizeof(m));
     m.window = window;
     m.params = params;
+    m.language = params->language;
     m.intro_enabled = intro;
     m.highlight = -1;
     list_video_modes();

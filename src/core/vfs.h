@@ -11,6 +11,11 @@
  * mount time and look names up case-insensitively.
  *
  * Game paths are always relative to the game folder, e.g. "Menu/exit.txt".
+ *
+ * A file in the game folder's OpenMB2 folder is read in place of the
+ * game's own at the same path (OpenMB2/Menu/exit.txt for Menu/exit.txt),
+ * and one the game doesn't have is added; the game's files stay untouched
+ * for the original to use.
  */
 #ifndef OPENMB2_VFS_H
 #define OPENMB2_VFS_H
@@ -36,6 +41,11 @@ bool vfs_is_dir(const char *game_path);
  * Returns false if the file doesn't exist or out is too small.
  */
 bool vfs_real_path(const char *game_path, char *out, size_t out_size);
+/* The same for the game's own copy, never the OpenMB2 folder's: for the
+   files both games read and write, such as params.txt and saves. */
+bool vfs_game_path(const char *game_path, char *out, size_t out_size);
+/* True for a file only the OpenMB2 folder has. */
+bool vfs_is_added(const char *game_path);
 
 /*
  * Read a whole file into memory. A NUL byte is added after the data, so

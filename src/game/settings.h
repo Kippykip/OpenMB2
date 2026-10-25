@@ -23,6 +23,7 @@
  *   edge_bounce = on    ; --original-bounce
  *   precise_mouse = on    ; --original-mouse
  *   wide_menus = off    ; --wide-menus
+ *   language =          ; one only in OpenMB2\Languages, or params.txt's
  */
 #ifndef OPENMB2_SETTINGS_H
 #define OPENMB2_SETTINGS_H
@@ -47,6 +48,7 @@ typedef struct Settings {
     bool edge_bounce;
     bool precise_mouse;
     bool wide_menus;
+    char language[64]; /* a language only OpenMB2 has, "" for params.txt's */
 } Settings;
 
 void settings_set_defaults(Settings *settings);

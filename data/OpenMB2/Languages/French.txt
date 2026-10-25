@@ -1,0 +1,160 @@
+/// SYSTEM ///
+Commencer
+Comment jouer
+Options
+Meilleurs scores
+Quitter
+Menu principal
+Effacer
+Partie termin‰e
+Nouveau record :
+Entrez votre nom :
+Pr‰c‰dent
+Suivant
+Score %d
+Vies %d
+Niveau %d
+Pause
+‰chap pour revenir au menu principal
+ÂÏÏÏS pour sauvegarder la partie|ÊÏÏÏÏL pour charger la partie
+××Appuyez sur une touche pour continuer...
+Balle hypnotique termin‰e
+Yo-Yo termin‰
+Meilleurs scores
+Bonus : %d
+Laissez tomber la balle dans le feu
+et elle deviendra EXPLOSIVE !
+Attention ! Si la balle tombe dans l'eau,
+elle redeviendra normale
+Histoire
+Commandes
+Prix
+Cr‰dits
+F‰licitations !
+/// PACKS ///
+Pack original
+Printemps
+Coeurs magiques
+Pack bonus 3
+Pack bonus 4
+Pack bonus 5
+Pack bonus 6
+Pack termin‰
+Envoyer le score
+Scores en ligne
+ÂScores personnels 
+R‰cup‰ration des meilleurs scores mondiaux.
+Veuillez patienter.
+Date :
+Heure :
+Niveau :
+
+/// INFO ///
+Utilisez la souris pour contr”ler la batte.
+
+Maintenez le bouton droit de la souris enfonc‰
+et d‰placez-la pour changer l'angle de la cam‰ra.
+Utilisez la molette pour zoomer.
+
+‰chap pour mettre en pause.
+S pour sauvegarder la partie.
+L pour charger la partie.
+F6 pour changer la musique.
+F7 pour changer l'arriˆre-plan.
+F8 pour changer la texture du plateau.
+F9 pour replacer la cam‰ra.
+
+/// CREDITS ///
+Code :
+Graphismes :
+Sons :
+Musique :
+Intro :
+Remerciements :
+
+
+
+
+
+
+
+
+
+
+Igor Perepechenko
+Alexey 'SCIA' Chernov
+Aleksander Shukaev
+The Sands
+Yuri Rudakov
+Andrew Postnikov
+Mark Magdamit
+Yuri Batossky
+
+
+
+
+
+/// RUNNINGSTRING ///
+Kippykip.com
+pr‰sente
+Le jeu de casse-briques 3D restaur‰
+Magic Ball 2 Community Edition v1.2
+Copyright (c) 2002-2005 DreamDale    Publi‰ par Alawar Entertainment   ver .2
+Astuces :   F6 - Changer de musique   F7 - Changer d'arriˆre-plan   F8 - Changer la texture du plateau   F9 - Replacer la cam‰ra.
+Bonne chance ;-)
+
+/// ENDGAME ///
+F‰licitations !
+Vous Štes un maŽtre et avez
+termin‰ tous les niveaux
+du monde de Magic Ball 2 !
+
+Rejouez pour essayer
+d'am‰liorer votre score !
+
+Merci d'avoir jou‰ € Magic Ball 2 !
+
+/// OPTIONS ///
+Mode vid‰o
+Langues
+Volume des sons
+Volume de la musique
+Joystick
+Panth‰on
+Balle € rayons X
+Textures basse r‰solution
+Vitesse de la souris
+
+/// NAG-SCREEN ///
+Version d'essai
+Vous n'avez termin‰ que 10 % du jeu !
+Tous les niveaux et fonctions dans la version complˆte
+Inscrivez-vous et recevez :
+100 niveaux de jeu
+Aucun ‰cran de rappel
+Assistance par e-mail
+Tous les personnages
+ du jeu
+
+Commander en ligne
+
+/// PRIZES ///
+Aucun
+Batte plus grande
+Batte plus petite
+Balle normale en Super balle
+Super balle en balle normale
+Balle normale
+Balle explosive
+Balle hypnotique
+Balles plus rapides
+Balles plus lentes
+Triple balle
+Aimant
+Fusil
+Bazooka
+Canon
+Yo-Yo
+Niveau suivant
+Tueur de batte
+Vie suppl‰mentaire
