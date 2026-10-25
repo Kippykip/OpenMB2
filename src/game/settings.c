@@ -19,6 +19,7 @@ void settings_set_defaults(Settings *settings)
     settings->level_intro = true;
     settings->sort_glass = true;
     settings->edge_bounce = true;
+    settings->exact_mouse = true;
     settings->wide_menus = false;
 }
 
@@ -66,6 +67,8 @@ static void set(Settings *s, const char *section, const char *key, const char *v
             s->sort_glass = parse_bool(value, s->sort_glass);
         else if (same(key, "edge_bounce"))
             s->edge_bounce = parse_bool(value, s->edge_bounce);
+        else if (same(key, "exact_mouse"))
+            s->exact_mouse = parse_bool(value, s->exact_mouse);
         else if (same(key, "wide_menus"))
             s->wide_menus = parse_bool(value, s->wide_menus);
     }
@@ -151,9 +154,11 @@ int settings_format(const Settings *s, char *out, size_t size)
                     "sort_glass = %s\n"
                     "; Bats without end bounces bounce as in the middle (off: --original-bounce)\n"
                     "edge_bounce = %s\n"
+                    "; Slow mouse moves aren't rounded away (off: --original-mouse)\n"
+                    "exact_mouse = %s\n"
                     "; Fill a wide screen with the menus, not 4:3 (on: --wide-menus)\n"
                     "wide_menus = %s\n",
                     s->width, s->height, on_off(s->maximized), fullscreen[s->fullscreen], on_off(s->vsync),
                     on_off(s->smooth), on_off(s->level_intro), on_off(s->sort_glass),
-                    on_off(s->edge_bounce), on_off(s->wide_menus));
+                    on_off(s->edge_bounce), on_off(s->exact_mouse), on_off(s->wide_menus));
 }

@@ -552,7 +552,7 @@ int main(int argc, char **argv)
     unsigned seed = (unsigned)time(NULL);
     /* Switches given on the command line, which win over openmb2.ini. */
     bool no_smooth = false, no_intro = false, original_glass = false, original_bounce = false,
-         wide_menus = false;
+         original_mouse = false, wide_menus = false;
     int i;
 
     g_app.mouse_mode = -1;
@@ -576,6 +576,8 @@ int main(int argc, char **argv)
             original_glass = true;
         else if (strcmp(argv[i], "--original-bounce") == 0)
             original_bounce = true;
+        else if (strcmp(argv[i], "--original-mouse") == 0)
+            original_mouse = true;
         else if (strcmp(argv[i], "--wide-menus") == 0)
             wide_menus = true;
         else if (strcmp(argv[i], "--autoplay") == 0)
@@ -606,6 +608,7 @@ int main(int argc, char **argv)
     options.intro = g_app.settings.level_intro && !no_intro;
     options.sort_glass = g_app.settings.sort_glass && !original_glass;
     options.edge_bounce = g_app.settings.edge_bounce && !original_bounce;
+    options.exact_mouse = g_app.settings.exact_mouse && !original_mouse;
     wide_menus = wide_menus || g_app.settings.wide_menus;
     log_game_contents();
 

@@ -28,6 +28,7 @@ typedef struct PlayScreenOptions {
     bool smooth;             /* draw moving things between game steps (OpenMB2's own) */
     bool sort_glass;         /* draw see-through bricks back to front (OpenMB2's own) */
     bool edge_bounce;        /* a bat without end bounces bounces in the middle (OpenMB2's own) */
+    bool exact_mouse;        /* slow mouse moves aren't rounded away (OpenMB2's own) */
 } PlayScreenOptions;
 
 typedef enum PlayScreenResult {

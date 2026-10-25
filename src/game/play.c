@@ -1971,7 +1971,14 @@ void play_mouse_move(Play *play, int dx)
 
     if (play->state != PLAY_RUNNING)
         return;
-    dx = (int)((float)dx * play->mouse_sensitivity);
+    if (play->exact_mouse) {
+        /* Carry the part the original rounds away, so slow moves add up. */
+        float scaled = (float)dx * play->mouse_sensitivity + play->mouse_rest;
+        dx = (int)scaled;
+        play->mouse_rest = scaled - (float)dx;
+    } else {
+        dx = (int)((float)dx * play->mouse_sensitivity);
+    }
     move = (float)dx * 0.18f;
     bat->position.x += move;
     bat->tilt = (int)((float)bat->tilt - move * 70.0f);

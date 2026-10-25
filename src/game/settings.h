@@ -21,6 +21,7 @@
  *   level_intro = on    ; --no-intro
  *   sort_glass = on     ; --original-glass
  *   edge_bounce = on    ; --original-bounce
+ *   exact_mouse = on    ; --original-mouse
  *   wide_menus = off    ; --wide-menus
  */
 #ifndef OPENMB2_SETTINGS_H
@@ -44,6 +45,7 @@ typedef struct Settings {
     bool level_intro;
     bool sort_glass;
     bool edge_bounce;
+    bool exact_mouse;
     bool wide_menus;
 } Settings;
 
