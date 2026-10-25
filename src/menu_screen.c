@@ -370,6 +370,8 @@ static void stop_screw(void)
     m.screw_sound = 0;
 }
 
+static void list_video_modes(void);
+
 /* A page from its list file, with the logos (0x418670, 0x418b70). */
 static void load_page(const char *list, Page page)
 {
@@ -378,6 +380,8 @@ static void load_page(const char *list, Page page)
     if (m.video_pending && m.video_changed != NULL)
         m.video_changed();
     m.video_pending = false;
+    /* The window may have been resized by hand since. */
+    list_video_modes();
     stop_screw();
     menu_list_clear(&m.list);
     if (list != NULL)
