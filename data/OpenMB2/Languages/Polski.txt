@@ -1,0 +1,162 @@
+/// SYSTEM ///
+Start
+Zasady gry
+Opcje
+Rekordy
+Wyjæcie
+Menu gàówne
+Wyczyæâ
+Koniec gry
+Nowy rekord:
+Wprowadç swoje imiä:
+Wstecz
+Dalej
+Wynik %d
+áycia %d
+Poziom %d
+Pauza
+Naciænij Esc, by przejæâ do gà“wnego menu
+ÂÏÏÏNaciænij S, by zapisaâ grä|ÊÏÏÏÏNaciænij L, by wczytaâ grä
+××Naciænij dowolny klawisz, by kontynuowaâ...
+Koniec efektu hipnotycznej kuli
+Koniec efektu yo-yo
+Rekordy
+Bonus: %d
+Wprowadç kulä w ogieã,
+a zamieni siä w prawdziwå bombä!
+Ale uwaáaj! Jeæli kula trafi na wodä,
+wr“ci do normalnego stanu.
+Wprowadzenie
+Sterowanie
+Nagrody
+Tw“rcy
+
+/// PACKS ///
+ZESTAW ORYGINALNY
+WIOSNA
+MAGICZNE SERCA
+ZESTAW BONUSOWY 3
+ZESTAW BONUSOWY 4
+ZESTAW BONUSOWY 5
+ZESTAW BONUSOWY 6
+Zestaw ukoãczony
+Wyælij wynik
+ÂÂWyniki w Internecie
+ÂOsobisty rekord 
+Odbieranie aktualnych rekord“w z serwera
+Proszä czekaâ.
+Data:
+Czas:
+Poziom:
+
+
+/// INFO ///
+Uáyj myszy do sterowania.
+
+Wciænij prawy przycisk myszy,
+a nastäpnie przesuã mysz, by zmieniâ widok.
+Uáyj k“àka myszy do przybliáania i oddalania.
+
+Naciænij ESC, by zatrzymaâ.
+Naciænij S, by zapisaâ grä.
+Naciænij L, by wczytaâ grä.
+Naciænij F6, by zmieniâ muzykä.
+Naciænij F7, by zmieniâ tào.
+Naciænij F8, by zmieniâ teksturä planszy.
+Naciænij F9, by zresetowaâ kamerä.
+
+/// CREDITS ///
+Programowanie:
+Grafika:
+Dçwiäk:
+Muzyka:
+Intro:
+Specjalne podziäkowania:
+
+
+
+
+
+
+
+
+
+
+Igor Perepechenko
+Alexey 'SCIA' Chernov
+Aleksander Shukaev
+The Sands
+Yuri Rudakov
+Andrew Postnikov
+Mark Magdamit
+Yuri Batossky
+
+
+
+
+
+/// RUNNINGSTRING ///
+Kippykip.com
+Przedstawia
+Nowa implementacja Magic Ball 2
+OpenMB2 v1.0
+Oryginalne MB2 Copyright (c) 2002-2005 DreamDale    Wydane przez Alawar Entertainment
+Wskaz“wki:   F6 - zmiana muzyki   F7 - zmiana tàa   F8 - zmiana tekstury planszy   F9 - reset kamery
+Powodzenia ;-)
+
+/// ENDGAME ///
+Gratulacje!
+Udaào ci siä przejæâ wszystkie
+poziomy i zostaâ niekwestionowanym
+mistrzem æwiata Magic Ball 2!
+
+Zagraj jeszcze raz, by przekonaâ
+siä, czy jesteæ w stanie pobiâ
+sw“j wàasny rekord!
+
+Dziäkujemy za grä w Magic Ball 2!
+
+/// OPTIONS ///
+Rozdzielczoæâ
+Jäzyki
+ÂGàoænoæâ dçwiäku
+ÂGàoænoæâ muzyki
+Wàåcz sterowanie joystickiem
+Rekordy
+Wàåcz rentgen kulki
+Niska rozdzielczoæâ tekstur
+Czuàoæâ myszy
+
+/// NAG-SCREEN ///
+Wersja testowa
+Ukoãczyàeæ tylko 10% gry!
+Wszystkie poziomy dostäpne så tylko w peànej wersji
+Zarejestruj teraz, a otrzymasz:
+100 poziom“w
+Brak dokuczliwego ekranu
+Pomoc przez e-mail
+Dostäp do wszystkich
+ postaci gry
+
+Zam“w online
+
+/// PRIZES ///
+Brak
+Zwiäkszenie rozmiaru
+Zmniejszenie rozmiaru
+Kula Mocy
+Powr“t do stanu normalnego
+Zwykàa kula
+Kula wybuchowa
+Hipnotyczna kula
+Przyspieszenie
+Spowolnienie
+Potrojenie
+Magnes
+Karabin
+Bazooka
+Dziaào
+Yo-Yo
+Nastäpny poziom
+Zab“jca
+Dodatkowe áycie

@@ -9,6 +9,7 @@
 #include "audio/audio.h"
 #include "core/log.h"
 #include "core/matrix.h"
+#include "core/vfs.h"
 #include "game/font.h"
 #include "game/lang.h"
 #include "game/menu.h"
@@ -516,7 +517,22 @@ static void open_pack(const char *pack)
     }
     page = open < 21 ? 1 : open < 41 ? 2 : open < 61 ? 3 : open < 81 ? 4 : 5;
     snprintf(list, sizeof(list), "%s/Menu/llevelsel%d.txt", pack, page);
+    /* The earliest builds keep the level pages in Menu/, not the pack's. */
+    if (!vfs_exists(list))
+        snprintf(list, sizeof(list), "Menu/llevelsel%d.txt", page);
     navigate(list);
+}
+
+/* "startgame": the packs to choose from, or straight into the first pack's
+   levels for the earliest builds, which have no packs page. */
+static void choose_pack(void)
+{
+    if (play_screen_pack_count() == 0)
+        return;
+    if (vfs_exists("Menu/lselectlevel.txt") && vfs_exists("Menu/pack.txt"))
+        show_packs();
+    else
+        open_pack(play_screen_pack_folder(0));
 }
 
 static void save_scores(void)
@@ -561,8 +577,7 @@ static void run_command(MenuItem *item)
     if (strcmp(id, "navigate") == 0) {
         navigate(item->script);
     } else if (strcmp(id, "startgame") == 0) {
-        if (play_screen_pack_count() > 0)
-            show_packs();
+        choose_pack();
     } else if (strcmp(id, "rescan") == 0) {
         open_pack(item->script);
     } else if (strcmp(id, "selectpad") == 0) {
@@ -1389,7 +1404,7 @@ void menu_screen_show_page(const char *list)
     if (strstr(list, "highscores") != NULL)
         show_scores(-1);
     else if (strcmp(list, "packs") == 0)
-        show_packs();
+        choose_pack();
     else if (strcmp(list, "entername") == 0)
         show_enter_name();
     else

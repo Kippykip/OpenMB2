@@ -1,0 +1,160 @@
+/// SYSTEM ///
+Spiel starten
+So wird gespielt
+Optionen
+Bestenliste
+Beenden
+Hauptmenœ
+L–schen
+Spiel vorbei
+Neuer Highscore:
+Ihr Name:
+Zurœck
+Weiter
+Punkte %d
+Leben %d
+Level %d
+Pause
+Mit Esc zum Hauptmenœ
+ÂÏÏÏMit S Spiel speichern|ÊÏÏÏÏMit L Spiel laden
+××Weiter mit beliebiger Taste...
+Hypnoball - Zeit vorbei
+Jojo - Zeit vorbei
+Bestenliste
+Bonus: %d
+Werfen Sie den Ball ins Feuer,
+und er wird EXPLOSIV!
+Achtung! Wenn der Ball ins Wasser f„llt,
+wird er ein einfacher Ball.
+Geschichte
+Steuerung
+Preise
+Mitwirkende
+
+/// PACKS ///
+Originalpaket
+Frœhlingszeit
+Magische Herzen
+Bonuspaket 3
+Bonuspaket 4
+Bonuspaket 5
+Bonuspaket 6
+Paket abgeschlossen
+Punkte senden
+Online-Bestenliste
+ÂPers–nliche Bestenliste 
+Weltweite Bestenliste wird geladen.
+Bitte warten.
+Datum:
+Zeit:
+Level:
+
+/// INFO ///
+Mit der Maus steuern Sie den Schl„ger.
+
+Mit der rechten Maustaste 
+steuern Sie die Kamera.
+Mit dem Mausrad zoomen Sie.
+
+Mit Esc pausieren Sie das Spiel.
+Mit S speichern Sie das Spiel.
+Mit L laden Sie das Spiel.
+Mit F6 „ndern Sie die Musik.
+Mit F7 „ndern Sie den Hintergrund.
+Mit F8 „ndern Sie das Spielfeld.
+Mit F9 setzen Sie die Kamera zurœck.
+
+/// CREDITS ///
+Code:
+Grafik:
+Sound:
+Musik:
+Intro:
+Danke an:
+
+
+
+
+
+
+
+
+
+
+Igor Perepechenko
+Alexey 'SCIA' Chernov
+Aleksander Shukaev
+The Sands
+Yuri Rudakov
+Andrew Postnikov
+Mark Magdamit
+Yuri Batossky
+
+
+
+
+
+/// RUNNINGSTRING ///
+Kippykip.com
+pr„sentiert
+eine Neuumsetzung von Magic Ball 2
+OpenMB2 v1.0
+Original-MB2 Copyright (c) 2002-2005 DreamDale    Ver–ffentlicht von Alawar Entertainment
+Spieltipps:   F6 - Musik „ndern   F7 - Hintergrund „ndern   F8 - Spielfeld „ndern   F9 - Kamera zurœcksetzen
+Viel Glœck ;-)
+
+/// ENDGAME ///
+Herzlichen Glœckwunsch!
+Sie sind ein Meister. Sie
+haben alle Levels von
+'Magic Ball 2' abgeschlossen!
+
+Spielen Sie noch mal - vielleicht
+schaffen Sie noch mehr Punkte!
+
+Danke, dass Sie 'Magic Ball 2' gespielt haben!
+
+/// OPTIONS ///
+Video-Modus
+Sprachen
+Sound
+Musik
+Joystick aktivieren
+Bestenliste
+R–ntgenball aktivieren
+Spielfeld f. niedr. Auflsg.
+Mausgeschw.
+
+/// NAG-SCREEN ///
+Testversion
+Sie haben erst 10 % des Spiels hinter sich.
+Alle Levels/Funktionen gibt's in der Vollversion.
+Eine Registrierung bringt Ihnen:
+100 Spiellevels
+Kein Nerv-Screen
+E-Mail-Support
+Alle Figuren
+ des Spiels
+
+Online bestellen
+
+/// PRIZES ///
+Keine
+Schl„ger vergr–Ÿern
+Schl„ger verkleinern
+Normalball zu Powerball
+Powerball zu Normalball
+Normalball
+Explosivball
+Hypnoball
+B„lle schneller
+B„lle langsamer
+Dreifachball
+Magnet
+Pistole
+Panzerfaust
+Kanone
+Jojo
+N„chster Level
+Schl„gerkiller
+Extraleben
