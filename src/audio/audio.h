@@ -37,6 +37,8 @@ void audio_stop_loop(int handle);
 
 /* Start the tune a Music/<tune>.txt file describes, e.g. "Music/mb2.txt". */
 void audio_play_music(const char *path);
+/* The same, but a tune already playing from this file goes on. */
+void audio_continue_music(const char *path);
 void audio_stop_music(void);
 
 #endif

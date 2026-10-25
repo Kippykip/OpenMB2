@@ -427,7 +427,8 @@ static void show_main(void)
     intro_stop();
     load_language();
     load_page("Menu/lmainmenu.txt", PAGE_MENU);
-    audio_play_music("Music/menu.txt");
+    /* The original starts the menu tune over on every Escape. */
+    audio_continue_music("Music/menu.txt");
 }
 
 /* 0x10000: a button for each pack, Menu/pack.txt placed by how many there are. */
@@ -1547,7 +1548,7 @@ void menu_screen_show_page(const char *list)
         show_enter_name();
     else
         navigate(list);
-    audio_play_music("Music/menu.txt");
+    audio_continue_music("Music/menu.txt");
 }
 
 void menu_screen_show_main(void)

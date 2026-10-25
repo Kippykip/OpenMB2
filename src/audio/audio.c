@@ -47,6 +47,7 @@ static struct {
     int music_master;          /* 0-256 */
     openmpt_module *music;     /* NULL when no music is playing */
     char music_file[96];       /* the module it was loaded from */
+    char music_cue[96];        /* the Music/ file that started it */
     int16_t music_buffer[2048 * 2];
 } a;
 
@@ -323,12 +324,19 @@ void audio_play_music(const char *path)
         a.music = module;
         snprintf(a.music_file, sizeof(a.music_file), "%s", file);
     }
+    snprintf(a.music_cue, sizeof(a.music_cue), "%s", path);
     if (a.music != NULL)
         openmpt_module_set_position_order_row(a.music, order, row);
     SDL_UnlockAudioDevice(a.device);
     if (old != NULL)
         openmpt_module_destroy(old);
     config_free(&cfg);
+}
+
+void audio_continue_music(const char *path)
+{
+    if (a.music == NULL || SDL_strcasecmp(a.music_cue, path) != 0)
+        audio_play_music(path);
 }
 
 void audio_stop_music(void)
@@ -341,6 +349,7 @@ void audio_stop_music(void)
     old = a.music;
     a.music = NULL;
     a.music_file[0] = '\0';
+    a.music_cue[0] = '\0';
     SDL_UnlockAudioDevice(a.device);
     if (old != NULL)
         openmpt_module_destroy(old);
