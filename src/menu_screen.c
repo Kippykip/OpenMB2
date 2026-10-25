@@ -1604,7 +1604,9 @@ void menu_screen_handle_event(const SDL_Event *event)
             const unsigned char *c;
             for (c = (const unsigned char *)event->text.text; *c != '\0'; c++) {
                 size_t length = strlen(m.name);
-                if (*c >= 32 && *c < 127 && length < NAME_LENGTH) {
+                /* No '&': the online scores send the name as name=...&,
+                   so the server would cut it there. */
+                if (*c >= 32 && *c < 127 && *c != '&' && length < NAME_LENGTH) {
                     m.name[length] = (char)*c;
                     m.name[length + 1] = '\0';
                 }
