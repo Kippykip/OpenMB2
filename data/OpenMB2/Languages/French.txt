@@ -97,9 +97,9 @@ Yuri Batossky
 /// RUNNINGSTRING ///
 Kippykip.com
 pr‰sente
-Le jeu de casse-briques 3D restaur‰
-Magic Ball 2 Community Edition v1.2
-Copyright (c) 2002-2005 DreamDale    Publi‰ par Alawar Entertainment   ver .2
+Une r‰impl‰mentation de Magic Ball 2
+OpenMB2 v1.0
+Magic Ball 2 original (c) 2002-2005 DreamDale    Publi‰ par Alawar Entertainment
 Astuces :   F6 - Changer de musique   F7 - Changer d'arriˆre-plan   F8 - Changer la texture du plateau   F9 - Replacer la cam‰ra.
 Bonne chance ;-)
 
@@ -117,13 +117,13 @@ Merci d'avoir jou‰ € Magic Ball 2 !
 /// OPTIONS ///
 Mode vid‰o
 Langues
-Volume des sons
-Volume de la musique
+Sons
+Musique
 Joystick
 Panth‰on
 Balle € rayons X
 Textures basse r‰solution
-Vitesse de la souris
+Souris
 
 /// NAG-SCREEN ///
 Version d'essai

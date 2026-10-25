@@ -1,0 +1,160 @@
+/// SYSTEM ///
+Start Game
+How to play
+Options
+High Scores
+Quit
+Main Menu
+Clear
+Game Over
+New High Score:
+Enter Your Name:
+Previous
+Next
+Score %d
+Lives %d
+Level %d
+Pause
+Press Escape for Main Menu
+ÂÏÏÏPress S to Save the game|ÊÏÏÏÏPress L to Load the game
+××Press any key or button to continue...
+Hypnotic Ball Time Over
+Yo-Yo Time Over
+High Scores
+Bonus: %d
+Drop the ball into the fire
+and it will become EXPLOSIVE!
+Beware! If you drop the ball into the water,
+it will become a Normal Ball
+Story
+Controls
+Prizes
+Credits
+
+/// PACKS ///
+Original Pack
+Spring Time
+Magic Hearts
+Bonus Pack 3
+Bonus Pack 4
+Bonus Pack 5
+Bonus Pack 6
+Pack Completed
+Send score
+Online hiscore
+ÂPersonal Hiscore 
+Retrieving Recent Global High Scores.
+Please Wait.
+Date:
+Time:
+Level:
+
+/// INFO ///
+Use your mouse to control the bat.
+
+Hold the right mouse button down,
+and then drag it to change the camera angle.
+Use the mouse wheel to zoom in or out.
+
+Press ESC to pause.
+Press S to save game.
+Press L to load game.
+Press F6 to change music.
+Press F7 to change background.
+Press F8 to change board texture.
+Press F9 to reset camera.
+
+/// CREDITS ///
+Code:
+Graphics:
+Sounds:
+Music:
+Intro:
+Special Thanks:
+
+
+
+
+
+
+
+
+
+
+Igor Perepechenko
+Alexey 'SCIA' Chernov
+Aleksander Shukaev
+The Sands
+Yuri Rudakov
+Andrew Postnikov
+Mark Magdamit
+Yuri Batossky
+
+
+
+
+
+/// RUNNINGSTRING ///
+Kippykip.com
+Presents
+A Reimplementation of Magic Ball 2
+OpenMB2 v1.0
+Original MB2 Copyright (c) 2002-2005 DreamDale    Published by Alawar Entertainment
+Game hints:   F6 - Change Game Music   F7 - Change Background   F8 - Change Board Texture   F9 - Reset camera.
+Good Luck ;-)
+
+/// ENDGAME ///
+Congratulations!
+You are a master and have
+completed all of the levels
+in the world of Magic Ball 2!
+
+Play again to see if you can
+make even higher scores!
+
+Thank you for playing Magic Ball 2!
+
+/// OPTIONS ///
+Video Mode
+Languages
+Sound volume
+Music volume
+Enable Joystick Control
+Hall of Fame
+Enable X-Ray Ball
+Low resolution textures
+Mouse speed
+
+/// NAG-SCREEN ///
+Trial version
+You've completed only 10% of the game!
+See all levels and features in the full version
+Register Now and Get:
+100 levels of game
+No nag-screen
+Support by e-mail
+See all characters
+ from the game
+
+Order online
+
+/// PRIZES ///
+None
+Increase Bat Size
+Decrease Bat Size
+Normal Ball to PowerBall
+PowerBall to Normal
+Normal Ball
+Explosive Ball
+Hypnotic Ball
+Balls Speed Up
+Balls Slow Down
+Triple Ball
+Magnet
+Gun
+Bazooka
+Cannon
+Yo-Yo
+Next Level
+Bat Killer
+Extra Life
