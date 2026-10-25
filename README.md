@@ -1,15 +1,16 @@
 # OpenMB2
 
+![OpenMB2's Revamped Options Menu](https://cdn.kippykip.com/images/openmb2/openmb2-options.png)
+
 An open reimplementation of the Magic Ball 2 / Magic Ball 2: New Worlds
 engine, written from scratch in plain C so it can run anywhere SDL2 and
-OpenGL ES 2 run: Windows, Linux, ARM handhelds, Android/iOS and web
+OpenGL ES 2 can run, including Windows, Linux, ARM handhelds, Android/iOS and web
 browsers.
 
 OpenMB2 contains **no game data**. It loads the files from your own copy of
-the game, so you need a Magic Ball 2 install with loose files (for example
-the Community Edition or one of the unboxed builds).
+the game, so you need a Magic Ball 2 or Smash Frenzy 2 install.
 
-## Status
+## Status / Roadmap
 
 Version 1.0: the whole game plays from start to finish.
 
@@ -22,99 +23,100 @@ Version 1.0: the whole game plays from start to finish.
 - [x] Menus, fonts, languages, options, saves and high scores, shared
       with the original
 - [x] Online high scores
-- [x] Keyboard menus, joypads and rumble
+- [x] Keyboard controls, joypads and rumble
 - [ ] Web, Android and handheld builds
 
-## Running
+## Engine Enhancements
 
-```
-openmb2 --game "G:\Games\Magic Ball 2 Community Edition"
-```
+- [x] Full frame interpolation, supporting framerates way beyond 60FPS
+- [x] Completely overhauled how the game handles resolutions and windowed mode
+(VSync, Widescreen, Resizable Windows, HUD with correct aspect ratio, etc)
+- [x] Mod support (OpenMB2 Directory)
+- [x] Multilingual (English, French, German, Polish, Russian)
+- [x] Keyboard navigation and keyboard controls
+- [x] Full controller support and rumble
+- [x] Overhauled options menu with many new options and sub-menus
+(Gameplay Options, Video Options, Audio Options, Joystick Options)
+- [x] Cheats!
+- [x] Improved handling of transparent blocks
+- [x] Plus many other smaller fixes and improvements!
 
-or copy `openmb2.exe` into the game folder and run it from there. Any
-release works: the ones that keep their data packed (the `.pak` files,
-or the disc's `MagicBall2.dat`) are read as they are, no unpacking
-needed. It
-starts like the original: the splash screen, the Alawar logo (any key
-or click skips it), then the main menu, with
-the level packs, level pages, options, how to play and high scores. High scores
-(`score.dat`) and opened levels (`s<pack>.sav`) are the original's own
-files, so both games share them.
 
-The menus also work from the keyboard. The arrows move between items
-(the pointer hides until the mouse moves) and the item they're on
-turns red; Enter picks a button, a level or a checkbox. Left and Right
-move a slider, step a choice, or move along a row; on the packs page
-they choose the bat. A joypad's d-pad or left stick does the same, with
-A for Enter and B or Start for Escape.
+## Instructions
 
-In a level:
 
-| Key | Does |
-| --- | --- |
-| mouse, Left / Right | move the bat |
-| left button, Space | fire |
-| mouse drag, wheel | turn and zoom the camera |
-| F9, middle button | reset the camera |
-| F10 | smooth motion on / off |
-| Alt+Enter | fullscreen |
-| Escape | pause (which frees the mouse); again for the main menu |
-| S / L | save / load the game (default.save, shared with the original) |
-| Shift+1-3 / 1-3 | save / load the hidden quick slots |
-| Shift+F11 | skip the level (a developers' cheat in the original) |
+Copy both the `openmb2.exe` executable and the `OpenMB2` directory into the original game's folder and run `openmb2.exe` from there.  
+Alternatively you can use two command line arguments `--game` to point to the original game's assets and `--overrides` to point the engine to the folder that contains the OpenMB2 directory.
+Any release of Magic Ball 2 / Smash Frenzy 2 works, including the ones that keep their data in packed `.pak` files.
+It starts like the original: the splash screen, the 3D Alawar logo (if all assets are present), then the main menu, with the level packs your version contains, level pages, options, how to play and high scores etc. High scores (`score.dat`) and opened levels (`s<pack>.sav`) are fully cross-compatible with the original game's engine.
 
-With a joypad (an Xbox, PlayStation, Switch or most other pads, through
-SDL), the left stick or d-pad moves the bat, A fires, the right stick
-turns the camera and pressing either stick puts it back, and Start is
-Escape. While paused, L1 and R1 save and load, and any other button
-goes on. The pad gives a little shake for each brick or bat hit and a
-bigger one for explosions and losing the bat.
+**Menu Controls:**
+
+| Mouse / Keyboard | Controller Button | Does|
+| --- | --- | --- |
+| Mouse, Up / Down / Left / Right Arrow keys | Left Stick, D-Pad| Navigates the menu |
+| Left Mouse, Enter | A (Xbox), Cross (Sony), A (Nintendo) | Selects the menu item |
+| Escape | Start, B (Xbox), Circle (Sony), B (Nintendo) | Goes back to the main menu |
+
+**In-game Controls:**
+
+| Mouse / Keyboard | Controller Button | Does|
+| --- | --- | --- |
+| Mouse, Left / Right Arrow keys | Left Stick, D-Pad| Moves the bat |
+| Left Mouse, Space | A (Xbox), Cross (Sony), A (Nintendo) | Fires weapons / launches the ball |
+| Right Mouse drag / Mouse Wheel | Right Stick | Turns / zooms the camera |
+| F6 | N/A | Changes the music track |
+| F7 | N/A | Changes the background |
+| F8 | N/A | Changes the board texture |
+| F9, Middle Mouse Button | Left / Right Stick Button | Resets the camera |
+| F10 | N/A | Toggles frame interpolation on / off |
+| Alt+Enter | N/A | Toggles fullscreen |
+| Escape | Start | Pauses; again for the main menu (any other key or button resumes) |
+| S / L | L1 / R1 (while paused) | Saves or loads the savegame |
+| Shift+1-3 / 1-3 | N/A | Saves or loads three additional quick slots |
+| Shift+F11 | N/A | Skips the level (a developers' cheat in the original) |
 
 `--cheats` turns on the testing keys below (and Left / Right then
 change level instead of moving the bat). Online scores are still
-shown but not sent while it is on.
+shown but not sent while this setting is on.
 
 | Key | Does |
 | --- | --- |
-| Left / Right | previous / next level |
-| Up / Down | next / previous level pack |
-| Numpad 1 / 2 | bigger / smaller bat |
-| Numpad 3 | triple ball |
-| Numpad 4 / 5 | faster / slower balls |
-| Numpad 6 | yo-yo |
-| Numpad 7 / 8 / 9 / 0 | magnet / gun / bazooka / cannon |
-| Numpad . | hypnotic ball |
-| Numpad / (Shift: back to normal) | powerball |
-| Numpad * (Shift: back to simple) | explosive ball |
-| Numpad + / - | extra life / bat killer |
-| Numpad Enter | next-level medal |
+| Left / Right | Previous / next level |
+| Up / Down | Next / previous level pack |
+| Numpad 1 / 2 | Bigger / smaller bat |
+| Numpad 3 | Triple ball |
+| Numpad 4 / 5 | Faster / slower balls |
+| Numpad 6 | Yo-Yo |
+| Numpad 7 / 8 / 9 / 0 | Magnet / Gun / Bazooka / Cannon |
+| Numpad . | Hypnotic ball |
+| Numpad / (Shift: back to normal) | Powerball |
+| Numpad * (Shift: back to simple) | Explosive ball |
+| Numpad + / - | Extra life / bat killer |
+| Numpad Enter | Next-level medal |
 
-A prize from the numpad drops in front of the bat and clears the wait
-between prizes, so they can come one after another.
+**Other Command Line Arguments:**
 
-`--level "Levels1/001_Vesi.mb2"` starts on a level instead of the menus,
-`--menu Menu/loptions.txt` on a menu page, and
-`--screenshot shot.bmp` saves the first frame and quits.
+- `--level "Levels1/001_Vesi.mb2"` starts on a level instead of the menus
+- `--menu Menu/loptions.txt` starts on a menu page
+- `--no-intro` skips each level's opening camera flight
+- `--screenshot shot.bmp` saves the first frame and quits
 
-The game itself runs in fixed 18 ms steps, as the original does. On
+The game logic itself runs in fixed 18 ms steps, like the original does. On
 screens faster than that, OpenMB2 draws the balls, prizes and shots part
 way between their last two steps so they move smoothly, and falling,
 tipping and shrinking bricks too; the rules are
 untouched. `--no-smooth` (or F10) draws them only where each step leaves
 them, like the original.
 
-Each level opens with the original's camera fly-in; `--no-intro` skips it.
-
 The original draws bricks texture by texture, so from some angles glass
 shows over glass in front of it, or a solid brick behind shows through.
 OpenMB2 draws solid bricks first and glass from the back forwards;
 `--original-glass` goes back to the original's order.
 
-The bats with one fan and with none have no bounce for a ball hitting
-near their ends, so in the original they stay still; OpenMB2 gives them
-their bounce from the middle, and `--original-bounce` keeps them still.
+The two extra bat models (one fan and no fans) don't have a bounce animation for a ball hitting their edges, so in the original they don't animate at all; OpenMB2 makes these two bats play the center bounce animation instead, and `--original-bounce` reverts to the original engine's behaviour.
 
-The original moves the bat in steps of about 1% of the board for each
+The original mouse controls move the bat in steps of about 1% of the board for each
 count from the mouse, and its sensitivity drops the fraction, so slow
 moves are lost and the bat jumps. OpenMB2 moves it by exactly what the
 mouse reports, and the sensitivity slider goes from 1/8 of the
@@ -126,33 +128,22 @@ bars; `--wide-menus` fills the screen instead, cutting off the
 background's edges.
 
 The online high scores work again. The original's server is long gone;
-OpenMB2 speaks its protocol to the community's revival at
-`https://kippykip.com/mb2s` (the same server mb2fix.dll's `ScoreServer`
-points the original at), so both games share one table. A score of a
+OpenMB2 uses a new high score server hosted at `kippykip.com` (the same server previously used by mb2fix.dll). A score of a
 million or more is sent once its name is entered, as in the original,
 and the high scores page's online table shows the pack's best, with
 yours blinking.
 
 ### The OpenMB2 folder
 
-A folder named `OpenMB2` in the game folder is read before the game's
-own files: `OpenMB2/Menu/lmainmenu.txt` is used in place of
-`Menu/lmainmenu.txt`, and a file the game doesn't have is added. The
-game's files stay untouched, so the original still runs as it was, and
-without the folder OpenMB2 plays the game as it is. Saves and scores
-are always the game's own, shared with the original.
+A folder named `OpenMB2` in the game's folder is read with priority over the game's
+own original files, so modifications can be added in here without overwriting the original game's assets.  
 
-`data/OpenMB2` here holds what OpenMB2 adds; copy it into the game
-folder, or point `--overrides` at the folder the OpenMB2 folder is in
-(`--overrides data`) to use it from there instead. It holds the option pages, the extra
-labels in every language, the French and Russian languages, and the
-credits page's OpenMB2 rows.
-Languages only the OpenMB2 folder has come after the game's own on the
-options page. Language files use the game's font, which keeps its
-accented letters at 0x80 on (à is 0x80, é is 0x89, ü is 0x9c). A
-language whose letters the font lacks brings its own:
+`data/OpenMB2` contains the folder found in the releases; either copy it into the game
+folder, or point to it via the `--overrides` command line argument.
+(e.g. `--overrides data`). It holds the additional options menu pages, the extra languages, and the credits page's OpenMB2-exclusive rows.
+Languages whose letters need their own font bring it with them:
 `Textures/Font_<language>.png` and `Text/Text_<language>.txt` are used
-while it is picked. Russian's font puts а to я at 0x80 to 0xa0.
+while that language is picked. Russian is an example of one.
 
 ### openmb2.ini
 
@@ -188,6 +179,8 @@ A switch on the command line wins over the file for that run. An
 `[video]`, and `fullscreen`, `smooth`, `level_intro` and `language`
 are read where they were.
 
+Saves and scores are separate files and are cross-compatible between both engines.
+
 `mb2inspect` looks inside a game folder:
 
 ```
@@ -215,7 +208,7 @@ cmake --build build
 - **Linux:** install `libsdl2-dev` first to skip the download.
 - **Web:** `emcmake cmake -S . -B build-web && cmake --build build-web`
   (game files will need to be packaged or uploaded; that comes in
-  milestone 6).
+  a later version).
 
 ## Source layout
 
@@ -260,9 +253,7 @@ that say *why*. See `docs/formats.md` for what's known about the data files.
 
 ## Credits
 
-OpenMB2 was written by Kippykip
-([kippykip.com](https://kippykip.com)) with Claude, Anthropic's AI
-assistant.
+The OpenMB2 project was started by [Kippykip](https://kippykip.com), with extensive reverse engineering and programming help from Claude by Anthropic.
 
 Magic Ball 2 was made by DreamDale and published by Alawar
 Entertainment: code by Igor Perepechenko, graphics by Alexey "SCIA"
