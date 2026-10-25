@@ -35,6 +35,7 @@ add_library(openmb2_core STATIC
     src/core/image.c
     src/core/log.c
     src/core/matrix.c
+    src/core/molebox.c
     src/core/vfs.c
     src/core/xfile.c
     src/game/board.c

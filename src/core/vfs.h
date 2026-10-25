@@ -16,6 +16,10 @@
  * game's own at the same path (OpenMB2/Menu/exit.txt for Menu/exit.txt),
  * and one the game doesn't have is added; the game's files stay untouched
  * for the original to use.
+ *
+ * The files in MoleBox boxes (the .pak files, or the disc's
+ * MagicBall2.dat; see molebox.h) are listed too, behind those on disk.
+ * They have no real path.
  */
 #ifndef OPENMB2_VFS_H
 #define OPENMB2_VFS_H

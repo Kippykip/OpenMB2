@@ -29,6 +29,33 @@ Pack numbers (used by saves and online scores): 0 = `Levels`,
 File names are not case-consistent, and both `/` and `\` appear. OpenMB2
 looks everything up case-insensitively (`src/core/vfs.c`).
 
+## MoleBox boxes, `.pak` and `.dat` (confirmed)
+
+Every release before Smash Frenzy 2 keeps these folders in MoleBox
+boxes, which the exe's built-in MoleBox runtime shows the game as files
+on disk: `Default.pak`, `Interface0.pak`, `Lev0.pak` (and `Lev1.pak`,
+`Lev0r.pak` in New Worlds) in the 2005 builds, `MagicBall2.dat` on the
+2004 disc. In OpenMB2 loose files win over a box's. `src/core/molebox.c` reads
+them; the keys were taken from the runtimes by running them in an
+emulator.
+
+- **Trailer**, the last 44 bytes: six u32s (directory packed size,
+  directory size, directory offset, name table size, file count, box
+  size), 16 bytes not needed, and a u32 equal to `"MBOX"` ^ `0xcafebabe`
+  ^ the box's size. Offsets count from the box's start, which is the
+  file size minus the box size.
+- **Directory**: IDEA in ECB mode, the last partial block left plain.
+  The key is fixed per runtime version: `c14c1d8c37ab94233dfa681280a34597`
+  in every 2005 pak (RealArcade, New Worlds, Gold, the Polish release,
+  Big Fish), `e93aca69e22a76c0872fa02ef67365f0` on the disc. It holds
+  the names (NUL-terminated, backslashes, code page 1251), then 16 bytes
+  per file: name offset, data offset, size, flags.
+- **Files**: one u32 header per 64 KB chunk just before the data offset;
+  bit 31 set means the chunk is stored, and every chunk in every box is.
+  Flags `0x13` files are XORed with one byte per box (0x21 in the paks,
+  0x88 on the disc, which OpenMB2 guesses from the files' first bytes);
+  flags `0x33` (`Lev0r.pak`) are IDEA-encrypted with the same key.
+
 ## Config files (confirmed)
 
 Almost every `.txt` outside `Languages/` uses this layout:

@@ -3,6 +3,7 @@
 
 #include "vfs.h"
 #include "log.h"
+#include "molebox.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -28,6 +29,8 @@ typedef struct VfsEntry {
     bool is_dir;
     bool added;  /* from the OpenMB2 folder, standing in for the game's own */
     bool outside; /* in the overrides folder, not the game folder */
+    int box;     /* the MoleBox it is in, or -1 for a file on disk */
+    int item;    /* its number in that box */
 } VfsEntry;
 
 /* The folder the OpenMB2 folder is in, when not the game folder. */
@@ -44,6 +47,8 @@ static struct {
     int count;
     int capacity;
     int file_count;
+    MoleBox **boxes;
+    int box_count;
 } g_vfs;
 
 /* ------------------------------------------------------------------------ */
@@ -129,6 +134,8 @@ static void push_entry(const char *key, const char *relative, bool is_dir, bool 
     entry->is_dir = is_dir;
     entry->added = added;
     entry->outside = g_scan_outside;
+    entry->box = -1;
+    entry->item = 0;
     if (!is_dir && !added)
         g_vfs.file_count++;
 }
@@ -253,6 +260,82 @@ static FILE *open_file(const char *path)
 
 #endif
 
+/* ------------------------------------------------------------------------ */
+/* MoleBox boxes                                                            */
+/* ------------------------------------------------------------------------ */
+
+static bool has_extension(const char *key, const char *ext)
+{
+    size_t len = strlen(key), ext_len = strlen(ext);
+    return len > ext_len && strcmp(key + len - ext_len, ext) == 0;
+}
+
+/* List a box's files, and the folders they are in, under their paths. */
+static void add_box(MoleBox *box)
+{
+    int index = g_vfs.box_count, i;
+    MoleBox **grown = realloc(g_vfs.boxes, (size_t)(index + 1) * sizeof(*grown));
+
+    if (grown == NULL) {
+        molebox_close(box);
+        return;
+    }
+    g_vfs.boxes = grown;
+    g_vfs.boxes[g_vfs.box_count++] = box;
+
+    for (i = 0; i < molebox_count(box); i++) {
+        char key[VFS_MAX_PATH], *slash;
+        const char *name = molebox_name(box, i);
+        int first = g_vfs.count;
+
+        vfs_normalise(name, key, sizeof(key));
+        push_entry(key, name, false, false);
+        /* Its folders, from the innermost out; duplicates go at sorting. */
+        while ((slash = strrchr(key, '/')) != NULL) {
+            char real[VFS_MAX_PATH];
+            *slash = '\0';
+            snprintf(real, sizeof(real), "%.*s", (int)(slash - key), name);
+            push_entry(key, real, true, false);
+        }
+        while (first < g_vfs.count) {
+            g_vfs.entries[first].box = index;
+            g_vfs.entries[first++].item = i;
+        }
+    }
+}
+
+/*
+ * Most releases keep their data in MoleBox boxes (*.pak, or the disc's
+ * MagicBall2.dat) that the original exe's runtime shows the game as
+ * folders; read them the same way. Files on disk come first, so a loose
+ * copy can stand in for a box's.
+ */
+static void mount_boxes(void)
+{
+    int i, count = g_vfs.count;
+
+    for (i = 0; i < count; i++) {
+        const VfsEntry *entry = &g_vfs.entries[i];
+        char path[VFS_MAX_PATH];
+        MoleBox *box;
+
+        if (entry->is_dir || entry->added || entry->outside || strchr(entry->key, '/') != NULL ||
+            !(has_extension(entry->key, ".pak") || has_extension(entry->key, ".dat")))
+            continue;
+        snprintf(path, sizeof(path), "%s/%s", g_vfs.root, entry->real);
+        box = molebox_open(path);
+        if (box != NULL)
+            add_box(box);
+    }
+}
+
+/* Which copy of a path wins: the OpenMB2 folder's, then the game folder's,
+   then a box's. */
+static int layer(const VfsEntry *entry)
+{
+    return entry->added ? 0 : entry->box < 0 ? 1 : 2;
+}
+
 static int compare_entries(const void *a, const void *b)
 {
     const VfsEntry *ea = a;
@@ -260,13 +343,13 @@ static int compare_entries(const void *a, const void *b)
     return strcmp(ea->key, eb->key);
 }
 
-/* The same, with the OpenMB2 folder's copy of a path before the game's. */
+/* The same, with the copies of a path in the order they win. */
 static int compare_layers(const void *a, const void *b)
 {
     const VfsEntry *ea = a;
     const VfsEntry *eb = b;
     int order = strcmp(ea->key, eb->key);
-    return order != 0 ? order : (int)eb->added - (int)ea->added;
+    return order != 0 ? order : layer(ea) - layer(eb);
 }
 
 /* A copy without the trailing slash, so joined paths look tidy. */
@@ -298,6 +381,7 @@ bool vfs_mount(const char *root_dir)
     g_scan_base = g_vfs.root;
     g_scan_outside = false;
     scan_folder("", 0);
+    mount_boxes();
     found = g_vfs.count > 0;
     if (g_vfs.overrides != NULL) {
         g_scan_base = g_vfs.overrides;
@@ -322,14 +406,17 @@ bool vfs_mount(const char *root_dir)
      * ("Menu/Exit.txt" and "Menu/EXIT.TXT"). Windows would only ever see
      * one of them, so keep the first and drop the rest. A path can still
      * be there twice: the OpenMB2 folder's copy first, then the game's.
+     * A box's copy of a path the game folder has is never read, and its
+     * folders are there once for every file in them.
      */
     kept = 0;
     for (i = 0; i < g_vfs.count; i++) {
         VfsEntry *entry = &g_vfs.entries[i];
-        if (kept > 0 && strcmp(g_vfs.entries[kept - 1].key, entry->key) == 0 &&
-            g_vfs.entries[kept - 1].added == entry->added) {
-            log_warn("vfs: ignoring '%s' (same name as '%s')",
-                     entry->real, g_vfs.entries[kept - 1].real);
+        const VfsEntry *last = kept > 0 ? &g_vfs.entries[kept - 1] : NULL;
+        if (last != NULL && strcmp(last->key, entry->key) == 0 &&
+            (layer(last) == layer(entry) || (entry->box >= 0 && !last->added))) {
+            if (entry->box < 0)
+                log_warn("vfs: ignoring '%s' (same name as '%s')", entry->real, last->real);
             if (!entry->is_dir)
                 g_vfs.file_count--;
             free(entry->key);
@@ -340,7 +427,11 @@ bool vfs_mount(const char *root_dir)
     }
     g_vfs.count = kept;
 
-    log_info("vfs: mounted '%s' (%d files)", g_vfs.root, g_vfs.file_count);
+    if (g_vfs.box_count > 0)
+        log_info("vfs: mounted '%s' (%d files, %d MoleBox boxes)", g_vfs.root, g_vfs.file_count,
+                 g_vfs.box_count);
+    else
+        log_info("vfs: mounted '%s' (%d files)", g_vfs.root, g_vfs.file_count);
     return true;
 }
 
@@ -351,6 +442,9 @@ void vfs_unmount(void)
         free(g_vfs.entries[i].key);
         free(g_vfs.entries[i].real);
     }
+    for (i = 0; i < g_vfs.box_count; i++)
+        molebox_close(g_vfs.boxes[i]);
+    free(g_vfs.boxes);
     free(g_vfs.entries);
     free(g_vfs.root);
     free(g_vfs.overrides);
@@ -418,7 +512,7 @@ static bool real_path(const VfsEntry *entry, char *out, size_t out_size)
 {
     int written;
 
-    if (entry == NULL)
+    if (entry == NULL || entry->box >= 0)
         return false;
     written = snprintf(out, out_size, "%s/%s", entry->outside ? g_vfs.overrides : g_vfs.root, entry->real);
     return written >= 0 && (size_t)written < out_size;
@@ -442,6 +536,7 @@ bool vfs_is_added(const char *game_path)
 
 void *vfs_read(const char *game_path, size_t *out_size)
 {
+    const VfsEntry *entry = find_entry(game_path);
     char path[VFS_MAX_PATH];
     FILE *file;
     long length;
@@ -449,7 +544,11 @@ void *vfs_read(const char *game_path, size_t *out_size)
 
     if (out_size != NULL)
         *out_size = 0;
-    if (!vfs_exists(game_path) || !vfs_real_path(game_path, path, sizeof(path)))
+    if (entry == NULL || entry->is_dir)
+        return NULL;
+    if (entry->box >= 0)
+        return molebox_read(g_vfs.boxes[entry->box], entry->item, out_size);
+    if (!real_path(entry, path, sizeof(path)))
         return NULL;
 
     file = open_file(path);

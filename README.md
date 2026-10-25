@@ -31,7 +31,10 @@ Milestone 2 of 6: a 3D level viewer.
 openmb2 --game "G:\Games\Magic Ball 2 Community Edition"
 ```
 
-or copy `openmb2.exe` into the game folder and run it from there. It
+or copy `openmb2.exe` into the game folder and run it from there. Any
+release works: the ones that keep their data packed (the `.pak` files,
+or the disc's `MagicBall2.dat`) are read as they are, no unpacking
+needed. It
 starts like the original: the splash screen, the Alawar logo (any key
 or click skips it), then the main menu, with
 the level packs, level pages, options, how to play and high scores. The
@@ -170,6 +173,7 @@ cmake --build build
 ```
 src/core/      no SDL or GL here; shared with the tools
   vfs.c        case-insensitive access to the game folder
+  molebox.c    the packed releases' .pak and .dat files
   config.c     parser for the game's { key: value } files
   xfile.c      DirectX .x model loader
   image.c      texture decoding (jpg/png/bmp, DDS)
