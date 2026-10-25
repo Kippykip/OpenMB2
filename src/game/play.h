@@ -255,8 +255,9 @@ typedef void (*PlaySoundFn)(const char *name, int volume, int pan, void *user);
 /* A line for the bottom of the screen: string number text of the
    language file, in an ARGB colour (0x4262a0). */
 typedef void (*PlayMessageFn)(int text, uint32_t color, void *user);
-/* A joypad's shake (OpenMB2's own): a little for a brick or the bat, more
-   for an explosion or losing the bat. */
+/* A joypad's shake (OpenMB2's own): a little for a brick or the bat, or
+   the gun firing or hitting; more for an explosion, the bazooka or cannon
+   firing, a missile hitting, or losing the bat. */
 typedef enum PlayRumble { PLAY_RUMBLE_LIGHT, PLAY_RUMBLE_STRONG } PlayRumble;
 typedef void (*PlayRumbleFn)(PlayRumble rumble, void *user);
 

@@ -1375,7 +1375,10 @@ void play_screen_handle_event(const SDL_Event *event)
     /* While paused, any other key goes on with the game, and is then
        handled as usual; a mouse button only goes on. */
     if (v.paused) {
-        if (event->type == SDL_KEYDOWN) {
+        if (event->type == SDL_KEYDOWN && event->key.keysym.sym == SDLK_SPACE) {
+            v.paused = false; /* like a click, it only goes on */
+            return;
+        } else if (event->type == SDL_KEYDOWN) {
             v.paused = false;
         } else if (event->type == SDL_MOUSEBUTTONDOWN && event->button.button == SDL_BUTTON_LEFT) {
             v.paused = false;
@@ -1389,7 +1392,15 @@ void play_screen_handle_event(const SDL_Event *event)
         if (v.options.cheats && cheat_key(&event->key.keysym))
             break;
         switch (event->key.keysym.sym) {
-        case SDLK_SPACE: reset_camera(); break;
+        /* Space fires like the left button (OpenMB2's own, for playing
+           from the keyboard); F9 puts the camera back, as the help says. */
+        case SDLK_SPACE:
+            if (!event->key.repeat && v.playing && !v.camera.flying && v.play.state != PLAY_GAME_OVER) {
+                play_click(&v.play);
+                play_hold_trigger(&v.play, true);
+            }
+            break;
+        case SDLK_F9: reset_camera(); break;
         /* Like the original: S saves and L loads default.save; the
            developers' quick slots are Shift+1-3 to save, 1-3 to load
            (0x41c08a). */
@@ -1433,11 +1444,15 @@ void play_screen_handle_event(const SDL_Event *event)
         default: break;
         }
         break;
+    case SDL_KEYUP:
+        if (event->key.keysym.sym == SDLK_SPACE)
+            play_hold_trigger(&v.play, false);
+        break;
     case SDL_MOUSEBUTTONDOWN:
         if (event->button.button == SDL_BUTTON_RIGHT) {
             v.dragging = true;
         } else if (event->button.button == SDL_BUTTON_MIDDLE) {
-            reset_camera(); /* OpenMB2's own, like Space */
+            reset_camera(); /* OpenMB2's own, like F9 */
         } else if (event->button.button == SDL_BUTTON_LEFT && v.playing && !v.camera.flying &&
                    v.play.state != PLAY_GAME_OVER) {
             play_click(&v.play);

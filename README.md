@@ -53,8 +53,9 @@ In a level:
 | Key | Does |
 | --- | --- |
 | mouse, Left / Right | move the bat |
+| left button, Space | fire |
 | mouse drag, wheel | turn and zoom the camera |
-| Space, middle button | reset the camera |
+| F9, middle button | reset the camera |
 | F10 | smooth motion on / off |
 | Alt+Enter | fullscreen |
 | Escape | pause (which frees the mouse); again for the main menu |

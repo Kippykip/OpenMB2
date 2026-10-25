@@ -1683,6 +1683,7 @@ static void bat_fire(Play *play)
         bat->weapon_time = 0;
     }
     bat_sound(play, shot);
+    rumble(play, weapon == WEAPON_GUN ? PLAY_RUMBLE_LIGHT : PLAY_RUMBLE_STRONG);
 }
 
 /*
@@ -1766,6 +1767,7 @@ static bool bullet_update(Play *play, Bullet *bullet, uint32_t ms, float dt)
     }
     switch (info->kind) {
     case BULLET_ROCKET:
+        rumble(play, PLAY_RUMBLE_STRONG);
         brick_destroy(play, index);
         return true;
     case BULLET_YADRO:
@@ -1773,6 +1775,7 @@ static bool bullet_update(Play *play, Bullet *bullet, uint32_t ms, float dt)
         explode(play, play->scene->bricks[index].position);
         return false;
     default:
+        rumble(play, PLAY_RUMBLE_LIGHT);
         brick_hit(play, index, NULL);
         return false;
     }
