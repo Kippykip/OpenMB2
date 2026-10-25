@@ -81,7 +81,6 @@ static struct {
         RenderMesh mesh;
     } animals[32];
     int animal_count;
-    int test_prize;                 /* the next kind F9 drops */
     unsigned turbine_time; /* the turbines' animation time, XFRAME_REST at first */
     bool end_bounces;      /* the bat model has bounces for hits near its ends */
     XModel bat_model, ball_model, explosive_model, hypnotic_model;
@@ -1026,7 +1025,6 @@ bool play_screen_init(SDL_Window *window, const PlayScreenOptions *options)
     load_model("SkinMeshes/s_ball.x", &v.ball_model, &v.ball);
     load_model("SkinMeshes/s_explosive.x", &v.explosive_model, &v.explosive_ball);
     load_model("SkinMeshes/s_gipnoz.x", &v.hypnotic_model, &v.hypnotic_ball);
-    v.test_prize = PRIZE_NONE + 1;
     v.particle_texture = asset_texture("particle.png");
     v.bolt_texture = asset_texture("lighting.png");
     v.rubber_texture = asset_texture("rubber.png");
@@ -1232,6 +1230,57 @@ bool play_screen_escape(void)
     return true;
 }
 
+/*
+ * --cheats: the arrow keys change level (left, right) and pack (up,
+ * down), and the numpad drops a prize in front of the bat. A dropped
+ * prize clears the wait between prizes, so they can come one after
+ * another. Returns true for a key it used.
+ */
+static bool cheat_key(const SDL_Keysym *key)
+{
+    static const struct { SDL_Scancode code; PrizeKind kind, shifted; } prizes[] = {
+        { SDL_SCANCODE_KP_1, PRIZE_INCBAT, PRIZE_INCBAT },
+        { SDL_SCANCODE_KP_2, PRIZE_DECBAT, PRIZE_DECBAT },
+        { SDL_SCANCODE_KP_3, PRIZE_TRIPPLEBALL, PRIZE_TRIPPLEBALL },
+        { SDL_SCANCODE_KP_4, PRIZE_SPEEDUP, PRIZE_SPEEDUP },
+        { SDL_SCANCODE_KP_5, PRIZE_SPEEDDOWN, PRIZE_SPEEDDOWN },
+        { SDL_SCANCODE_KP_6, PRIZE_RUBBER, PRIZE_RUBBER },
+        { SDL_SCANCODE_KP_7, PRIZE_MAGNIT, PRIZE_MAGNIT },
+        { SDL_SCANCODE_KP_8, PRIZE_GUN, PRIZE_GUN },
+        { SDL_SCANCODE_KP_9, PRIZE_BAZUKA, PRIZE_BAZUKA },
+        { SDL_SCANCODE_KP_0, PRIZE_CANNON, PRIZE_CANNON },
+        { SDL_SCANCODE_KP_PERIOD, PRIZE_TOGIPNOZ, PRIZE_TOGIPNOZ },
+        { SDL_SCANCODE_KP_DIVIDE, PRIZE_TOPOWERFULL, PRIZE_TONORMAL },
+        { SDL_SCANCODE_KP_MULTIPLY, PRIZE_TOEXPLOSIVE, PRIZE_TOSIMPLE },
+        { SDL_SCANCODE_KP_PLUS, PRIZE_LIFE, PRIZE_LIFE },
+        { SDL_SCANCODE_KP_MINUS, PRIZE_KILLBAT, PRIZE_KILLBAT },
+        { SDL_SCANCODE_KP_ENTER, PRIZE_NEXTLEVEL, PRIZE_NEXTLEVEL }
+    };
+    size_t i;
+
+    /* Scancodes, so the numpad works with Num Lock off too and never
+       counts as the arrow keys. */
+    switch (key->scancode) {
+    case SDL_SCANCODE_RIGHT: jump_to_level(v.pack, v.level + 1); return true;
+    case SDL_SCANCODE_LEFT: jump_to_level(v.pack, v.level - 1); return true;
+    case SDL_SCANCODE_UP: jump_to_level(v.pack + 1, 0); return true;
+    case SDL_SCANCODE_DOWN: jump_to_level(v.pack - 1, 0); return true;
+    default: break;
+    }
+    for (i = 0; i < sizeof(prizes) / sizeof(prizes[0]); i++) {
+        if (key->scancode != prizes[i].code)
+            continue;
+        if (v.playing && v.play.state == PLAY_RUNNING) {
+            play_drop_prize(&v.play, (key->mod & KMOD_SHIFT) ? prizes[i].shifted : prizes[i].kind,
+                            vec3(v.play.bat.position.x, 0.0f, v.play.bat.position.z + 12.0f));
+            v.play.prize_time = v.play.time;
+            v.play.last_prize = PRIZE_NONE;
+        }
+        return true;
+    }
+    return false;
+}
+
 void play_screen_handle_event(const SDL_Event *event)
 {
     /* While paused, any other key goes on with the game, and is then
@@ -1248,11 +1297,9 @@ void play_screen_handle_event(const SDL_Event *event)
     }
     switch (event->type) {
     case SDL_KEYDOWN:
+        if (v.options.cheats && cheat_key(&event->key.keysym))
+            break;
         switch (event->key.keysym.sym) {
-        case SDLK_RIGHT: jump_to_level(v.pack, v.level + 1); break;
-        case SDLK_LEFT: jump_to_level(v.pack, v.level - 1); break;
-        case SDLK_PAGEDOWN: jump_to_level(v.pack + 1, 0); break;
-        case SDLK_PAGEUP: jump_to_level(v.pack - 1, 0); break;
         case SDLK_SPACE: reset_camera(); break;
         /* Like the original: S saves and L loads default.save; the
            developers' quick slots are Shift+1-3 to save, 1-3 to load
@@ -1273,13 +1320,6 @@ void play_screen_handle_event(const SDL_Event *event)
         case SDLK_F11: /* the developers' Shift+F11: no bricks left (0x41c065) */
             if ((event->key.keysym.mod & KMOD_SHIFT) && in_level())
                 v.play.bricks_left = 0;
-            break;
-        case SDLK_F9: /* testing: drop the next kind of prize in front of the bat */
-            if (v.playing && v.play.state == PLAY_RUNNING) {
-                play_drop_prize(&v.play, (PrizeKind)v.test_prize,
-                                vec3(v.play.bat.position.x, 0.0f, v.play.bat.position.z + 12.0f));
-                v.test_prize = v.test_prize % (PRIZE_KINDS - 1) + 1;
-            }
             break;
         case SDLK_F10: /* OpenMB2's own: smooth motion on or off */
             v.options.smooth = !v.options.smooth;

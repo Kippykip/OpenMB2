@@ -20,6 +20,8 @@
  *   --autoplay    the bat follows the ball by itself (for testing)
  *   --wide-menus  fill the screen with the menus instead of keeping them
  *                 4:3 between black bars
+ *   --cheats      the numpad drops prizes and the arrow keys change level
+ *                 and pack; online scores aren't sent
  */
 #include "audio/audio.h"
 #include "core/config.h"
@@ -584,6 +586,8 @@ int main(int argc, char **argv)
             original_mouse = true;
         else if (strcmp(argv[i], "--wide-menus") == 0)
             wide_menus = true;
+        else if (strcmp(argv[i], "--cheats") == 0)
+            options.cheats = true;
         else if (strcmp(argv[i], "--autoplay") == 0)
             options.autoplay = true;
         else if (strcmp(argv[i], "--seed") == 0 && i + 1 < argc)
@@ -642,6 +646,7 @@ int main(int argc, char **argv)
                  (unsigned)(SDL_GetPerformanceCounter() * 2654435761u) ^ (unsigned)time(NULL));
 #endif
     online_init(g_app.settings.score_server, (const char *)gl.GetString(GL_RENDERER), g_app.settings.online_id);
+    online_block_sends(options.cheats);
 
     g_app.running = true;
     g_app.last_ticks = SDL_GetTicks();

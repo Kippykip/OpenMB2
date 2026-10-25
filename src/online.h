@@ -62,6 +62,8 @@ OnlineState online_state(void);
 int online_rows(const OnlineRow **rows);
 
 /* Send a score; the original sends only those of a million or more. */
+/* With cheats on, scores are still shown but never sent. */
+void online_block_sends(bool block);
 void online_send(const char *name, int score, int level_score, int level, int pack, int bat);
 
 /* The original's numbers for the level folders: Levels 0, Levels1 to

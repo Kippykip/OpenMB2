@@ -29,6 +29,7 @@ typedef struct PlayScreenOptions {
     bool sort_glass;         /* draw see-through bricks back to front (OpenMB2's own) */
     bool edge_bounce;        /* a bat without end bounces bounces in the middle (OpenMB2's own) */
     bool precise_mouse;        /* finer, unrounded bat moves (OpenMB2's own) */
+    bool cheats;             /* --cheats: numpad prizes, arrow keys change level */
 } PlayScreenOptions;
 
 typedef enum PlayScreenResult {

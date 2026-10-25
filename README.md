@@ -43,8 +43,6 @@ are the original's own files, so both games share them. In a level:
 
 | Key | Does |
 | --- | --- |
-| Left / Right | previous / next level |
-| Page Up / Page Down | previous / next level pack |
 | mouse drag, wheel | turn and zoom the camera |
 | Space | reset the camera |
 | F10 | smooth motion on / off |
@@ -53,6 +51,27 @@ are the original's own files, so both games share them. In a level:
 | S / L | save / load the game (default.save, shared with the original) |
 | Shift+1-3 / 1-3 | save / load the hidden quick slots |
 | Shift+F11 | skip the level (a developers' cheat in the original) |
+
+`--cheats` turns on the testing keys below. Online scores are still
+shown but not sent while it is on.
+
+| Key | Does |
+| --- | --- |
+| Left / Right | previous / next level |
+| Up / Down | next / previous level pack |
+| Numpad 1 / 2 | bigger / smaller bat |
+| Numpad 3 | triple ball |
+| Numpad 4 / 5 | faster / slower balls |
+| Numpad 6 | yo-yo |
+| Numpad 7 / 8 / 9 / 0 | magnet / gun / bazooka / cannon |
+| Numpad . | hypnotic ball |
+| Numpad / (Shift: back to normal) | powerball |
+| Numpad * (Shift: back to simple) | explosive ball |
+| Numpad + / - | extra life / bat killer |
+| Numpad Enter | next-level medal |
+
+A prize from the numpad drops in front of the bat and clears the wait
+between prizes, so they can come one after another.
 
 `--level "Levels1/001_Vesi.mb2"` starts on a level instead of the menus,
 `--menu Menu/loptions.txt` on a menu page, and

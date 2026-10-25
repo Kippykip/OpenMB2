@@ -32,6 +32,7 @@ static const char *const k_bats[] = { "Pads/common.txt", "Pads/onefan.txt", "Pad
 
 static struct {
     bool enabled;
+    bool no_sends;        /* cheats are on: tables only */
     char server[256];
     char build[64];
     char hid[300];
@@ -456,12 +457,21 @@ int online_rows(const OnlineRow **rows)
 }
 
 /* 0x417c10 */
+void online_block_sends(bool block)
+{
+    on.no_sends = block;
+}
+
 void online_send(const char *name, int score, int level_score, int level, int pack, int bat)
 {
     Job *job;
 
     if (!on.enabled || score < 1000000 || pack < 0)
         return;
+    if (on.no_sends) {
+        log_info("online: not sending %d, cheats are on", score);
+        return;
+    }
     job = calloc(1, sizeof(*job));
     if (job == NULL)
         return;
