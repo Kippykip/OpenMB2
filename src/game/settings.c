@@ -12,6 +12,7 @@ void settings_set_defaults(Settings *settings)
 {
     settings->width = 0;
     settings->height = 0;
+    settings->maximized = false;
     settings->fullscreen = FULLSCREEN_AUTO;
     settings->vsync = true;
     settings->smooth = true;
@@ -48,6 +49,8 @@ static void set(Settings *s, const char *section, const char *key, const char *v
             s->width = atoi(value) > 0 ? atoi(value) : 0;
         else if (same(key, "height"))
             s->height = atoi(value) > 0 ? atoi(value) : 0;
+        else if (same(key, "maximized"))
+            s->maximized = parse_bool(value, s->maximized);
         else if (same(key, "fullscreen"))
             s->fullscreen = same(value, "auto") ? FULLSCREEN_AUTO
                             : parse_bool(value, false) ? FULLSCREEN_ON
@@ -128,10 +131,13 @@ int settings_format(const Settings *s, char *out, size_t size)
                     "; A switch on the command line wins over this file for that run.\n"
                     "\n"
                     "[display]\n"
-                    "; The window's size, or the screen mode when full screen.\n"
-                    "; 0 x 0 uses params.txt's video mode (and the desktop when full screen).\n"
+                    "; The window's size, or the screen mode when full screen; a window\n"
+                    "; resized by hand keeps its size here. 0 x 0 uses params.txt's video\n"
+                    "; mode (and the desktop when full screen).\n"
                     "width = %d\n"
                     "height = %d\n"
+                    "; The window was maximised when OpenMB2 closed, and opens so again\n"
+                    "maximized = %s\n"
                     "; on, off, or auto to follow params.txt's window setting\n"
                     "fullscreen = %s\n"
                     "vsync = %s\n"
@@ -147,7 +153,7 @@ int settings_format(const Settings *s, char *out, size_t size)
                     "edge_bounce = %s\n"
                     "; Fill a wide screen with the menus, not 4:3 (on: --wide-menus)\n"
                     "wide_menus = %s\n",
-                    s->width, s->height, fullscreen[s->fullscreen], on_off(s->vsync),
+                    s->width, s->height, on_off(s->maximized), fullscreen[s->fullscreen], on_off(s->vsync),
                     on_off(s->smooth), on_off(s->level_intro), on_off(s->sort_glass),
                     on_off(s->edge_bounce), on_off(s->wide_menus));
 }

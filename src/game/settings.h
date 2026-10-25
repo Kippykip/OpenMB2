@@ -12,6 +12,7 @@
  *   [display]
  *   width = 1920        ; 0 x 0: params.txt's video mode
  *   height = 1080
+ *   maximized = off     ; the window was maximised when OpenMB2 closed
  *   fullscreen = auto   ; on, off, or auto: params.txt's window setting
  *   vsync = on
  *
@@ -36,6 +37,7 @@ typedef enum SettingsFullscreen {
 
 typedef struct Settings {
     int width, height; /* 0 for params.txt's video mode */
+    bool maximized;
     SettingsFullscreen fullscreen;
     bool vsync;
     bool smooth;

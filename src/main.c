@@ -240,6 +240,7 @@ static void apply_video(bool fullscreen)
         return;
     }
     SDL_SetWindowFullscreen(g_app.window, 0);
+    SDL_RestoreWindow(g_app.window);
     SDL_SetWindowSize(g_app.window, width, height);
     SDL_SetWindowPosition(g_app.window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
 }
@@ -255,11 +256,40 @@ static void video_changed(void)
     apply_video(is_fullscreen());
 }
 
+/*
+ * A window the player resizes keeps that size for next time, and
+ * whether it is maximised; the size kept is the one it has when neither
+ * maximised nor full screen.
+ */
+static void remember_window(void)
+{
+    Uint32 flags;
+    int width, height, want_width, want_height;
+
+    if (g_app.screenshot_path != NULL)
+        return;
+    flags = SDL_GetWindowFlags(g_app.window);
+    if (flags & (SDL_WINDOW_FULLSCREEN | SDL_WINDOW_MINIMIZED))
+        return;
+    g_app.settings.maximized = (flags & SDL_WINDOW_MAXIMIZED) != 0;
+    if (g_app.settings.maximized)
+        return;
+    SDL_GetWindowSize(g_app.window, &width, &height);
+    video_size(&want_width, &want_height);
+    /* Left at the size asked for, 0 x 0 goes on following params.txt. */
+    if (width > 0 && height > 0 && (width != want_width || height != want_height)) {
+        g_app.settings.width = width;
+        g_app.settings.height = height;
+    }
+}
+
 static bool create_window(void)
 {
     Uint32 flags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI;
     int width, height;
 
+    if (g_app.settings.maximized)
+        flags |= SDL_WINDOW_MAXIMIZED;
     video_size(&width, &height);
     g_app.window = SDL_CreateWindow("OpenMB2", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                                     width, height, flags);
@@ -274,7 +304,11 @@ static bool create_window(void)
 
 static void toggle_fullscreen(void)
 {
+    bool maximized = g_app.settings.maximized;
+
     apply_video(!is_fullscreen());
+    if (!is_fullscreen() && maximized)
+        SDL_MaximizeWindow(g_app.window);
 }
 
 /* ------------------------------------------------------------------------ */
@@ -394,6 +428,7 @@ static void handle_event(const SDL_Event *event)
 static void frame(int width, int height, uint32_t ms)
 {
     update_mouse_mode();
+    remember_window();
     if (g_app.playing) {
         switch (play_screen_frame(width, height, ms)) {
         case PLAY_SCREEN_GAME_OVER: {
