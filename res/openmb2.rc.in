@@ -22,7 +22,7 @@ BEGIN
         BLOCK "040904B0"
         BEGIN
             VALUE "CompanyName",      "https://kippykip.com"
-            VALUE "FileDescription",  "MB2 Engine Re-implementation"
+            VALUE "FileDescription",  "Magic Ball 2 Engine Re-Implementation"
             VALUE "FileVersion",      "@PROJECT_VERSION@.0"
             VALUE "InternalName",     "openmb2"
             VALUE "LegalCopyright",   "https://kippykip.com"

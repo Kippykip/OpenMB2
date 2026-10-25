@@ -16,7 +16,7 @@ Lives %d
 Level %d
 Pause
 Press Escape or Start for Main Menu
-ÂÏÏÏPress S or L1 to Save the game|ÊÏÏÏÏPress L or R1 to Load the game
+ÂÏÏÏÎØPress S or L1 to Save the game|ÊÏÏÏÏÏPress L or R1 to Load the game
 ××Press any key or button to continue...
 Hypnotic Ball Time Over
 Yo-Yo Time Over
@@ -73,7 +73,7 @@ Intro:
 Special Thanks:
 
 
-
+OpenMB2:
 
 
 
@@ -89,8 +89,8 @@ Yuri Rudakov
 Andrew Postnikov
 Mark Magdamit
 Yuri Batossky
-
-
+Kippykip
+Claude (Anthropic)
 
 
 

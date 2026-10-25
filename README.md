@@ -11,19 +11,19 @@ the Community Edition or one of the unboxed builds).
 
 ## Status
 
-Milestone 2 of 6: a 3D level viewer.
+Version 1.0: the whole game plays from start to finish.
 
-- [x] Reads the game folder, with Windows-style file names on any system
-- [x] Parses the game's config files (menus, boards, pads, prizes, ...)
-- [x] Reads level files, and `params.txt` the first time
-- [x] Opens a window with an OpenGL ES 2 (or OpenGL 2.1) context
-- [x] Loads DirectX `.x` models (text and binary) and the game's textures
-- [x] Milestone 2: draws any level in 3D with its board, bricks and camera
-- [ ] Animated models, the sky background and non-brick objects
-- [ ] Milestone 3: playable core (bat, ball, bricks, score, sound, music)
-- [ ] Milestone 4: prizes, cannons, teleports, water/fire, animals
-- [x] Milestone 5: menus, fonts, languages, options, saves
-- [ ] Milestone 6: web, Android and handheld builds, online scores
+- [x] Reads the game folder, loose or packed (`.pak` / `.dat`), with
+      Windows-style file names on any system
+- [x] Every level in 3D with its board, background, camera and intro
+- [x] The bat, balls, bricks, prizes, weapons, cannons, teleports,
+      water, fire and animals, with the original's rules
+- [x] Sound and tracker music
+- [x] Menus, fonts, languages, options, saves and high scores, shared
+      with the original
+- [x] Online high scores
+- [x] Keyboard menus, joypads and rumble
+- [ ] Web, Android and handheld builds
 
 ## Running
 
@@ -144,8 +144,9 @@ are always the game's own, shared with the original.
 
 `data/OpenMB2` here holds what OpenMB2 adds; copy it into the game
 folder, or point `--overrides` at the folder the OpenMB2 folder is in
-(`--overrides data`) to use it from there instead. For now that is French and Russian (`Languages/French.txt`,
-`Languages/Russian.txt`).
+(`--overrides data`) to use it from there instead. It holds the option pages, the extra
+labels in every language, the French and Russian languages, and the
+credits page's OpenMB2 rows.
 Languages only the OpenMB2 folder has come after the game's own on the
 options page. Language files use the game's font, which keeps its
 accented letters at 0x80 on (à is 0x80, é is 0x89, ü is 0x9c). A
@@ -226,26 +227,50 @@ src/core/      no SDL or GL here; shared with the tools
   xfile.c      DirectX .x model loader
   image.c      texture decoding (jpg/png/bmp, DDS)
   matrix.c     Direct3D-style vectors and matrices
-  log.c        logging
-src/game/      game data and (later) game logic
+  des3.c       the online scores' encryption
+src/game/      game data and rules, no SDL or GL either
+  play.c       the rules: bat, balls, bricks, prizes, weapons
   level.c      .mb2 level loader
   board.c      board and background files
   textures.c   textureset.txt and texture scripts
   scene.c      builds a level's geometry (bricks baked like the original)
-  params.c     params.txt settings
+  font.c       the bitmap fonts
+  lang.c       language files
+  menu.c       menu pages
+  save.c       saved games, in the original's format
+  scores.c     high scores
+  settings.c   openmb2.ini, and params.txt the first time
 src/render/    OpenGL ES 2 renderer
-src/platform/  SDL and OpenGL glue
-  gl.c         loads GL functions at runtime
-src/viewer.c   the level viewer
-src/online.c   the online high scores (core/des3.c encrypts them)
+src/audio/     sound and music (SDL, stb_vorbis, libopenmpt)
+src/platform/  OpenGL loaded at runtime
+src/play_screen.c  a level on screen: camera, HUD, pause, input
+src/menu_screen.c  the menus
+src/intro.c    the Alawar logo
+src/pad.c      joypads and rumble
+src/online.c   the online high scores
 src/main.c     startup and main loop
-src/third_party/ stb_image (public domain / MIT)
-tools/         command-line tools
-docs/          file format notes
+src/third_party/ stb_image, stb_vorbis
+res/           the Windows icon and version details
+tools/         mb2inspect
+docs/          file format and gameplay notes
 ```
 
 The code aims to be easy to read: one job per file, plain C99, comments
 that say *why*. See `docs/formats.md` for what's known about the data files.
+
+## Credits
+
+OpenMB2 was written by Kippykip
+([kippykip.com](https://kippykip.com)) with Claude, Anthropic's AI
+assistant.
+
+Magic Ball 2 was made by DreamDale and published by Alawar
+Entertainment: code by Igor Perepechenko, graphics by Alexey "SCIA"
+Chernov, sounds by Aleksander Shukaev, music by The Sands and the intro
+by Yuri Rudakov. OpenMB2 is not made or endorsed by them.
+
+OpenMB2 uses SDL2 (zlib licence), libopenmpt (BSD licence), and
+stb_image and stb_vorbis (public domain).
 
 ## Licence
 

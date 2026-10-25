@@ -74,7 +74,7 @@ Intro:
 Specjalne podziäkowania:
 
 
-
+OpenMB2:
 
 
 
@@ -90,8 +90,8 @@ Yuri Rudakov
 Andrew Postnikov
 Mark Magdamit
 Yuri Batossky
-
-
+Kippykip
+Claude (Anthropic)
 
 
 

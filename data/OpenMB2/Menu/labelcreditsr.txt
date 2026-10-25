@@ -1,0 +1,9 @@
+CMenuItemLabelBlock
+{
+  texture: Options.png
+  rightalign
+  color: FFFFFF00
+  textindex: 240
+  textcount: 10
+  po3: 230 76 .72
+}
