@@ -64,7 +64,6 @@ typedef struct App {
     bool playing;        /* a level, not the menus */
     bool focused;        /* the window has the keyboard */
     int mouse_mode;      /* what update_mouse_mode() last set, -1 for nothing yet */
-    bool resized;        /* the window changed size since the last frame */
 } App;
 
 static App g_app;
@@ -198,14 +197,26 @@ static bool create_gl_context(void)
     return true;
 }
 
-/* The screen size openmb2.ini asks for, or params.txt's video mode. */
+/* The window the original opens with no params.txt. */
+#define AUTO_WIDTH 800
+#define AUTO_HEIGHT 600
+
+/* openmb2.ini's 0 x 0: the desktop in full screen, else an 800 x 600
+   window, or a maximised one if it was last time. */
+static bool auto_size(void)
+{
+    return g_app.settings.width <= 0 || g_app.settings.height <= 0;
+}
+
+/* The screen size openmb2.ini asks for, or Auto's window. */
 static void video_size(int *width, int *height)
 {
-    if (g_app.settings.width > 0 && g_app.settings.height > 0) {
+    if (auto_size()) {
+        *width = AUTO_WIDTH;
+        *height = AUTO_HEIGHT;
+    } else {
         *width = g_app.settings.width;
         *height = g_app.settings.height;
-    } else {
-        params_video_mode(g_app.settings.params.resolution, width, height);
     }
 }
 
@@ -216,15 +227,14 @@ static bool want_fullscreen(void)
 
 /*
  * Full screen takes the screen mode of the size openmb2.ini gives, or
- * keeps the desktop's when it gives none; in a window, the size is the
- * window's.
+ * keeps the desktop's for Auto; in a window, the size is the window's.
  */
 static void apply_video(bool fullscreen)
 {
     int width, height;
 
     video_size(&width, &height);
-    if (fullscreen && g_app.settings.width > 0 && g_app.settings.height > 0) {
+    if (fullscreen && !auto_size()) {
         SDL_DisplayMode want, mode;
         SDL_zero(want);
         want.w = width;
@@ -241,6 +251,10 @@ static void apply_video(bool fullscreen)
         return;
     }
     SDL_SetWindowFullscreen(g_app.window, 0);
+    if (auto_size() && g_app.settings.maximized) {
+        SDL_MaximizeWindow(g_app.window);
+        return;
+    }
     SDL_RestoreWindow(g_app.window);
     SDL_SetWindowSize(g_app.window, width, height);
     SDL_SetWindowPosition(g_app.window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
@@ -258,33 +272,17 @@ static void video_changed(void)
     apply_video(want_fullscreen());
 }
 
-/*
- * A window the player resizes keeps that size for next time, and
- * whether it is maximised; the size kept is the one it has when neither
- * maximised nor full screen.
- */
+/* Whether the window is maximised, for Auto next time; a window resized
+   by hand keeps the video mode as it was. */
 static void remember_window(void)
 {
     Uint32 flags;
-    int width, height, want_width, want_height;
 
     if (g_app.screenshot_path != NULL)
         return;
     flags = SDL_GetWindowFlags(g_app.window);
-    if (flags & (SDL_WINDOW_FULLSCREEN | SDL_WINDOW_MINIMIZED))
-        return;
-    g_app.settings.maximized = (flags & SDL_WINDOW_MAXIMIZED) != 0;
-    /* Only a size the window really took, never one still on its way. */
-    if (g_app.settings.maximized || !g_app.resized)
-        return;
-    g_app.resized = false;
-    SDL_GetWindowSize(g_app.window, &width, &height);
-    video_size(&want_width, &want_height);
-    /* Left at the size asked for, 0 x 0 goes on following params.txt. */
-    if (width > 0 && height > 0 && (width != want_width || height != want_height)) {
-        g_app.settings.width = width;
-        g_app.settings.height = height;
-    }
+    if (!(flags & (SDL_WINDOW_FULLSCREEN | SDL_WINDOW_MINIMIZED)))
+        g_app.settings.maximized = (flags & SDL_WINDOW_MAXIMIZED) != 0;
 }
 
 static bool create_window(void)
@@ -292,7 +290,7 @@ static bool create_window(void)
     Uint32 flags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI;
     int width, height;
 
-    if (g_app.settings.maximized)
+    if (auto_size() && g_app.settings.maximized)
         flags |= SDL_WINDOW_MAXIMIZED;
     video_size(&width, &height);
     g_app.window = SDL_CreateWindow("OpenMB2", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
@@ -311,12 +309,10 @@ static void save_settings(void);
 /* Alt+Enter, kept for next time. */
 static void toggle_fullscreen(void)
 {
-    bool maximized = g_app.settings.maximized, fullscreen;
+    bool fullscreen;
 
     apply_video(!is_fullscreen());
     fullscreen = is_fullscreen();
-    if (!fullscreen && maximized)
-        SDL_MaximizeWindow(g_app.window);
     if (g_app.screenshot_path != NULL)
         return;
     g_app.settings.params.windowed = !fullscreen;
@@ -420,9 +416,7 @@ static void handle_event(const SDL_Event *event)
         }
         break;
     case SDL_WINDOWEVENT:
-        if (event->window.event == SDL_WINDOWEVENT_RESIZED) {
-            g_app.resized = true;
-        } else if (event->window.event == SDL_WINDOWEVENT_FOCUS_GAINED) {
+        if (event->window.event == SDL_WINDOWEVENT_FOCUS_GAINED) {
             set_mouse_mode(true);
         } else if (event->window.event == SDL_WINDOWEVENT_FOCUS_LOST) {
             set_mouse_mode(false);

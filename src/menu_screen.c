@@ -390,7 +390,7 @@ static void load_page(const char *list, Page page)
             m.video_changed();
     }
     m.video_pending = false;
-    /* The window may have been resized by hand since. */
+    /* The window may be on another display now. */
     list_video_modes();
     stop_screw();
     menu_list_clear(&m.list);
@@ -776,7 +776,7 @@ static void list_video_modes(void)
         }
     } else {
         /* 0 x 0, first: "Auto", the desktop's size in full screen and
-           params.txt's video mode in a window. */
+           an 800 x 600 window. */
         add_video_mode(0, 0);
         for (i = 0; i < SDL_GetNumDisplayModes(display < 0 ? 0 : display); i++) {
             SDL_DisplayMode mode;

@@ -146,12 +146,12 @@ and `[online]`.
 - `[gameplay]`: `language` (a file's name in Languages), `mouse_speed`
   (0.5 to 1), `xray_ball`, and `skip_transitions` to start levels
   without the camera's flight in.
-- `[video]`: `width` and `height` set any window size (or the screen
-  mode in full screen); 0 x 0 is "Auto": the desktop's own size in full
-  screen, params.txt's video mode in a window. The options page offers
-  Auto and every size your display has, and saves the one picked here.
-  A window you resize or maximise opens the same way next time
-  (`maximized`). `windowed`, `vsync`, and `interpolate` (smooth motion
+- `[video]`: `width` and `height` set the window's size, or the screen
+  mode in full screen; 0 x 0 is "Auto": the desktop's own size in full
+  screen, else an 800 x 600 window, which opens maximised if it was
+  last time (`maximized`). The options page offers Auto and every size
+  your display has; resizing the window by hand doesn't change it.
+  params.txt's video mode isn't used. `windowed`, `vsync`, and `interpolate` (smooth motion
   between game steps; F10 switches it for the run).
 - `[audio]`: `sound_volume` and `music_volume`, 0 to 100.
 - `[joystick]`: `enabled` (on by default), `vibration` and

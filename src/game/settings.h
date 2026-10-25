@@ -16,9 +16,9 @@
  *   skip_transitions = off ; the camera's flight in at a level's start
  *
  *   [video]
- *   width = 1920           ; 0 x 0: params.txt's video mode
+ *   width = 1920           ; 0 x 0: Auto
  *   height = 1080
- *   maximized = off        ; the window was maximised when OpenMB2 closed
+ *   maximized = off        ; Auto's window was maximised when OpenMB2 closed
  *   windowed = on
  *   vsync = on
  *   interpolate = on       ; --no-smooth
@@ -54,11 +54,10 @@
 #include "params.h"
 
 typedef struct Settings {
-    /* The settings the original keeps in params.txt. resolution counts
-       only while width and height are 0; hall_of_fame and activated
-       aren't used. */
+    /* The settings the original keeps in params.txt; resolution,
+       hall_of_fame and activated aren't used. */
     Params params;
-    int width, height; /* 0 for params.txt's video mode */
+    int width, height; /* 0 for Auto */
     bool maximized;
     bool vsync;
     bool smooth;
