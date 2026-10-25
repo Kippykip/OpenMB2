@@ -6,6 +6,27 @@
 
 #include <stdio.h>
 
+static const int k_video_modes[PARAMS_VIDEO_MODES][2] = {
+    { 640, 480 }, { 800, 600 }, { 1024, 768 }, { 1152, 864 }, { 1280, 960 }, { 1600, 1200 }
+};
+
+void params_video_mode(int index, int *width, int *height)
+{
+    if (index < 0 || index >= PARAMS_VIDEO_MODES)
+        index = 0;
+    *width = k_video_modes[index][0];
+    *height = k_video_modes[index][1];
+}
+
+int params_find_video_mode(int width, int height)
+{
+    int i;
+    for (i = 0; i < PARAMS_VIDEO_MODES; i++)
+        if (k_video_modes[i][0] == width && k_video_modes[i][1] == height)
+            return i;
+    return -1;
+}
+
 void params_set_defaults(Params *params)
 {
     params->sound_volume = 100;

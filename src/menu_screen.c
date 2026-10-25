@@ -39,11 +39,7 @@ typedef enum Page {
 
 #define NAME_LENGTH 12     /* 0x41bf7c */
 #define CLICK_DELAY 500    /* ms an item must be showing before it takes a click */
-#define VIDEO_MODES 6
-
-static const char *const k_video_modes[VIDEO_MODES] = {
-    "640 * 480", "800 * 600", "1024 * 768", "1152 * 864", "1280 * 960", "1600 * 1200"
-};
+#define MAX_VIDEO_MODES 64
 
 /* The running line at the bottom (0x4163c0): seven lines from the
    language file, faded in and out or run across, then round again. */
@@ -118,6 +114,12 @@ static struct {
     int viewport[4];
     int screen_width, screen_height;
     bool wide;
+    /* The video modes offered: every size the display has (or the
+       original's six without settings), smallest first. */
+    Settings *settings;
+    void (*video_changed)(void);
+    int modes[MAX_VIDEO_MODES][2];
+    int mode_count, mode;
     /* The game to start. */
     char pack[64];
     char pad[MENU_PATH_SIZE];
@@ -639,12 +641,85 @@ static void update_checkbox(MenuItem *item, ItemState *state)
 
 static int select_count(const MenuItem *item)
 {
-    return item->video_mode ? VIDEO_MODES : lang_count();
+    return item->video_mode ? m.mode_count : lang_count();
 }
 
 static int *select_value(const MenuItem *item)
 {
-    return item->video_mode ? &m.params->resolution : &m.params->language;
+    return item->video_mode ? &m.mode : &m.params->language;
+}
+
+static void add_video_mode(int width, int height)
+{
+    int i, at;
+
+    for (i = 0; i < m.mode_count; i++)
+        if (m.modes[i][0] == width && m.modes[i][1] == height)
+            return;
+    if (m.mode_count == MAX_VIDEO_MODES)
+        return;
+    for (at = m.mode_count; at > 0 && (m.modes[at - 1][0] > width ||
+                                       (m.modes[at - 1][0] == width && m.modes[at - 1][1] > height));
+         at--) {
+        m.modes[at][0] = m.modes[at - 1][0];
+        m.modes[at][1] = m.modes[at - 1][1];
+    }
+    m.modes[at][0] = width;
+    m.modes[at][1] = height;
+    m.mode_count++;
+}
+
+/* The modes to offer, and which is chosen now. */
+static void list_video_modes(void)
+{
+    int i, width, height, display = SDL_GetWindowDisplayIndex(m.window);
+
+    m.mode_count = 0;
+    if (m.settings == NULL) {
+        for (i = 0; i < PARAMS_VIDEO_MODES; i++) {
+            params_video_mode(i, &width, &height);
+            add_video_mode(width, height);
+        }
+    } else {
+        for (i = 0; i < SDL_GetNumDisplayModes(display < 0 ? 0 : display); i++) {
+            SDL_DisplayMode mode;
+            if (SDL_GetDisplayMode(display < 0 ? 0 : display, i, &mode) == 0 && mode.w >= 640 && mode.h >= 480)
+                add_video_mode(mode.w, mode.h);
+        }
+    }
+    if (m.settings != NULL && m.settings->width > 0 && m.settings->height > 0) {
+        width = m.settings->width;
+        height = m.settings->height;
+    } else {
+        params_video_mode(m.params->resolution, &width, &height);
+    }
+    add_video_mode(width, height);
+    for (m.mode = 0; m.mode < m.mode_count - 1; m.mode++)
+        if (m.modes[m.mode][0] == width && m.modes[m.mode][1] == height)
+            break;
+}
+
+/* A mode picked on the options page. */
+static void choose_video_mode(void)
+{
+    int width = m.modes[m.mode][0], height = m.modes[m.mode][1];
+    int original = params_find_video_mode(width, height);
+
+    if (original >= 0)
+        m.params->resolution = original;
+    if (m.settings == NULL)
+        return;
+    m.settings->width = width;
+    m.settings->height = height;
+    if (m.video_changed != NULL)
+        m.video_changed();
+}
+
+void menu_screen_set_settings(Settings *settings, void (*changed)(void))
+{
+    m.settings = settings;
+    m.video_changed = changed;
+    list_video_modes();
 }
 
 /* -1 over the left arrow, 1 over the right one, 0 elsewhere. */
@@ -674,6 +749,8 @@ static void update_select(MenuItem *item, ItemState *state)
     else
         return;
     click_sound();
+    if (item->video_mode)
+        choose_video_mode();
 }
 
 static void update_slider(MenuItem *item, ItemState *state)
@@ -865,8 +942,10 @@ static void draw_item_text(const MenuItem *item, const ItemState *state)
         int side = select_side(item), value = *select_value(item);
         batch_text(item->x - 4.0f, item->y - 2.0f, 0.6f, FONT_RIGHT, lang_text(item->name_text, ""),
                    0xff000000u);
-        if (item->video_mode)
-            snprintf(text, sizeof(text), "%s", k_video_modes[value >= 0 && value < VIDEO_MODES ? value : 0]);
+        if (item->video_mode && value >= 0 && value < m.mode_count)
+            snprintf(text, sizeof(text), "%d * %d", m.modes[value][0], m.modes[value][1]);
+        else if (item->video_mode)
+            text[0] = '\0';
         else if (!lang_name(value, text, sizeof(text)))
             text[0] = '\0';
         batch_text(item->x + 2.0f, item->y - 2.0f, 0.7f, FONT_LEFT, text, 0xff0000ffu);
@@ -1194,6 +1273,7 @@ bool menu_screen_init(SDL_Window *window, Params *params, bool intro)
     m.params = params;
     m.intro_enabled = intro;
     m.highlight = -1;
+    list_video_modes();
     menu_list_clear(&m.list);
     snprintf(m.pad, sizeof(m.pad), "Pads/common.txt");
     if (!textureset_load(&m.textures, "textureset.txt"))

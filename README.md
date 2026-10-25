@@ -77,6 +77,22 @@ On a screen that isn't 4:3 the menus keep their shape between black
 bars; `--wide-menus` fills the screen instead, cutting off the
 background's edges.
 
+### openmb2.ini
+
+OpenMB2 keeps its own settings in `openmb2.ini` next to `params.txt`,
+and writes one with comments the first time it runs. The original game
+never reads it, so both games still share `params.txt`.
+
+- `[display]`: `width` and `height` set any window size (or the screen
+  mode in full screen); 0 x 0 uses params.txt's video mode. The options
+  page offers every size your display has and saves the one picked here
+  (and in params.txt when it is one of the original's six).
+  `fullscreen` is `on`, `off` or `auto` (params.txt's window setting);
+  `vsync` is `on` or `off`.
+- `[options]`: the switches above as `on`/`off`: `smooth`,
+  `level_intro`, `sort_glass`, `edge_bounce`, `wide_menus`. A switch on
+  the command line wins over the file for that run.
+
 `mb2inspect` looks inside a game folder:
 
 ```

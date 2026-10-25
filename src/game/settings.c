@@ -1,0 +1,153 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later */
+/* Copyright (C) 2026 the OpenMB2 contributors */
+
+#include "settings.h"
+
+#include <ctype.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+void settings_set_defaults(Settings *settings)
+{
+    settings->width = 0;
+    settings->height = 0;
+    settings->fullscreen = FULLSCREEN_AUTO;
+    settings->vsync = true;
+    settings->smooth = true;
+    settings->level_intro = true;
+    settings->sort_glass = true;
+    settings->edge_bounce = true;
+    settings->wide_menus = false;
+}
+
+static bool same(const char *a, const char *b)
+{
+    for (; *a != '\0' && *b != '\0'; a++, b++)
+        if (tolower((unsigned char)*a) != tolower((unsigned char)*b))
+            return false;
+    return *a == *b;
+}
+
+/* on/off, yes/no, true/false or a number; anything else keeps the old value. */
+static bool parse_bool(const char *value, bool old)
+{
+    if (same(value, "on") || same(value, "yes") || same(value, "true"))
+        return true;
+    if (same(value, "off") || same(value, "no") || same(value, "false"))
+        return false;
+    if (isdigit((unsigned char)value[0]))
+        return atoi(value) != 0;
+    return old;
+}
+
+static void set(Settings *s, const char *section, const char *key, const char *value)
+{
+    if (same(section, "display")) {
+        if (same(key, "width"))
+            s->width = atoi(value) > 0 ? atoi(value) : 0;
+        else if (same(key, "height"))
+            s->height = atoi(value) > 0 ? atoi(value) : 0;
+        else if (same(key, "fullscreen"))
+            s->fullscreen = same(value, "auto") ? FULLSCREEN_AUTO
+                            : parse_bool(value, false) ? FULLSCREEN_ON
+                                                       : FULLSCREEN_OFF;
+        else if (same(key, "vsync"))
+            s->vsync = parse_bool(value, s->vsync);
+    } else if (same(section, "options")) {
+        if (same(key, "smooth"))
+            s->smooth = parse_bool(value, s->smooth);
+        else if (same(key, "level_intro"))
+            s->level_intro = parse_bool(value, s->level_intro);
+        else if (same(key, "sort_glass"))
+            s->sort_glass = parse_bool(value, s->sort_glass);
+        else if (same(key, "edge_bounce"))
+            s->edge_bounce = parse_bool(value, s->edge_bounce);
+        else if (same(key, "wide_menus"))
+            s->wide_menus = parse_bool(value, s->wide_menus);
+    }
+}
+
+/* Cut the spaces off both ends of a string, in place. */
+static char *trim(char *s)
+{
+    char *end;
+
+    while (isspace((unsigned char)*s))
+        s++;
+    end = s + strlen(s);
+    while (end > s && isspace((unsigned char)end[-1]))
+        *--end = '\0';
+    return s;
+}
+
+void settings_parse(Settings *settings, const char *text, size_t size)
+{
+    char section[32] = "", line[256];
+    size_t at = 0;
+
+    while (at < size) {
+        size_t n = 0;
+        char *s, *equals, *comment;
+
+        while (at < size && text[at] != '\n') {
+            if (n + 1 < sizeof(line))
+                line[n++] = text[at];
+            at++;
+        }
+        at++;
+        line[n] = '\0';
+        if ((comment = strpbrk(line, ";#")) != NULL)
+            *comment = '\0';
+        s = trim(line);
+        if (s[0] == '[') {
+            char *close = strchr(s, ']');
+            if (close != NULL) {
+                *close = '\0';
+                snprintf(section, sizeof(section), "%s", trim(s + 1));
+            }
+        } else if ((equals = strchr(s, '=')) != NULL) {
+            *equals = '\0';
+            set(settings, section, trim(s), trim(equals + 1));
+        }
+    }
+}
+
+static const char *on_off(bool on)
+{
+    return on ? "on" : "off";
+}
+
+int settings_format(const Settings *s, char *out, size_t size)
+{
+    static const char *const fullscreen[] = { "auto", "on", "off" };
+
+    return snprintf(out, size,
+                    "; OpenMB2's own settings. The original game doesn't read this file;\n"
+                    "; the settings both games share stay in params.txt.\n"
+                    "; A switch on the command line wins over this file for that run.\n"
+                    "\n"
+                    "[display]\n"
+                    "; The window's size, or the screen mode when full screen.\n"
+                    "; 0 x 0 uses params.txt's video mode (and the desktop when full screen).\n"
+                    "width = %d\n"
+                    "height = %d\n"
+                    "; on, off, or auto to follow params.txt's window setting\n"
+                    "fullscreen = %s\n"
+                    "vsync = %s\n"
+                    "\n"
+                    "[options]\n"
+                    "; Draw moving things between game steps (off: --no-smooth)\n"
+                    "smooth = %s\n"
+                    "; Fly the camera in at the start of a level (off: --no-intro)\n"
+                    "level_intro = %s\n"
+                    "; Draw see-through bricks back to front (off: --original-glass)\n"
+                    "sort_glass = %s\n"
+                    "; Bats without end bounces bounce as in the middle (off: --original-bounce)\n"
+                    "edge_bounce = %s\n"
+                    "; Fill a wide screen with the menus, not 4:3 (on: --wide-menus)\n"
+                    "wide_menus = %s\n",
+                    s->width, s->height, fullscreen[s->fullscreen], on_off(s->vsync),
+                    on_off(s->smooth), on_off(s->level_intro), on_off(s->sort_glass),
+                    on_off(s->edge_bounce), on_off(s->wide_menus));
+}

@@ -42,6 +42,7 @@ add_library(openmb2_core STATIC
     src/game/level.c
     src/game/menu.c
     src/game/params.c
+    src/game/settings.c
     src/game/play.c
     src/game/save.c
     src/game/scores.c

@@ -28,6 +28,7 @@
 #include "game/lang.h"
 #include "game/level.h"
 #include "game/params.h"
+#include "game/settings.h"
 #include "menu_screen.h"
 #include "platform/gl.h"
 #include "play_screen.h"
@@ -45,8 +46,6 @@
 #endif
 
 /* The original game's menus are laid out for 800x600. */
-#define DEFAULT_WIDTH  800
-#define DEFAULT_HEIGHT 600
 
 /* Every release has this file in the root of the game folder. */
 #define GAME_FOLDER_MARKER "textureset.txt"
@@ -55,6 +54,7 @@ typedef struct App {
     SDL_Window *window;
     SDL_GLContext gl_context;
     Params params;
+    Settings settings;   /* openmb2.ini */
     bool running;
     const char *screenshot_path;
     int run_ms;          /* with screenshot_path: game time to play first */
@@ -189,33 +189,92 @@ static bool create_gl_context(void)
 
     if (!gl_load_functions())
         return false;
-    SDL_GL_SetSwapInterval(1);
+    SDL_GL_SetSwapInterval(g_app.settings.vsync ? 1 : 0);
     log_info("renderer: %s (%s)", (const char *)gl.GetString(GL_RENDERER),
              (const char *)gl.GetString(GL_VERSION));
     return true;
 }
 
+/* The screen size openmb2.ini asks for, or params.txt's video mode. */
+static void video_size(int *width, int *height)
+{
+    if (g_app.settings.width > 0 && g_app.settings.height > 0) {
+        *width = g_app.settings.width;
+        *height = g_app.settings.height;
+    } else {
+        params_video_mode(g_app.params.resolution, width, height);
+    }
+}
+
+static bool want_fullscreen(void)
+{
+    if (g_app.settings.fullscreen == FULLSCREEN_AUTO)
+        return !g_app.params.windowed;
+    return g_app.settings.fullscreen == FULLSCREEN_ON;
+}
+
+/*
+ * Full screen takes the screen mode of the size openmb2.ini gives, or
+ * keeps the desktop's when it gives none; in a window, the size is the
+ * window's.
+ */
+static void apply_video(bool fullscreen)
+{
+    int width, height;
+
+    video_size(&width, &height);
+    if (fullscreen && g_app.settings.width > 0 && g_app.settings.height > 0) {
+        SDL_DisplayMode want, mode;
+        SDL_zero(want);
+        want.w = width;
+        want.h = height;
+        if (SDL_GetClosestDisplayMode(SDL_GetWindowDisplayIndex(g_app.window), &want, &mode) != NULL) {
+            SDL_SetWindowFullscreen(g_app.window, 0);
+            SDL_SetWindowDisplayMode(g_app.window, &mode);
+            SDL_SetWindowFullscreen(g_app.window, SDL_WINDOW_FULLSCREEN);
+            return;
+        }
+    }
+    if (fullscreen) {
+        SDL_SetWindowFullscreen(g_app.window, SDL_WINDOW_FULLSCREEN_DESKTOP);
+        return;
+    }
+    SDL_SetWindowFullscreen(g_app.window, 0);
+    SDL_SetWindowSize(g_app.window, width, height);
+    SDL_SetWindowPosition(g_app.window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+}
+
+static bool is_fullscreen(void)
+{
+    return (SDL_GetWindowFlags(g_app.window) & SDL_WINDOW_FULLSCREEN) != 0;
+}
+
+/* The options page picked another size. */
+static void video_changed(void)
+{
+    apply_video(is_fullscreen());
+}
+
 static bool create_window(void)
 {
     Uint32 flags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI;
+    int width, height;
 
-    if (!g_app.params.windowed)
-        flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
-
+    video_size(&width, &height);
     g_app.window = SDL_CreateWindow("OpenMB2", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-                                    DEFAULT_WIDTH, DEFAULT_HEIGHT, flags);
+                                    width, height, flags);
     if (g_app.window == NULL) {
         log_error("can't create window: %s", SDL_GetError());
         return false;
     }
+    if (want_fullscreen())
+        apply_video(true);
     return create_gl_context();
 }
 
 static void toggle_fullscreen(void)
 {
-    Uint32 flags = SDL_GetWindowFlags(g_app.window);
-    bool fullscreen = (flags & SDL_WINDOW_FULLSCREEN_DESKTOP) != 0;
-    SDL_SetWindowFullscreen(g_app.window, fullscreen ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP);
+    apply_video(!is_fullscreen());
 }
 
 /* ------------------------------------------------------------------------ */
@@ -407,6 +466,30 @@ static void save_params(void)
         userfile_write("params.txt", text, (size_t)length);
 }
 
+static void save_settings(void)
+{
+    char text[2048];
+    int length = settings_format(&g_app.settings, text, sizeof(text));
+    if (length > 0 && length < (int)sizeof(text))
+        userfile_write("openmb2.ini", text, (size_t)length);
+}
+
+/* openmb2.ini, written with its defaults when there isn't one. */
+static void load_settings(void)
+{
+    size_t size;
+    unsigned char *text = userfile_read("openmb2.ini", &size);
+
+    settings_set_defaults(&g_app.settings);
+    if (text == NULL) {
+        log_info("no openmb2.ini, writing one with the default settings");
+        save_settings();
+        return;
+    }
+    settings_parse(&g_app.settings, (const char *)text, size);
+    free(text);
+}
+
 static void shutdown_app(void)
 {
     menu_screen_shutdown();
@@ -427,16 +510,13 @@ int main(int argc, char **argv)
     const char *game_folder = NULL, *start_level = NULL, *start_menu = NULL;
     PlayScreenOptions options;
     unsigned seed = (unsigned)time(NULL);
-    bool wide_menus = false;
-
-    g_app.mouse_mode = -1;
+    /* Switches given on the command line, which win over openmb2.ini. */
+    bool no_smooth = false, no_intro = false, original_glass = false, original_bounce = false,
+         wide_menus = false;
     int i;
 
+    g_app.mouse_mode = -1;
     memset(&options, 0, sizeof(options));
-    options.smooth = true;
-    options.intro = true;
-    options.sort_glass = true;
-    options.edge_bounce = true;
     for (i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--game") == 0 && i + 1 < argc)
             game_folder = argv[++i];
@@ -449,13 +529,13 @@ int main(int argc, char **argv)
         else if (strcmp(argv[i], "--run-ms") == 0 && i + 1 < argc)
             g_app.run_ms = atoi(argv[++i]);
         else if (strcmp(argv[i], "--no-smooth") == 0)
-            options.smooth = false;
+            no_smooth = true;
         else if (strcmp(argv[i], "--no-intro") == 0)
-            options.intro = false;
+            no_intro = true;
         else if (strcmp(argv[i], "--original-glass") == 0)
-            options.sort_glass = false;
+            original_glass = true;
         else if (strcmp(argv[i], "--original-bounce") == 0)
-            options.edge_bounce = false;
+            original_bounce = true;
         else if (strcmp(argv[i], "--wide-menus") == 0)
             wide_menus = true;
         else if (strcmp(argv[i], "--autoplay") == 0)
@@ -481,6 +561,12 @@ int main(int argc, char **argv)
 
     if (!params_load(&g_app.params, "params.txt"))
         log_info("no params.txt, using default settings");
+    load_settings();
+    options.smooth = g_app.settings.smooth && !no_smooth;
+    options.intro = g_app.settings.level_intro && !no_intro;
+    options.sort_glass = g_app.settings.sort_glass && !original_glass;
+    options.edge_bounce = g_app.settings.edge_bounce && !original_bounce;
+    wide_menus = wide_menus || g_app.settings.wide_menus;
     log_game_contents();
 
     if (!create_window()) {
@@ -500,6 +586,7 @@ int main(int argc, char **argv)
         return 1;
     }
     menu_screen_set_wide(wide_menus);
+    menu_screen_set_settings(&g_app.settings, video_changed);
     lang_load(g_app.params.language);
 
     g_app.running = true;
@@ -519,6 +606,7 @@ int main(int argc, char **argv)
 #endif
 
     save_params();
+    save_settings();
     shutdown_app();
     return 0;
 }

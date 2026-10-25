@@ -14,6 +14,7 @@
 #define OPENMB2_MENU_SCREEN_H
 
 #include "game/params.h"
+#include "game/settings.h"
 
 #include <SDL.h>
 #include <stdbool.h>
@@ -45,6 +46,13 @@ MenuAction menu_screen_frame(int width, int height, uint32_t ms);
 
 /* Fill a screen of another shape instead of keeping 4:3 between black bars. */
 void menu_screen_set_wide(bool wide);
+
+/*
+ * openmb2.ini's settings: the options page's video mode offers every size
+ * the display has and keeps the one picked there (params.txt's resolution
+ * too, when it is one of the original's), then calls changed().
+ */
+void menu_screen_set_settings(Settings *settings, void (*changed)(void));
 
 /* What MENU_ACTION_PLAY plays: a pack folder, a level in it, the bat's pad file. */
 void menu_screen_game(const char **folder, int *level, const char **pad);

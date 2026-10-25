@@ -42,6 +42,13 @@ typedef struct Params {
     float mouse_sensitivity;
 } Params;
 
+/* The original's video modes, which params.txt's resolution counts. */
+#define PARAMS_VIDEO_MODES 6
+/* A mode's size; an index out of range gives the first. */
+void params_video_mode(int index, int *width, int *height);
+/* The index of the mode of this size, or -1. */
+int params_find_video_mode(int width, int height);
+
 /* Fill params with the original game's defaults. */
 void params_set_defaults(Params *params);
 
