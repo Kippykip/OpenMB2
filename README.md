@@ -37,9 +37,17 @@ or the disc's `MagicBall2.dat`) are read as they are, no unpacking
 needed. It
 starts like the original: the splash screen, the Alawar logo (any key
 or click skips it), then the main menu, with
-the level packs, level pages, options, how to play and high scores. The
-settings, high scores (`score.dat`) and opened levels (`s<pack>.sav`)
-are the original's own files, so both games share them. In a level:
+the level packs, level pages, options, how to play and high scores. High scores
+(`score.dat`) and opened levels (`s<pack>.sav`) are the original's own
+files, so both games share them.
+
+The menus also work from the keyboard. The arrows move between items
+(the pointer hides until the mouse moves) and the item they're on
+turns red; Enter picks a button, a level or a checkbox. Left and Right
+move a slider, step a choice, or move along a row; on the packs page
+they choose the bat.
+
+In a level:
 
 | Key | Does |
 | --- | --- |

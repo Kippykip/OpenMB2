@@ -138,6 +138,13 @@ static struct {
     char name[NAME_LENGTH + 1];
     float pulse;
     int screw_sound;    /* the sound slider's noise while it's dragged */
+    /* The arrow keys and Enter (OpenMB2's own): while they have the
+       menus the pointer is hidden, until the mouse moves or clicks. */
+    bool keys;
+    int focus;          /* the item they're on, -1 for none */
+    int focus_cell;     /* on a level page, the level they're on */
+    SDL_Keycode key;    /* one waiting for the next frame */
+    int mouse_travel;   /* how far the mouse has moved since the keys took over */
     /* The help pages' prizes. */
     PrizeInfo prize_info[PRIZE_KINDS];
     XModel prize_models[PRIZE_KINDS];
@@ -377,6 +384,7 @@ static void stop_screw(void)
 }
 
 static void list_video_modes(void);
+static void reset_focus(void);
 
 /* A page from its list file, with the logos (0x418670, 0x418b70). */
 static void load_page(const char *list, Page page)
@@ -402,6 +410,7 @@ static void load_page(const char *list, Page page)
     m.page = page;
     m.page_time = 0;
     m.wait_release = true;
+    reset_focus();
     SDL_StopTextInput();
 }
 
@@ -478,6 +487,7 @@ static void show_packs(void)
     m.page = PAGE_MENU;
     m.page_time = 0;
     stop_screw();
+    reset_focus();
 }
 
 static void start_game(const char *pack, int level)
@@ -717,20 +727,26 @@ static float box_right(const MenuItem *item)
     return item->x - (item->sens_width > item->width ? item->width : item->sens_width);
 }
 
-static void update_checkbox(MenuItem *item, ItemState *state)
+static void toggle_checkbox(MenuItem *item, ItemState *state)
 {
     bool *value = checkbox_value(item);
 
+    if (value == NULL)
+        return;
+    *value = !*value;
+    state->age = 0;
+    click_sound();
+    if (strcmp(item->id, "windowed") == 0 || strcmp(item->id, "vsync") == 0)
+        video_pending();
+    apply_settings();
+}
+
+static void update_checkbox(MenuItem *item, ItemState *state)
+{
     state->hover = inside(m.mouse_x, m.mouse_y, box_left(item), box_right(item), item->y - item->height,
                           item->y + item->height);
-    if (state->hover && m.button && state->age >= CLICK_DELAY && value != NULL) {
-        *value = !*value;
-        state->age = 0;
-        click_sound();
-        if (strcmp(item->id, "windowed") == 0 || strcmp(item->id, "vsync") == 0)
-            video_pending();
-        apply_settings();
-    }
+    if (state->hover && m.button && state->age >= CLICK_DELAY)
+        toggle_checkbox(item, state);
 }
 
 static int select_count(const MenuItem *item)
@@ -851,14 +867,11 @@ static int select_side(const MenuItem *item)
     return 0;
 }
 
-static void update_select(MenuItem *item, ItemState *state)
+/* One step left (-1) or right (1), if there is one that way. */
+static void step_select(const MenuItem *item, int side)
 {
-    int side = select_side(item), *value = select_value(item), count = select_count(item);
+    int *value = select_value(item), count = select_count(item);
 
-    state->hover = side != 0;
-    if (side == 0 || !m.button || state->age < CLICK_DELAY)
-        return;
-    state->age = 0; /* held down, it steps every half second */
     if (side > 0 && *value < count - 1)
         (*value)++;
     else if (side < 0 && *value > 0)
@@ -872,22 +885,22 @@ static void update_select(MenuItem *item, ItemState *state)
         choose_language();
 }
 
-static void update_slider(MenuItem *item, ItemState *state)
+static void update_select(MenuItem *item, ItemState *state)
 {
-    float dy = item->height - 8.0f, value;
-    bool dragging = m.button && inside(m.mouse_x, m.mouse_y, item->x, item->x + item->sens_width,
-                                       item->y - dy, item->y + dy);
+    int side = select_side(item);
 
-    if (strcmp(item->id, "sound") == 0) {
-        if (dragging && m.screw_sound == 0)
-            m.screw_sound = audio_play_loop("screw.ogg", -1, 0);
-        else if (!dragging && m.screw_sound != 0)
-            stop_screw();
-    }
-    if (!dragging)
+    state->hover = side != 0;
+    if (side == 0 || !m.button || state->age < CLICK_DELAY)
         return;
-    state->handle = m.mouse_x - item->x;
-    value = state->handle / item->sens_width * 100.0f;
+    state->age = 0; /* held down, it steps every half second */
+    step_select(item, side);
+}
+
+/* A slider set to 0-100. */
+static void set_slider(const MenuItem *item, ItemState *state, float value)
+{
+    value = value < 0.0f ? 0.0f : value > 100.0f ? 100.0f : value;
+    state->handle = value * item->sens_width / 100.0f;
     if (strcmp(item->id, "sound") == 0)
         m.params->sound_volume = (int)value;
     else if (strcmp(item->id, "music") == 0)
@@ -897,6 +910,22 @@ static void update_slider(MenuItem *item, ItemState *state)
     else if (strcmp(item->id, "joysens") == 0 && m.settings != NULL)
         m.settings->joystick_sensitivity = (int)value;
     apply_settings();
+}
+
+static void update_slider(MenuItem *item, ItemState *state)
+{
+    float dy = item->height - 8.0f;
+    bool dragging = m.button && inside(m.mouse_x, m.mouse_y, item->x, item->x + item->sens_width,
+                                       item->y - dy, item->y + dy);
+
+    if (strcmp(item->id, "sound") == 0) {
+        if (dragging && m.screw_sound == 0)
+            m.screw_sound = audio_play_loop("screw.ogg", -1, 0);
+        else if (!dragging && m.screw_sound != 0)
+            stop_screw();
+    }
+    if (dragging)
+        set_slider(item, state, (m.mouse_x - item->x) / item->sens_width * 100.0f);
 }
 
 /* The 5 x 4 levels of a level page: the cell under the pointer, or -1. */
@@ -933,12 +962,290 @@ static bool update_level_select(MenuItem *item, ItemState *state)
     return true;
 }
 
+/* ------------------------------------------------------------------------ */
+/* The keys (OpenMB2's own)                                                 */
+/* ------------------------------------------------------------------------ */
+
+/* Buttons that do something here, and the other items that can be set;
+   the bats on the packs page go by Left and Right instead. */
+static bool focusable(const MenuItem *item)
+{
+    static const char *const k_commands[] = {
+        "navigate", "startgame", "rescan", "entername", "highscores", "viewglobalscore",
+        "navigatefromenterscore", "mysendscore", "clearscore", "exit", "realexit",
+    };
+    size_t i;
+
+    switch (item->kind) {
+    case MENU_CHECKBOX:
+    case MENU_SELECT:
+    case MENU_SLIDER:
+    case MENU_LEVEL_SELECT:
+        return true;
+    case MENU_BUTTON:
+        for (i = 0; i < sizeof(k_commands) / sizeof(k_commands[0]); i++)
+            if (strcmp(item->id, k_commands[i]) == 0)
+                return true;
+        return false;
+    default:
+        return false;
+    }
+}
+
+/* Top to bottom, then left to right along a row. */
+static bool comes_before(const MenuItem *a, const MenuItem *b)
+{
+    if (a->y > b->y + 10.0f || a->y < b->y - 10.0f)
+        return a->y > b->y;
+    return a->x < b->x;
+}
+
+/* The next item after the one they're on, going down (1) or up (-1),
+   round to the other end; -1 if there's none. */
+static int next_focus(int from, int way)
+{
+    int i, best = -1;
+
+    for (i = 0; i < m.list.count; i++) {
+        const MenuItem *item = &m.list.items[i];
+        if (i == from || !focusable(item))
+            continue;
+        if (from >= 0) {
+            const MenuItem *at = &m.list.items[from];
+            if (way > 0 ? !comes_before(at, item) : !comes_before(item, at))
+                continue;
+        }
+        if (best < 0 || (way > 0) == comes_before(item, &m.list.items[best]))
+            best = i;
+    }
+    if (best < 0 && from >= 0)
+        return next_focus(-1, way);
+    return best;
+}
+
+/* The nearest item along the same row, left (-1) or right (1). */
+static int row_focus(int from, int way)
+{
+    const MenuItem *at = &m.list.items[from];
+    int i, best = -1;
+
+    for (i = 0; i < m.list.count; i++) {
+        const MenuItem *item = &m.list.items[i];
+        float dx = (item->x - at->x) * (float)way;
+        if (i == from || !focusable(item) || item->y > at->y + 10.0f || item->y < at->y - 10.0f ||
+            dx <= 0.0f)
+            continue;
+        if (best < 0 || dx < (m.list.items[best].x - at->x) * (float)way)
+            best = i;
+    }
+    return best;
+}
+
+/* On a level page, the last level open on it. */
+static int last_open_cell(const MenuItem *item)
+{
+    int cell;
+
+    for (cell = 19; cell > 0 && !level_open(item->level_index + cell); cell--)
+        ;
+    return cell;
+}
+
+static void set_focus(int focus, int cell)
+{
+    if (focus >= 0 && (focus != m.focus || cell != m.focus_cell))
+        audio_play("Select.ogg", -1, 0);
+    m.focus = focus;
+    m.focus_cell = cell;
+}
+
+/* A new page: the keys start on its first item, or a level page's last
+   open level. */
+static void reset_focus(void)
+{
+    int i;
+
+    m.focus = -1;
+    if (!m.keys)
+        return;
+    for (i = 0; i < m.list.count; i++) {
+        if (m.list.items[i].kind == MENU_LEVEL_SELECT) {
+            m.focus = i;
+            m.focus_cell = last_open_cell(&m.list.items[i]);
+            return;
+        }
+    }
+    m.focus = next_focus(-1, 1);
+}
+
+/* Left or right on the packs page: the next bat along. */
+static void next_pad(int way)
+{
+    int i, count = 0, at = 0;
+    MenuItem *pads[8];
+
+    for (i = 0; i < m.list.count && count < 8; i++) {
+        MenuItem *item = &m.list.items[i];
+        if (item->kind == MENU_BUTTON && strcmp(item->id, "selectpad") == 0) {
+            if (SDL_strcasecmp(item->script, m.pad) == 0)
+                at = count;
+            pads[count++] = item;
+        }
+    }
+    if (count < 2)
+        return;
+    /* Left to right as they stand. */
+    for (i = 1; i < count; i++) {
+        MenuItem *item = pads[i];
+        int j = i;
+        for (; j > 0 && pads[j - 1]->x > item->x; j--)
+            pads[j] = pads[j - 1];
+        pads[j] = item;
+    }
+    for (i = 0; i < count; i++)
+        if (SDL_strcasecmp(pads[i]->script, m.pad) == 0)
+            at = i;
+    at = (at + way + count) % count;
+    click_sound();
+    run_command(pads[at]);
+}
+
+static void move_focus(int way, bool across)
+{
+    MenuItem *item = m.focus >= 0 ? &m.list.items[m.focus] : NULL;
+    ItemState *state = m.focus >= 0 ? &m.states[m.focus] : NULL;
+    int next;
+
+    if (item != NULL && item->kind == MENU_LEVEL_SELECT) {
+        int col = m.focus_cell % 5, row = m.focus_cell / 5;
+        if (across && col + way >= 0 && col + way < 5) {
+            set_focus(m.focus, m.focus_cell + way);
+            return;
+        }
+        if (!across && row + way >= 0 && row + way < 4) {
+            set_focus(m.focus, m.focus_cell + way * 5);
+            return;
+        }
+        if (across)
+            return;
+    } else if (across && item != NULL && item->kind == MENU_SLIDER) {
+        set_slider(item, state, state->handle / item->sens_width * 100.0f + 5.0f * (float)way);
+        return;
+    } else if (across && item != NULL && item->kind == MENU_SELECT) {
+        step_select(item, way);
+        return;
+    } else if (across) {
+        int i;
+        for (i = 0; i < m.list.count; i++) {
+            if (strcmp(m.list.items[i].id, "selectpad") == 0) {
+                next_pad(way);
+                return;
+            }
+        }
+        if (item != NULL && (next = row_focus(m.focus, way)) >= 0)
+            set_focus(next, 0);
+        return;
+    }
+    next = next_focus(m.focus, way);
+    if (next < 0)
+        return;
+    /* Into a level page from above, its top row; from below, its bottom. */
+    set_focus(next, m.list.items[next].kind == MENU_LEVEL_SELECT ? (way > 0 ? 0 : 15) : 0);
+}
+
+static void press_focus(void)
+{
+    MenuItem *item;
+    ItemState *state;
+
+    if (m.focus < 0)
+        return;
+    item = &m.list.items[m.focus];
+    state = &m.states[m.focus];
+    switch (item->kind) {
+    case MENU_BUTTON:
+        if (!(strcmp(item->id, "clearscore") == 0 && scores_count(&m.scores) == 0))
+            click_sound();
+        run_command(item);
+        break;
+    case MENU_CHECKBOX:
+        toggle_checkbox(item, state);
+        break;
+    case MENU_SELECT:
+        step_select(item, 1);
+        break;
+    case MENU_LEVEL_SELECT:
+        if (level_open(item->level_index + m.focus_cell)) {
+            click_sound();
+            start_game(m.pack, item->level_index + m.focus_cell);
+        }
+        break;
+    default:
+        break;
+    }
+}
+
+/* The key waiting from the last events. */
+static void use_key(void)
+{
+    SDL_Keycode key = m.key;
+    int i;
+
+    m.key = SDLK_UNKNOWN;
+    if (key == SDLK_UNKNOWN)
+        return;
+    if (!m.keys) {
+        /* Taking over: from what the pointer is on, or the first item. */
+        m.keys = true;
+        m.mouse_travel = 0;
+        m.focus = -1;
+        for (i = 0; i < m.list.count; i++)
+            if (m.states[i].hover && focusable(&m.list.items[i]))
+                m.focus = i;
+        if (m.focus < 0)
+            reset_focus();
+        else
+            m.focus_cell = 0;
+        if (m.focus >= 0 && m.list.items[m.focus].kind == MENU_LEVEL_SELECT)
+            m.focus_cell = last_open_cell(&m.list.items[m.focus]);
+        for (i = 0; i < m.list.count; i++)
+            m.states[i].hover = false;
+        stop_screw();
+        if (key == SDLK_UP || key == SDLK_DOWN)
+            return; /* the first press just shows where they are */
+    }
+    switch (key) {
+    case SDLK_UP: move_focus(-1, false); break;
+    case SDLK_DOWN: move_focus(1, false); break;
+    case SDLK_LEFT: move_focus(-1, true); break;
+    case SDLK_RIGHT: move_focus(1, true); break;
+    case SDLK_RETURN:
+    case SDLK_KP_ENTER: press_focus(); break;
+    default: break;
+    }
+}
+
+static bool is_focused(const MenuItem *item)
+{
+    return m.keys && m.focus >= 0 && item == &m.list.items[m.focus];
+}
+
 static void update_items(uint32_t ms)
 {
     int i;
 
     for (i = 0; i < m.list.count; i++)
         m.states[i].age += ms;
+    if (m.keys) {
+        use_key();
+        for (i = 0; i < m.list.count; i++)
+            m.states[i].hover = is_focused(&m.list.items[i]);
+        return;
+    }
+    if (m.key != SDLK_UNKNOWN) {
+        use_key();
+        return;
+    }
     for (i = 0; i < m.list.count && m.action == MENU_ACTION_NONE; i++) {
         MenuItem *item = &m.list.items[i];
         ItemState *state = &m.states[i];
@@ -1013,7 +1320,7 @@ static void draw_level_select(const MenuItem *item, const ItemState *state)
    frame round the one under the pointer. */
 static void draw_level_marks(const MenuItem *item, const ItemState *state)
 {
-    int col, row, hover = level_cell(item, &col, &row);
+    int col, row, hover = m.keys ? (is_focused(item) ? m.focus_cell : -1) : level_cell(item, &col, &row);
 
     for (row = 0; row < 4; row++) {
         for (col = 0; col < 5; col++) {
@@ -1024,6 +1331,12 @@ static void draw_level_marks(const MenuItem *item, const ItemState *state)
                 batch_text_clipped(true, x, y, 1.0f, FONT_CENTER, "A", 0xffffffffu, 0.0f);
         }
     }
+}
+
+/* A setting's name, red while the keys are on it. */
+static uint32_t label_color(const MenuItem *item)
+{
+    return is_focused(item) ? 0xffff0000u : 0xff000000u;
 }
 
 static void draw_item_text(const MenuItem *item, const ItemState *state)
@@ -1056,13 +1369,13 @@ static void draw_item_text(const MenuItem *item, const ItemState *state)
         batch_text(item->x - item->sens_width - 14.0f, item->y + 1.0f, scale, FONT_CENTER,
                    value != NULL && *value ? "[" : "]", 0xffffffffu);
         batch_text(item->x, item->y + 2.0f, item->z + 0.6f, FONT_CENTER,
-                   lang_text(item->text_index, ""), 0xff000000u);
+                   lang_text(item->text_index, ""), label_color(item));
         break;
     }
     case MENU_SELECT: {
         int side = select_side(item), value = *select_value(item);
         batch_text(item->x - 4.0f, item->y - 2.0f, 0.6f, FONT_RIGHT, lang_text(item->name_text, ""),
-                   0xff000000u);
+                   label_color(item));
         if (item->video_mode && value >= 0 && value < m.mode_count && m.modes[value][0] == 0)
             snprintf(text, sizeof(text), "%s", lang_text(LANG_AUTO, "Auto"));
         else if (item->video_mode && value >= 0 && value < m.mode_count)
@@ -1080,7 +1393,7 @@ static void draw_item_text(const MenuItem *item, const ItemState *state)
     }
     case MENU_SLIDER:
         batch_text(item->x - 8.0f, item->y - 2.0f, 0.6f, FONT_RIGHT, lang_text(item->name_text, ""),
-                   0xff000000u);
+                   label_color(item));
         batch_text(item->x + state->handle, item->y - 1.0f, item->z + 1.0f, FONT_CENTER, "\\",
                    0xffffffffu);
         break;
@@ -1457,6 +1770,8 @@ static void draw_cursor(void)
     float right = width * 0.5f, top = height * 0.5f;
 
     batch_draw();
+    if (m.keys)
+        return;
     render_viewport(0, 0, m.screen_width, m.screen_height);
     render_begin_2d(width, height);
     if (x > right) x = right;
@@ -1634,6 +1949,27 @@ void menu_screen_handle_event(const SDL_Event *event)
                 m.name[length - 1] = '\0';
             else if (event->key.keysym.sym == SDLK_RETURN || event->key.keysym.sym == SDLK_KP_ENTER)
                 enter_name();
+        } else if (!(event->key.keysym.mod & KMOD_ALT)) {
+            switch (event->key.keysym.sym) {
+            case SDLK_UP:
+            case SDLK_DOWN:
+            case SDLK_LEFT:
+            case SDLK_RIGHT:
+            case SDLK_RETURN:
+            case SDLK_KP_ENTER:
+                m.key = event->key.keysym.sym;
+                break;
+            default:
+                break;
+            }
+        }
+        break;
+    case SDL_MOUSEMOTION:
+        /* The mouse taking the menus back from the keys. */
+        if (m.keys) {
+            m.mouse_travel += abs(event->motion.xrel) + abs(event->motion.yrel);
+            if (m.mouse_travel > 6)
+                m.keys = false;
         }
         break;
     case SDL_TEXTINPUT:
@@ -1653,6 +1989,7 @@ void menu_screen_handle_event(const SDL_Event *event)
     case SDL_MOUSEBUTTONDOWN:
         if (event->button.button == SDL_BUTTON_LEFT)
             m.button_down = true;
+        m.keys = false;
         break;
     case SDL_MOUSEBUTTONUP:
         if (event->button.button == SDL_BUTTON_LEFT)
