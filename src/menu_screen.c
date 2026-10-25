@@ -944,7 +944,7 @@ static void load_prize(PrizeKind kind)
         return;
     snprintf(path, sizeof(path), "SkinMeshes/%s", info->model);
     if (xfile_load(&m.prize_models[kind], path))
-        asset_model_mesh(&m.prize_meshes[kind], &m.prize_models[kind], RENDER_NOT_LIGHTED, "", "", NULL);
+        asset_model_mesh(&m.prize_meshes[kind], &m.prize_models[kind], 0, "", "", NULL);
 }
 
 /*
@@ -956,6 +956,10 @@ static void draw_help_views(void)
 {
     int i, pass;
     bool any = false;
+    /* The menus light the scene with an ambient of 0xaaaaaa (0x418c20). */
+    RenderLight light = m.light;
+
+    light.ambient[0] = light.ambient[1] = light.ambient[2] = 170.0f / 255.0f;
 
     for (i = 0; i < m.list.count; i++) {
         const MenuItem *item = &m.list.items[i];
@@ -982,7 +986,7 @@ static void draw_help_views(void)
                         (int)(item->height / m.view_height * (float)m.viewport[3] + 0.5f));
         view = mat4_look_at_lh(vec3(0.5f * s, s, -s), vec3(0.0f, 0.0f, 0.0f), vec3(0.0f, 1.0f, 0.0f));
         projection = mat4_perspective_fov_lh(3.14159265f / 4.0f, 1.0f, 1.0f, 1000.0f);
-        render_set_camera(view, projection, &m.light);
+        render_set_camera(view, projection, &light);
         pose = asset_pose(&m.prize_models[kind], m.states[i].age);
         for (pass = 0; pass < 2; pass++)
             render_draw_posed(mesh, mat4_identity(), pose, pass == 0 ? RENDER_PASS_SOLID : RENDER_PASS_BLENDED,
@@ -1132,7 +1136,7 @@ static void draw_cursor(void)
     float x = m.mouse_x, y = m.mouse_y;
     float width = m.view_width * (float)m.screen_width / (float)(m.viewport[2] > 0 ? m.viewport[2] : 1);
     float height = m.view_height * (float)m.screen_height / (float)(m.viewport[3] > 0 ? m.viewport[3] : 1);
-    float right = width * 0.5f - 32.0f, top = height * 0.5f;
+    float right = width * 0.5f, top = height * 0.5f;
 
     batch_draw();
     render_viewport(0, 0, m.screen_width, m.screen_height);
@@ -1140,7 +1144,7 @@ static void draw_cursor(void)
     if (x > right) x = right;
     if (x < -width * 0.5f) x = -width * 0.5f;
     if (y > top) y = top;
-    if (y < 32.0f - top) y = 32.0f - top;
+    if (y < -top) y = -top;
     batch_quad(ORDER_CURSOR, m.cursor_texture, x, y, x + 32.0f, y - 32.0f, u, v, u + 0.25f - 2.0f / 256.0f,
                v + 0.25f - 2.0f / 256.0f, 0xffffffffu);
 }
