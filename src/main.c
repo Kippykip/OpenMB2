@@ -56,7 +56,6 @@
 typedef struct App {
     SDL_Window *window;
     SDL_GLContext gl_context;
-    Params params;
     Settings settings;   /* openmb2.ini */
     bool running;
     const char *screenshot_path;
@@ -206,15 +205,13 @@ static void video_size(int *width, int *height)
         *width = g_app.settings.width;
         *height = g_app.settings.height;
     } else {
-        params_video_mode(g_app.params.resolution, width, height);
+        params_video_mode(g_app.settings.params.resolution, width, height);
     }
 }
 
 static bool want_fullscreen(void)
 {
-    if (g_app.settings.fullscreen == FULLSCREEN_AUTO)
-        return !g_app.params.windowed;
-    return g_app.settings.fullscreen == FULLSCREEN_ON;
+    return !g_app.settings.params.windowed;
 }
 
 /*
@@ -254,10 +251,11 @@ static bool is_fullscreen(void)
     return (SDL_GetWindowFlags(g_app.window) & SDL_WINDOW_FULLSCREEN) != 0;
 }
 
-/* The options page picked another size. */
+/* The video options page was left with something changed. */
 static void video_changed(void)
 {
-    apply_video(is_fullscreen());
+    SDL_GL_SetSwapInterval(g_app.settings.vsync ? 1 : 0);
+    apply_video(want_fullscreen());
 }
 
 /*
@@ -308,12 +306,9 @@ static bool create_window(void)
     return create_gl_context();
 }
 
-static void save_params(void);
 static void save_settings(void);
 
-/* Alt+Enter, kept for next time: in params.txt's window setting when
-   openmb2.ini follows it (so the original goes the same way), or else
-   in openmb2.ini. */
+/* Alt+Enter, kept for next time. */
 static void toggle_fullscreen(void)
 {
     bool maximized = g_app.settings.maximized, fullscreen;
@@ -324,13 +319,8 @@ static void toggle_fullscreen(void)
         SDL_MaximizeWindow(g_app.window);
     if (g_app.screenshot_path != NULL)
         return;
-    if (g_app.settings.fullscreen == FULLSCREEN_AUTO) {
-        g_app.params.windowed = !fullscreen;
-        save_params();
-    } else {
-        g_app.settings.fullscreen = fullscreen ? FULLSCREEN_ON : FULLSCREEN_OFF;
-        save_settings();
-    }
+    g_app.settings.params.windowed = !fullscreen;
+    save_settings();
 }
 
 /* ------------------------------------------------------------------------ */
@@ -402,7 +392,7 @@ static void start_play(void)
     int level;
 
     menu_screen_game(&folder, &level, &pad);
-    play_screen_set_options(g_app.params.mouse_sensitivity, g_app.params.infravision);
+    play_screen_set_options(g_app.settings.params.mouse_sensitivity, g_app.settings.params.infravision);
     if (play_screen_start(folder, level, pad)) {
         g_app.playing = true;
         set_mouse_mode(true);
@@ -517,14 +507,6 @@ static void show_error(const char *message)
     SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "OpenMB2", message, NULL);
 }
 
-static void save_params(void)
-{
-    char text[512];
-    int length = params_format(&g_app.params, text, sizeof(text));
-    if (length > 0 && length < (int)sizeof(text))
-        userfile_write("params.txt", text, (size_t)length);
-}
-
 static void save_settings(void)
 {
     char text[4096];
@@ -533,15 +515,17 @@ static void save_settings(void)
         userfile_write("openmb2.ini", text, (size_t)length);
 }
 
-/* openmb2.ini, written with its defaults when there isn't one. */
+/* openmb2.ini over params.txt's settings (an older openmb2.ini has only
+   some of them); written when there isn't one. */
 static void load_settings(void)
 {
     size_t size;
     unsigned char *text = userfile_read("openmb2.ini", &size);
 
     settings_set_defaults(&g_app.settings);
+    settings_import_params(&g_app.settings, "params.txt");
     if (text == NULL) {
-        log_info("no openmb2.ini, writing one with the default settings");
+        log_info("no openmb2.ini, writing one from params.txt or the defaults");
         save_settings();
         return;
     }
@@ -625,11 +609,9 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    if (!params_load(&g_app.params, "params.txt"))
-        log_info("no params.txt, using default settings");
     load_settings();
     options.smooth = g_app.settings.smooth && !no_smooth;
-    options.intro = g_app.settings.level_intro && !no_intro;
+    options.intro = !g_app.settings.skip_transitions && !no_intro;
     options.sort_glass = g_app.settings.sort_glass && !original_glass;
     options.edge_bounce = g_app.settings.edge_bounce && !original_bounce;
     options.precise_mouse = g_app.settings.precise_mouse && !original_mouse;
@@ -643,11 +625,11 @@ int main(int argc, char **argv)
     }
 
     srand(seed);
-    audio_init(g_app.params.sound_volume, g_app.params.music_volume);
-    options.mouse_sensitivity = g_app.params.mouse_sensitivity;
-    options.infravision = g_app.params.infravision;
+    audio_init(g_app.settings.params.sound_volume, g_app.settings.params.music_volume);
+    options.mouse_sensitivity = g_app.settings.params.mouse_sensitivity;
+    options.infravision = g_app.settings.params.infravision;
     if (!render_init() || !play_screen_init(g_app.window, &options) ||
-        !menu_screen_init(g_app.window, &g_app.params, true)) {
+        !menu_screen_init(g_app.window, &g_app.settings.params, true)) {
         show_error("Couldn't start the game. See the log for details.");
         shutdown_app();
         return 1;
@@ -680,7 +662,6 @@ int main(int argc, char **argv)
         run_frame();
 #endif
 
-    save_params();
     save_settings();
     shutdown_app();
     return 0;

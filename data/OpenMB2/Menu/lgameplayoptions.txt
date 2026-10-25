@@ -3,8 +3,10 @@ List
   menuitem: Menu/gplang.txt
   menuitem: Menu/gpmsensivity.txt
   menuitem: Menu/gpinfravision.txt
+  menuitem: Menu/gpskip.txt
   menuitem: Menu/gpback.txt
   menuitem: Menu/panel2.txt
   menuitem: Menu/panel3.txt
+  menuitem: Menu/panel4.txt
   menuitem: Menu/gppanel.txt
 }

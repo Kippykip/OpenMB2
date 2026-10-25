@@ -9,5 +9,5 @@ CMenuItemPanel
   id: exit
   texturex: 0
   texturey: 5
-  pos: 0 74
+  pos: 0 -22
 }

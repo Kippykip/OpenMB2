@@ -338,6 +338,8 @@ static float slider_value(const MenuItem *item)
         return (float)m.params->music_volume;
     if (strcmp(item->id, "msensivity") == 0)
         return (m.params->mouse_sensitivity - 0.5f) / 0.005f;
+    if (strcmp(item->id, "joysens") == 0 && m.settings != NULL)
+        return (float)m.settings->joystick_sensitivity;
     return 0.0f;
 }
 
@@ -670,13 +672,39 @@ static bool *checkbox_value(const MenuItem *item)
         return &m.params->joystick;
     if (strcmp(item->id, "infravision") == 0)
         return &m.params->infravision;
+    if (strcmp(item->id, "windowed") == 0)
+        return &m.params->windowed;
+    if (m.settings == NULL)
+        return NULL;
+    /* OpenMB2's own */
+    if (strcmp(item->id, "vsync") == 0)
+        return &m.settings->vsync;
+    if (strcmp(item->id, "interpolate") == 0)
+        return &m.settings->smooth;
+    if (strcmp(item->id, "skiptransitions") == 0)
+        return &m.settings->skip_transitions;
+    if (strcmp(item->id, "vibration") == 0)
+        return &m.settings->joystick_vibration;
     return NULL;
+}
+
+/* Like a new screen size, a change to the window or vsync waits until
+   the page is left. */
+static void video_pending(void)
+{
+    if (m.settings == NULL || m.video_pending)
+        return;
+    m.pending_width = m.settings->width;
+    m.pending_height = m.settings->height;
+    m.video_pending = true;
 }
 
 static void apply_settings(void)
 {
     audio_set_volumes(m.params->sound_volume, m.params->music_volume);
     play_screen_set_options(m.params->mouse_sensitivity, m.params->infravision);
+    if (m.settings != NULL)
+        play_screen_set_switches(m.settings->smooth, !m.settings->skip_transitions);
 }
 
 static float box_left(const MenuItem *item)
@@ -699,6 +727,8 @@ static void update_checkbox(MenuItem *item, ItemState *state)
         *value = !*value;
         state->age = 0;
         click_sound();
+        if (strcmp(item->id, "windowed") == 0 || strcmp(item->id, "vsync") == 0)
+            video_pending();
         apply_settings();
     }
 }
@@ -773,29 +803,28 @@ static void choose_video_mode(void)
         m.params->resolution = original;
     if (m.settings == NULL)
         return;
+    video_pending();
     m.pending_width = width;
     m.pending_height = height;
-    m.video_pending = true;
 }
 
-/* params.txt's language, or openmb2.ini's if it is one only OpenMB2 has. */
-static void find_language(void)
-{
-    int added = m.settings != NULL ? lang_find(m.settings->language) : -1;
-
-    m.language = added >= lang_game_count() ? added : m.params->language;
-}
-
-/* A language picked on the options page: the original only knows its own. */
+/* A language picked on the options page, kept by name. */
 static void choose_language(void)
 {
-    if (m.language < lang_game_count()) {
-        m.params->language = m.language;
-        if (m.settings != NULL)
-            m.settings->language[0] = '\0';
-    } else if (m.settings != NULL) {
+    m.params->language = m.language;
+    if (m.settings != NULL)
         lang_name(m.language, m.settings->language, sizeof(m.settings->language));
-    }
+}
+
+/* openmb2.ini's language, or params.txt's when it names none we have. */
+static void find_language(void)
+{
+    int found = m.settings != NULL ? lang_find(m.settings->language) : -1;
+
+    m.language = found >= 0 ? found : m.params->language;
+    if (m.language < 0 || m.language >= lang_count())
+        m.language = 0;
+    choose_language();
 }
 
 void menu_screen_set_settings(Settings *settings, void (*changed)(void))
@@ -862,6 +891,8 @@ static void update_slider(MenuItem *item, ItemState *state)
         m.params->music_volume = (int)value;
     else if (strcmp(item->id, "msensivity") == 0)
         m.params->mouse_sensitivity = value * 0.005f + 0.5f;
+    else if (strcmp(item->id, "joysens") == 0 && m.settings != NULL)
+        m.settings->joystick_sensitivity = (int)value;
     apply_settings();
 }
 

@@ -1073,6 +1073,12 @@ void play_screen_set_options(float mouse_sensitivity, bool infravision)
     v.options.infravision = infravision;
 }
 
+void play_screen_set_switches(bool smooth, bool intro)
+{
+    v.options.smooth = smooth;
+    v.options.intro = intro;
+}
+
 /* State 1 (0x418b70): a new game, 3 lives and no score. */
 bool play_screen_start(const char *folder, int level, const char *pad)
 {

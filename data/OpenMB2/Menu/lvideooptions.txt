@@ -1,6 +1,12 @@
 List
 {
   menuitem: Menu/vidmode.txt
+  menuitem: Menu/vidwindowed.txt
+  menuitem: Menu/vidvsync.txt
+  menuitem: Menu/vidinterpolate.txt
   menuitem: Menu/vidback.txt
+  menuitem: Menu/panel2.txt
+  menuitem: Menu/panel3.txt
+  menuitem: Menu/panel4.txt
   menuitem: Menu/vidpanel.txt
 }

@@ -1,0 +1,15 @@
+CMenuItemSlider
+{
+  width: 208
+  height: 32
+  senswdth: 115
+  offset: 0.0 0.4375
+  size: 0.8125 0.125
+  texture: Options.png
+  color: FFFFFFFF
+  id: joysens
+  texturex: 0
+  texturey: 0
+  textindex: 6
+  pos: 0 10
+}

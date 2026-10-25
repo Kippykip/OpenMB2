@@ -1,6 +1,10 @@
 List
 {
   menuitem: Menu/joycheck.txt
+  menuitem: Menu/joyvibration.txt
+  menuitem: Menu/joysens.txt
   menuitem: Menu/joyback.txt
+  menuitem: Menu/panel2.txt
+  menuitem: Menu/panel3.txt
   menuitem: Menu/joypanel.txt
 }

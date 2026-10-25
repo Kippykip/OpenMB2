@@ -130,6 +130,12 @@ Rozgrywka
 Grafika
 DÁwi‰k
 Joystick
+Bez intro
+Tryb okna
+VSync
+Interpolacja klatek
+W‡Âcz wibracje
+Joystick
 
 /// NAG-SCREEN ///
 Wersja testowa

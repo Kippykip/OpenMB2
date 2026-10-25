@@ -30,6 +30,7 @@ static const struct {
 } k_setting_names[] = {
     { "sound", 50 }, { "music", 51 }, { "joystick", 52 }, { "hallfame", 53 },
     { "infravision", 54 }, { "msensivity", 56 }, { "language", 49 },
+    { "joysens", 66 }, /* OpenMB2's own */
 };
 
 static bool same(const char *a, const char *b)

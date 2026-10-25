@@ -1,0 +1,15 @@
+CMenuItemCheckbox
+{
+  width: 208
+  height: 32
+  senswdth: 160
+  offset: 0.0 0.3175
+  size: 0.8125 0.125
+  texture: Options.png
+  color: FFFFFFFF
+  id: interpolate
+  texturex: 0
+  texturey: 0
+  textindex: 64
+  pos: 0 -38
+}

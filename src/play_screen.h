@@ -59,6 +59,9 @@ int play_screen_score(void);
 void play_screen_progress(int *level, int *level_score, const char **folder);
 /* The options page's settings. */
 void play_screen_set_options(float mouse_sensitivity, bool infravision);
+/* The options page's settings for what OpenMB2 adds: smooth motion and
+   the camera's flight in at a level's start. */
+void play_screen_set_switches(bool smooth, bool intro);
 /* Load the HUD's font again, for the language now in use (see lang_font). */
 void play_screen_load_font(void);
 void play_screen_handle_event(const SDL_Event *event);

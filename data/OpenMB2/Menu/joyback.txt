@@ -11,5 +11,5 @@ CMenuItemButton
   texturex: 0
   texturey: 0
   textindex: 3
-  pos: 0 54
+  pos: 0 -42
 }

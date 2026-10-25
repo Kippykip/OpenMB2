@@ -10,13 +10,16 @@
 
 void settings_set_defaults(Settings *settings)
 {
+    params_set_defaults(&settings->params);
+    settings->params.joystick = true;
     settings->width = 0;
     settings->height = 0;
     settings->maximized = false;
-    settings->fullscreen = FULLSCREEN_AUTO;
     settings->vsync = true;
     settings->smooth = true;
-    settings->level_intro = true;
+    settings->skip_transitions = false;
+    settings->joystick_vibration = true;
+    settings->joystick_sensitivity = 50;
     settings->sort_glass = true;
     settings->edge_bounce = true;
     settings->precise_mouse = true;
@@ -24,6 +27,14 @@ void settings_set_defaults(Settings *settings)
     settings->language[0] = '\0';
     snprintf(settings->score_server, sizeof(settings->score_server), "https://kippykip.com/mb2s");
     settings->online_id[0] = '\0';
+}
+
+void settings_import_params(Settings *settings, const char *game_path)
+{
+    bool joystick = settings->params.joystick;
+
+    params_load(&settings->params, game_path);
+    settings->params.joystick = joystick;
 }
 
 static bool same(const char *a, const char *b)
@@ -46,26 +57,61 @@ static bool parse_bool(const char *value, bool old)
     return old;
 }
 
+static int clamp(int value, int low, int high)
+{
+    return value < low ? low : value > high ? high : value;
+}
+
+static float clamp_float(float value, float low, float high)
+{
+    return value < low ? low : value > high ? high : value;
+}
+
 static void set(Settings *s, const char *section, const char *key, const char *value)
 {
-    if (same(section, "display")) {
+    Params *p = &s->params;
+
+    if (same(section, "gameplay")) {
+        if (same(key, "language"))
+            snprintf(s->language, sizeof(s->language), "%s", value);
+        else if (same(key, "mouse_speed") && value[0] != '\0')
+            p->mouse_sensitivity = clamp_float(strtof(value, NULL), 0.5f, 1.0f);
+        else if (same(key, "xray_ball"))
+            p->infravision = parse_bool(value, p->infravision);
+        else if (same(key, "skip_transitions"))
+            s->skip_transitions = parse_bool(value, s->skip_transitions);
+    } else if (same(section, "video") || same(section, "display")) {
         if (same(key, "width"))
             s->width = atoi(value) > 0 ? atoi(value) : 0;
         else if (same(key, "height"))
             s->height = atoi(value) > 0 ? atoi(value) : 0;
         else if (same(key, "maximized"))
             s->maximized = parse_bool(value, s->maximized);
-        else if (same(key, "fullscreen"))
-            s->fullscreen = same(value, "auto") ? FULLSCREEN_AUTO
-                            : parse_bool(value, false) ? FULLSCREEN_ON
-                                                       : FULLSCREEN_OFF;
+        else if (same(key, "windowed"))
+            p->windowed = parse_bool(value, p->windowed);
+        else if (same(key, "fullscreen") && !same(value, "auto")) /* older files */
+            p->windowed = !parse_bool(value, !p->windowed);
         else if (same(key, "vsync"))
             s->vsync = parse_bool(value, s->vsync);
+        else if (same(key, "interpolate"))
+            s->smooth = parse_bool(value, s->smooth);
+    } else if (same(section, "audio")) {
+        if (same(key, "sound_volume") && value[0] != '\0')
+            p->sound_volume = clamp(atoi(value), 0, 100);
+        else if (same(key, "music_volume") && value[0] != '\0')
+            p->music_volume = clamp(atoi(value), 0, 100);
+    } else if (same(section, "joystick")) {
+        if (same(key, "enabled"))
+            p->joystick = parse_bool(value, p->joystick);
+        else if (same(key, "vibration"))
+            s->joystick_vibration = parse_bool(value, s->joystick_vibration);
+        else if (same(key, "sensitivity") && value[0] != '\0')
+            s->joystick_sensitivity = clamp(atoi(value), 0, 100);
     } else if (same(section, "options")) {
-        if (same(key, "smooth"))
+        if (same(key, "smooth")) /* older files' names */
             s->smooth = parse_bool(value, s->smooth);
         else if (same(key, "level_intro"))
-            s->level_intro = parse_bool(value, s->level_intro);
+            s->skip_transitions = !parse_bool(value, !s->skip_transitions);
         else if (same(key, "sort_glass"))
             s->sort_glass = parse_bool(value, s->sort_glass);
         else if (same(key, "edge_bounce"))
@@ -136,14 +182,24 @@ static const char *on_off(bool on)
 
 int settings_format(const Settings *s, char *out, size_t size)
 {
-    static const char *const fullscreen[] = { "auto", "on", "off" };
+    const Params *p = &s->params;
 
     return snprintf(out, size,
-                    "; OpenMB2's own settings. The original game doesn't read this file;\n"
-                    "; the settings both games share stay in params.txt.\n"
+                    "; OpenMB2's settings. The original game doesn't read this file; the\n"
+                    "; first time, OpenMB2 took what it could from the original's params.txt.\n"
                     "; A switch on the command line wins over this file for that run.\n"
                     "\n"
-                    "[display]\n"
+                    "[gameplay]\n"
+                    "; A file's name in Languages, without .txt\n"
+                    "language = %s\n"
+                    "; 0.5 to 1\n"
+                    "mouse_speed = %.3f\n"
+                    "; Show the balls through bricks\n"
+                    "xray_ball = %s\n"
+                    "; Don't fly the camera in at the start of a level (on: --no-intro)\n"
+                    "skip_transitions = %s\n"
+                    "\n"
+                    "[video]\n"
                     "; The window's size, or the screen mode when full screen; a window\n"
                     "; resized by hand keeps its size here. 0 x 0 uses params.txt's video\n"
                     "; mode (and the desktop when full screen).\n"
@@ -151,15 +207,24 @@ int settings_format(const Settings *s, char *out, size_t size)
                     "height = %d\n"
                     "; The window was maximised when OpenMB2 closed, and opens so again\n"
                     "maximized = %s\n"
-                    "; on, off, or auto to follow params.txt's window setting\n"
-                    "fullscreen = %s\n"
+                    "windowed = %s\n"
                     "vsync = %s\n"
+                    "; Draw moving things between game steps (off: --no-smooth)\n"
+                    "interpolate = %s\n"
+                    "\n"
+                    "[audio]\n"
+                    "; 0 to 100\n"
+                    "sound_volume = %d\n"
+                    "music_volume = %d\n"
+                    "\n"
+                    "[joystick]\n"
+                    "enabled = %s\n"
+                    "vibration = %s\n"
+                    "; 0 to 100\n"
+                    "sensitivity = %d\n"
                     "\n"
                     "[options]\n"
-                    "; Draw moving things between game steps (off: --no-smooth)\n"
-                    "smooth = %s\n"
-                    "; Fly the camera in at the start of a level (off: --no-intro)\n"
-                    "level_intro = %s\n"
+                    "; What OpenMB2 does differently from the original\n"
                     "; Draw see-through bricks back to front (off: --original-glass)\n"
                     "sort_glass = %s\n"
                     "; Bats without end bounces bounce as in the middle (off: --original-bounce)\n"
@@ -168,9 +233,6 @@ int settings_format(const Settings *s, char *out, size_t size)
                     "precise_mouse = %s\n"
                     "; Fill a wide screen with the menus, not 4:3 (on: --wide-menus)\n"
                     "wide_menus = %s\n"
-                    "; A language only in the OpenMB2 folder's Languages; empty uses\n"
-                    "; params.txt's, which the original game shares\n"
-                    "language = %s\n"
                     "\n"
                     "[online]\n"
                     "; Where the online high scores are kept; the original's server is gone,\n"
@@ -178,8 +240,10 @@ int settings_format(const Settings *s, char *out, size_t size)
                     "score_server = %s\n"
                     "; Who you are there, where the original's id (from the C: drive) can't be had\n"
                     "id = %s\n",
-                    s->width, s->height, on_off(s->maximized), fullscreen[s->fullscreen], on_off(s->vsync),
-                    on_off(s->smooth), on_off(s->level_intro), on_off(s->sort_glass),
-                    on_off(s->edge_bounce), on_off(s->precise_mouse), on_off(s->wide_menus), s->language, s->score_server,
-                    s->online_id);
+                    s->language, (double)p->mouse_sensitivity, on_off(p->infravision),
+                    on_off(s->skip_transitions), s->width, s->height, on_off(s->maximized),
+                    on_off(p->windowed), on_off(s->vsync), on_off(s->smooth), p->sound_volume,
+                    p->music_volume, on_off(p->joystick), on_off(s->joystick_vibration),
+                    s->joystick_sensitivity, on_off(s->sort_glass), on_off(s->edge_bounce),
+                    on_off(s->precise_mouse), on_off(s->wide_menus), s->score_server, s->online_id);
 }
