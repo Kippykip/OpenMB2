@@ -60,6 +60,12 @@ static void sound(Play *play, const char *name, int volume, int pan)
         play->sound(name, volume, pan, play->user);
 }
 
+static void rumble(Play *play, PlayRumble strength)
+{
+    if (play->rumble != NULL)
+        play->rumble(strength, play->user);
+}
+
 static void message(Play *play, int text, uint32_t color)
 {
     if (play->message != NULL)
@@ -375,6 +381,7 @@ static void explode(Play *play, Vec3 at)
     int self = brick_at(play, at), i;
     Vec3 p = at;
 
+    rumble(play, PLAY_RUMBLE_STRONG);
     /* (A cannon ball can burst on fire, which itself stays.) */
     if (self >= 0) {
         p = play->scene->bricks[self].position;
@@ -765,6 +772,7 @@ static void ball_vs_brick(Play *play, Ball *ball)
     }
     if (!crossed_face(ball, play->scene->bricks[index].position, &v))
         return;
+    rumble(play, PLAY_RUMBLE_LIGHT);
     if (brick_hit(play, index, ball)) {
         ball->position = ball->previous;
         ball->velocity = v;
@@ -1148,6 +1156,7 @@ static void bat_kill(Play *play)
     if (play->bat.mode == BAT_DEAD)
         return;
     sound(play, "batkilled.ogg", -1, 0);
+    rumble(play, PLAY_RUMBLE_STRONG);
     bat_explode(play);
     release_balls(play);
     play->bat.mode = BAT_DEAD;
@@ -1243,6 +1252,7 @@ static bool ball_vs_bat(Play *play, Ball *ball)
     ball_set_angle(ball, BAT_ANGLE / bat->half_width * d);
     ball_speed_up(play, ball, 0.01f);
     bat_sound(play, "ball2.ogg");
+    rumble(play, PLAY_RUMBLE_LIGHT);
     /* The rubber bat ties the ball to it on a string. */
     if (bat->mode == BAT_RUBBER) {
         ball->flags |= BALL_YOYO;
@@ -1965,8 +1975,6 @@ void play_free(Play *play)
 /* The bat follows the mouse (0x4042f0); the model leans as it goes. */
 void play_mouse_move(Play *play, int dx)
 {
-    Bat *bat = &play->bat;
-    float limit = play->scene->board.half_width - bat->half_width;
     float move;
 
     if (play->state != PLAY_RUNNING)
@@ -1981,6 +1989,16 @@ void play_mouse_move(Play *play, int dx)
         dx = (int)((float)dx * play->mouse_sensitivity);
         move = (float)dx * 0.18f;
     }
+    play_move_bat(play, move);
+}
+
+void play_move_bat(Play *play, float move)
+{
+    Bat *bat = &play->bat;
+    float limit = play->scene->board.half_width - bat->half_width;
+
+    if (play->state != PLAY_RUNNING)
+        return;
     bat->position.x += move;
     bat->tilt = (int)((float)bat->tilt - move * 70.0f);
     if (bat->tilt > 299) bat->tilt = 299;

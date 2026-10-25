@@ -45,14 +45,16 @@ The menus also work from the keyboard. The arrows move between items
 (the pointer hides until the mouse moves) and the item they're on
 turns red; Enter picks a button, a level or a checkbox. Left and Right
 move a slider, step a choice, or move along a row; on the packs page
-they choose the bat.
+they choose the bat. A joypad's d-pad or left stick does the same, with
+A for Enter and B or Start for Escape.
 
 In a level:
 
 | Key | Does |
 | --- | --- |
+| mouse, Left / Right | move the bat |
 | mouse drag, wheel | turn and zoom the camera |
-| Space | reset the camera |
+| Space, middle button | reset the camera |
 | F10 | smooth motion on / off |
 | Alt+Enter | fullscreen |
 | Escape | pause (which frees the mouse); again for the main menu |
@@ -60,7 +62,15 @@ In a level:
 | Shift+1-3 / 1-3 | save / load the hidden quick slots |
 | Shift+F11 | skip the level (a developers' cheat in the original) |
 
-`--cheats` turns on the testing keys below. Online scores are still
+With a joypad (an Xbox, PlayStation, Switch or most other pads, through
+SDL), the left stick or d-pad moves the bat, A fires, the right stick
+turns the camera and pressing either stick puts it back, and Start is
+Escape. While paused, L1 and R1 save and load, and any other button
+goes on. The pad gives a little shake for each brick or bat hit and a
+bigger one for explosions and losing the bat.
+
+`--cheats` turns on the testing keys below (and Left / Right then
+change level instead of moving the bat). Online scores are still
 shown but not sent while it is on.
 
 | Key | Does |
@@ -162,8 +172,9 @@ and `[online]`.
   params.txt's video mode isn't used. `windowed`, `vsync`, and `interpolate` (smooth motion
   between game steps; F10 switches it for the run).
 - `[audio]`: `sound_volume` and `music_volume`, 0 to 100.
-- `[joystick]`: `enabled` (on by default), `vibration` and
-  `sensitivity` (0 to 100). They are kept for joystick support to come.
+- `[joystick]`: `enabled` (on by default), `vibration`, and
+  `sensitivity` (0 to 100, 50 crosses the board in about 0.8 s; also
+  the arrow keys' speed).
 - `[options]`: what OpenMB2 does differently, as `on`/`off`:
   `sort_glass`, `edge_bounce`, `precise_mouse`, `wide_menus`.
 - `[online]`: `score_server` is the online scores' server (empty turns

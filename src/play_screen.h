@@ -62,6 +62,10 @@ void play_screen_set_options(float mouse_sensitivity, bool infravision);
 /* The options page's settings for what OpenMB2 adds: smooth motion and
    the camera's flight in at a level's start. */
 void play_screen_set_switches(bool smooth, bool intro);
+/* A joypad's left stick (with the d-pad and arrow keys) for the bat and
+   right stick for the camera, -1 to 1, the bat's already scaled by the
+   joystick sensitivity; given each frame. */
+void play_screen_set_pad(float move, float look_x, float look_y);
 /* Load the HUD's font again, for the language now in use (see lang_font). */
 void play_screen_load_font(void);
 void play_screen_handle_event(const SDL_Event *event);

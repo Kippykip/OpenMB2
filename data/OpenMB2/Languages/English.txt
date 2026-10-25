@@ -15,8 +15,8 @@ Score %d
 Lives %d
 Level %d
 Pause
-Press Escape for Main Menu
-ÂÏÏÏPress S to Save the game|ÊÏÏÏÏPress L to Load the game
+Press Escape or Start for Main Menu
+ÂÏÏÏPress S or L1 to Save the game|ÊÏÏÏÏPress L or R1 to Load the game
 ××Press any key or button to continue...
 Hypnotic Ball Time Over
 Yo-Yo Time Over

@@ -103,6 +103,7 @@ add_executable(openmb2
     src/main.c
     src/menu_screen.c
     src/online.c
+    src/pad.c
     src/play_screen.c
     src/userfile.c
     src/audio/audio.c

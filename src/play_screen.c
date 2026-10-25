@@ -4,6 +4,7 @@
 #include "play_screen.h"
 #include "assets.h"
 #include "userfile.h"
+#include "pad.h"
 #include "audio/audio.h"
 #include "core/config.h"
 #include "core/log.h"
@@ -109,6 +110,8 @@ static struct {
     } messages[5];
     int message_count;
     bool paused;
+    /* A joypad's sticks and the arrow keys, as play_screen_set_pad gives them. */
+    float pad_move, pad_look_x, pad_look_y;
     uint32_t time;     /* ms, for scrolling textures */
     char pad[260];     /* the bat's pad file, "" for the level's own */
     PlayScreenResult result;
@@ -805,6 +808,15 @@ static void play_sound(const char *name, int volume, int pan, void *user)
     audio_play(name, volume, pan);
 }
 
+static void play_rumble(PlayRumble rumble, void *user)
+{
+    (void)user;
+    if (rumble == PLAY_RUMBLE_STRONG)
+        pad_rumble(0.8f, 300);
+    else
+        pad_rumble(0.25f, 60);
+}
+
 /* The level tunes are Music/mb0.txt to mb3.txt (0x41474f, 0x41c00a). */
 static void play_level_music(int tune)
 {
@@ -884,6 +896,7 @@ static void load_level(int pack, int level)
     if (play_start(&v.play, &v.scene, v.score, v.lives, v.options.mouse_sensitivity)) {
         v.play.sound = play_sound;
         v.play.message = add_message;
+        v.play.rumble = play_rumble;
         v.play.precise_mouse = v.options.precise_mouse;
         v.playing = true;
         v.fade = 0.0f;
@@ -1287,6 +1300,76 @@ static bool cheat_key(const SDL_Keysym *key)
     return false;
 }
 
+/* Yaw within ±60° and pitch from 15° to 90°, as the original keeps them
+   (0x409ed0, 0x409e80). */
+static void turn_camera(float yaw, float pitch)
+{
+    v.camera.yaw += yaw;
+    v.camera.pitch += pitch;
+    if (v.camera.yaw < -1.0472f) v.camera.yaw = -1.0472f;
+    if (v.camera.yaw > 1.0472f) v.camera.yaw = 1.0472f;
+    if (v.camera.pitch < 0.2618f) v.camera.pitch = 0.2618f;
+    if (v.camera.pitch > 1.5708f) v.camera.pitch = 1.5708f;
+}
+
+/*
+ * A joypad's buttons (Start comes as Escape): A fires like the left
+ * button, a stick pressed in puts the camera back, and while paused L1
+ * and R1 save and load like S and L. Paused, any other button goes on,
+ * and A only does that.
+ */
+static void pad_button_event(int button, bool down)
+{
+    if (v.paused) {
+        if (!down)
+            return;
+        v.paused = false;
+        if (button == SDL_CONTROLLER_BUTTON_LEFTSHOULDER)
+            save_game("default.save");
+        else if (button == SDL_CONTROLLER_BUTTON_RIGHTSHOULDER)
+            load_game("default.save");
+        return;
+    }
+    switch (button) {
+    case SDL_CONTROLLER_BUTTON_A:
+        if (down && v.playing && !v.camera.flying && v.play.state != PLAY_GAME_OVER) {
+            play_click(&v.play);
+            play_hold_trigger(&v.play, true);
+        } else if (!down) {
+            play_hold_trigger(&v.play, false);
+        }
+        break;
+    case SDL_CONTROLLER_BUTTON_LEFTSTICK:
+    case SDL_CONTROLLER_BUTTON_RIGHTSTICK:
+        if (down)
+            reset_camera();
+        break;
+    default:
+        break;
+    }
+}
+
+void play_screen_set_pad(float move, float look_x, float look_y)
+{
+    v.pad_move = move;
+    v.pad_look_x = look_x;
+    v.pad_look_y = look_y;
+}
+
+/* The sticks and arrow keys, each frame: a full push takes the bat across
+   the board in about 0.8 s, and turns the camera at 1.5 radians a second. */
+static void use_pad(uint32_t ms)
+{
+    float seconds = (float)ms / 1000.0f;
+
+    if (!v.playing || v.paused)
+        return;
+    if (!v.camera.flying && (v.pad_look_x != 0.0f || v.pad_look_y != 0.0f))
+        turn_camera(v.pad_look_x * 1.5f * seconds, v.pad_look_y * 1.5f * seconds);
+    if (v.pad_move != 0.0f)
+        play_move_bat(&v.play, v.pad_move * v.scene.board.half_width * 2.0f / 0.8f * seconds);
+}
+
 void play_screen_handle_event(const SDL_Event *event)
 {
     /* While paused, any other key goes on with the game, and is then
@@ -1353,6 +1436,8 @@ void play_screen_handle_event(const SDL_Event *event)
     case SDL_MOUSEBUTTONDOWN:
         if (event->button.button == SDL_BUTTON_RIGHT) {
             v.dragging = true;
+        } else if (event->button.button == SDL_BUTTON_MIDDLE) {
+            reset_camera(); /* OpenMB2's own, like Space */
         } else if (event->button.button == SDL_BUTTON_LEFT && v.playing && !v.camera.flying &&
                    v.play.state != PLAY_GAME_OVER) {
             play_click(&v.play);
@@ -1367,17 +1452,15 @@ void play_screen_handle_event(const SDL_Event *event)
         break;
     case SDL_MOUSEMOTION:
         if (v.dragging && !v.camera.flying) {
-            /* The original turns the camera by 0.005 per mouse step, yaw
-               within ±60° and pitch from 15° to 90° (0x409ed0, 0x409e80). */
-            v.camera.yaw += (float)event->motion.xrel * 0.005f;
-            v.camera.pitch += (float)event->motion.yrel * 0.005f;
-            if (v.camera.yaw < -1.0472f) v.camera.yaw = -1.0472f;
-            if (v.camera.yaw > 1.0472f) v.camera.yaw = 1.0472f;
-            if (v.camera.pitch < 0.2618f) v.camera.pitch = 0.2618f;
-            if (v.camera.pitch > 1.5708f) v.camera.pitch = 1.5708f;
+            /* The original turns the camera by 0.005 per mouse step. */
+            turn_camera((float)event->motion.xrel * 0.005f, (float)event->motion.yrel * 0.005f);
         } else if (v.playing) {
             play_mouse_move(&v.play, event->motion.xrel);
         }
+        break;
+    case SDL_CONTROLLERBUTTONDOWN:
+    case SDL_CONTROLLERBUTTONUP:
+        pad_button_event(event->cbutton.button, event->type == SDL_CONTROLLERBUTTONDOWN);
         break;
     case SDL_MOUSEWHEEL:
         if (v.camera.flying)
@@ -2264,6 +2347,7 @@ PlayScreenResult play_screen_frame(int width, int height, uint32_t ms)
        playing and once when paused, so they animate twice as fast in play
        (0x406600, 0x407880). */
     v.object_time += v.playing && !v.paused ? ms * 2 : ms;
+    use_pad(ms);
     update(ms);
     /* They fade away while paused too. */
     if (v.playing && (v.play.state == PLAY_RUNNING || v.play.state == PLAY_BAT_LOST))

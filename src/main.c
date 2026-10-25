@@ -31,6 +31,7 @@
 #include "game/level.h"
 #include "game/params.h"
 #include "game/settings.h"
+#include "pad.h"
 #include "menu_screen.h"
 #include "online.h"
 #include "platform/gl.h"
@@ -39,6 +40,7 @@
 #include "userfile.h"
 
 #include <SDL.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -63,6 +65,9 @@ typedef struct App {
     uint32_t last_ticks;
     bool playing;        /* a level, not the menus */
     bool focused;        /* the window has the keyboard */
+    bool cheats;         /* --cheats: the arrow keys are the testing keys in a level */
+    int pad_way;         /* the d-pad or stick's way in the menus, as an arrow key */
+    int pad_repeat;      /* ms until that way steps again */
     int mouse_mode;      /* what update_mouse_mode() last set, -1 for nothing yet */
 } App;
 
@@ -395,8 +400,110 @@ static void start_play(void)
     }
 }
 
+static void handle_event(const SDL_Event *event);
+
+/* A joypad button standing in for a key. */
+static void send_key(SDL_Keycode key)
+{
+    SDL_Event event;
+
+    SDL_zero(event);
+    event.type = SDL_KEYDOWN;
+    event.key.state = SDL_PRESSED;
+    event.key.keysym.sym = key;
+    event.key.keysym.scancode = SDL_GetScancodeFromKey(key);
+    handle_event(&event);
+}
+
+/*
+ * Joypad buttons: Start is Escape everywhere; in the menus A is Enter and
+ * B is Escape (the d-pad steps in pad_frame). In a level the play screen
+ * has the rest. Returns true for a button used here.
+ */
+static bool pad_key(const SDL_Event *event)
+{
+    if (event->type != SDL_CONTROLLERBUTTONDOWN && event->type != SDL_CONTROLLERBUTTONUP)
+        return false;
+    if (!pad_enabled())
+        return true;
+    if (event->cbutton.button == SDL_CONTROLLER_BUTTON_START) {
+        if (event->type == SDL_CONTROLLERBUTTONDOWN)
+            send_key(SDLK_ESCAPE);
+        return true;
+    }
+    if (g_app.playing)
+        return false;
+    if (event->type == SDL_CONTROLLERBUTTONDOWN && event->cbutton.button == SDL_CONTROLLER_BUTTON_A)
+        send_key(SDLK_RETURN);
+    else if (event->type == SDL_CONTROLLERBUTTONDOWN && event->cbutton.button == SDL_CONTROLLER_BUTTON_B)
+        send_key(SDLK_ESCAPE);
+    return true;
+}
+
+/*
+ * Each frame: in the menus the d-pad or left stick steps like the arrow
+ * keys, again after 400 ms held and then every 120 ms; in a level they
+ * move the bat with the arrow keys (unless --cheats has them), scaled by
+ * the joystick sensitivity, and the right stick turns the camera.
+ */
+static void pad_frame(uint32_t ms)
+{
+    static const SDL_Keycode k_ways[] = { SDLK_UNKNOWN, SDLK_UP, SDLK_DOWN, SDLK_LEFT, SDLK_RIGHT };
+    float x = pad_axis(SDL_CONTROLLER_AXIS_LEFTX), y = pad_axis(SDL_CONTROLLER_AXIS_LEFTY);
+    int way = 0;
+
+    pad_set_options(g_app.settings.params.joystick, g_app.settings.joystick_vibration);
+    if (pad_button(SDL_CONTROLLER_BUTTON_DPAD_LEFT))
+        x = -1.0f;
+    else if (pad_button(SDL_CONTROLLER_BUTTON_DPAD_RIGHT))
+        x = 1.0f;
+    if (pad_button(SDL_CONTROLLER_BUTTON_DPAD_UP))
+        y = -1.0f;
+    else if (pad_button(SDL_CONTROLLER_BUTTON_DPAD_DOWN))
+        y = 1.0f;
+
+    if (g_app.playing) {
+        const Uint8 *keys = SDL_GetKeyboardState(NULL);
+        float speed = powf(2.0f, (float)(g_app.settings.joystick_sensitivity - 50) / 50.0f);
+
+        if (g_app.focused && !g_app.cheats) {
+            if (keys[SDL_SCANCODE_LEFT])
+                x = -1.0f;
+            else if (keys[SDL_SCANCODE_RIGHT])
+                x = 1.0f;
+        }
+        /* Gentle pushes for fine moves. */
+        play_screen_set_pad(x * fabsf(x) * speed, pad_axis(SDL_CONTROLLER_AXIS_RIGHTX),
+                            pad_axis(SDL_CONTROLLER_AXIS_RIGHTY));
+        g_app.pad_way = 0;
+        return;
+    }
+    if (fabsf(y) >= 0.5f && fabsf(y) >= fabsf(x))
+        way = y < 0.0f ? 1 : 2;
+    else if (fabsf(x) >= 0.5f)
+        way = x < 0.0f ? 3 : 4;
+    if (way == 0) {
+        g_app.pad_way = 0;
+        return;
+    }
+    if (way != g_app.pad_way) {
+        g_app.pad_way = way;
+        g_app.pad_repeat = 400;
+        send_key(k_ways[way]);
+        return;
+    }
+    g_app.pad_repeat -= (int)ms;
+    if (g_app.pad_repeat <= 0) {
+        g_app.pad_repeat = 120;
+        send_key(k_ways[way]);
+    }
+}
+
 static void handle_event(const SDL_Event *event)
 {
+    pad_handle_event(event);
+    if (pad_key(event))
+        return;
     switch (event->type) {
     case SDL_QUIT:
         g_app.running = false;
@@ -437,6 +544,7 @@ static void frame(int width, int height, uint32_t ms)
 {
     update_mouse_mode();
     remember_window();
+    pad_frame(ms);
     if (g_app.playing) {
         switch (play_screen_frame(width, height, ms)) {
         case PLAY_SCREEN_GAME_OVER: {
@@ -529,6 +637,7 @@ static void load_settings(void)
 
 static void shutdown_app(void)
 {
+    pad_shutdown();
     online_shutdown();
     menu_screen_shutdown();
     play_screen_shutdown();
@@ -639,6 +748,8 @@ int main(int argc, char **argv)
 #endif
     online_init(g_app.settings.score_server, (const char *)gl.GetString(GL_RENDERER), g_app.settings.online_id);
     online_block_sends(options.cheats);
+    g_app.cheats = options.cheats;
+    pad_init();
 
     g_app.running = true;
     g_app.last_ticks = SDL_GetTicks();

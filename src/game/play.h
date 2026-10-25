@@ -255,6 +255,10 @@ typedef void (*PlaySoundFn)(const char *name, int volume, int pan, void *user);
 /* A line for the bottom of the screen: string number text of the
    language file, in an ARGB colour (0x4262a0). */
 typedef void (*PlayMessageFn)(int text, uint32_t color, void *user);
+/* A joypad's shake (OpenMB2's own): a little for a brick or the bat, more
+   for an explosion or losing the bat. */
+typedef enum PlayRumble { PLAY_RUMBLE_LIGHT, PLAY_RUMBLE_STRONG } PlayRumble;
+typedef void (*PlayRumbleFn)(PlayRumble rumble, void *user);
 
 typedef struct Play {
     Scene *scene;
@@ -297,7 +301,8 @@ typedef struct Play {
     bool bricks_changed;         /* the scene's bricks need rebaking */
     PlaySoundFn sound;
     PlayMessageFn message;
-    void *user;                  /* passed to sound and message */
+    PlayRumbleFn rumble;
+    void *user;                  /* passed to sound, message and rumble */
 } Play;
 
 /* Prize names as the files call them ("incbat"), "" for PRIZE_NONE. */
@@ -312,6 +317,8 @@ void play_free(Play *play);
 
 /* Mouse movement in pixels, and the left button: releases the ball. */
 void play_mouse_move(Play *play, int dx);
+/* The bat moved along by dx, from a stick or the keys. */
+void play_move_bat(Play *play, float dx);
 void play_click(Play *play);
 /* Holding the button keeps a weapon firing as fast as it reloads. */
 void play_hold_trigger(Play *play, bool held);
