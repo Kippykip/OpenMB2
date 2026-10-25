@@ -82,6 +82,7 @@ static struct {
     int animal_count;
     int test_prize;                 /* the next kind F9 drops */
     unsigned turbine_time; /* the turbines' animation time, XFRAME_REST at first */
+    bool end_bounces;      /* the bat model has bounces for hits near its ends */
     XModel bat_model, ball_model, explosive_model, hypnotic_model;
     RenderMesh background, board, bricks, bat, ball, explosive_ball, hypnotic_ball;
     /* With sort_glass: each brick part's centre, to draw see-through ones
@@ -575,6 +576,10 @@ static Mat4 *pose_bat(void)
     {
         bool magnet = v.play.bat.mode == BAT_MAGNET;
         unsigned bounce = magnet ? 0 : v.play.bat.bounce_time;
+        /* A bat without end bounces stays still when hit near an end, as
+           in the original; by default it bounces as in the middle. */
+        if (v.options.edge_bounce && !v.end_bounces && bounce >= 1000)
+            bounce = bounce - (v.play.bat.bounce_kind == 2 ? 1150u : 1000u) + 1;
         set_frame_time(m, times, "Magnit", 0);
         set_frame_time(m, times, "Plashka", bounce);
         set_frame_time(m, times, "L_Hand", bounce);
@@ -704,6 +709,33 @@ static void draw_animals(RenderPass kind, float t)
     }
 }
 
+/*
+ * Does the plate or a hand move in the keys for a hit near an end
+ * (1000-1300)? The bats with one fan and none (pad_1.x, pad_2.x) only
+ * have the bounce in the middle.
+ */
+static bool has_end_bounces(const XModel *m)
+{
+    static const char *const frames[] = { "Plashka", "L_Hand", "R_Hand" };
+    int f, k, j;
+
+    for (f = 0; f < 3; f++) {
+        int frame = xmodel_find_frame(m, frames[f]);
+        const XKeys *keys;
+        if (frame < 0)
+            continue;
+        keys = &m->frames[frame].matrix;
+        for (k = 0; k < keys->count; k++) {
+            if (keys->keys[k].time < 1000 || keys->keys[k].time > 1300)
+                continue;
+            for (j = 0; j < 16; j++)
+                if (fabsf(keys->keys[k].value[j] - keys->keys[0].value[j]) > 0.001f)
+                    return true;
+        }
+    }
+    return false;
+}
+
 static void load_bat_model(void)
 {
     char path[128];
@@ -720,6 +752,7 @@ static void load_bat_model(void)
         config_free(&cfg);
     }
     v.turbine_time = XFRAME_REST;
+    v.end_bounces = has_end_bounces(&v.bat_model);
     if (xfile_load(&v.bat_model, path))
         asset_model_mesh(&v.bat, &v.bat_model, 0, "", "", NULL);
     else

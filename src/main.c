@@ -436,6 +436,7 @@ int main(int argc, char **argv)
     options.smooth = true;
     options.intro = true;
     options.sort_glass = true;
+    options.edge_bounce = true;
     for (i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--game") == 0 && i + 1 < argc)
             game_folder = argv[++i];
@@ -453,6 +454,8 @@ int main(int argc, char **argv)
             options.intro = false;
         else if (strcmp(argv[i], "--original-glass") == 0)
             options.sort_glass = false;
+        else if (strcmp(argv[i], "--original-bounce") == 0)
+            options.edge_bounce = false;
         else if (strcmp(argv[i], "--wide-menus") == 0)
             wide_menus = true;
         else if (strcmp(argv[i], "--autoplay") == 0)

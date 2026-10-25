@@ -69,6 +69,10 @@ shows over glass in front of it, or a solid brick behind shows through.
 OpenMB2 draws solid bricks first and glass from the back forwards;
 `--original-glass` goes back to the original's order.
 
+The bats with one fan and with none have no bounce for a ball hitting
+near their ends, so in the original they stay still; OpenMB2 gives them
+their bounce from the middle, and `--original-bounce` keeps them still.
+
 On a screen that isn't 4:3 the menus keep their shape between black
 bars; `--wide-menus` fills the screen instead, cutting off the
 background's edges.
