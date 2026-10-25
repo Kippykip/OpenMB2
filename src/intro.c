@@ -6,6 +6,7 @@
 #include "core/config.h"
 #include "core/log.h"
 #include "core/matrix.h"
+#include "game/textures.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -69,11 +70,21 @@ bool intro_start(void)
 {
     char path[128];
     Config cfg;
+    int i;
 
     intro_stop();
     if (!xfile_load(&in.logo_model, "SkinMeshes/LOGO.X")) {
         log_warn("intro: can't load SkinMeshes/LOGO.X");
         return false;
+    }
+    /* Smash Frenzy 2 keeps LOGO.X but not the title's pictures (mbl.png). */
+    for (i = 0; i < in.logo_model.material_count; i++) {
+        const char *texture = in.logo_model.materials[i].texture;
+        if (texture[0] != '\0' && !texture_find_image(texture, path, sizeof(path))) {
+            log_warn("intro: no %s, skipping the intro", texture);
+            intro_stop();
+            return false;
+        }
     }
     asset_model_mesh(&in.logo, &in.logo_model, 0, "", "", NULL);
     in.scratch = malloc((size_t)(in.logo.part_count + 1) * sizeof(*in.scratch));
