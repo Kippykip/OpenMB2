@@ -94,7 +94,8 @@ without the folder OpenMB2 plays the game as it is. `params.txt`, saves
 and scores are always the game's own, shared with the original.
 
 `data/OpenMB2` here holds what OpenMB2 adds; copy it into the game
-folder. For now that is French and Russian (`Languages/French.txt`,
+folder, or point `--overrides` at the folder the OpenMB2 folder is in
+(`--overrides data`) to use it from there instead. For now that is French and Russian (`Languages/French.txt`,
 `Languages/Russian.txt`).
 Languages only the OpenMB2 folder has come after the game's own on the
 options page, and picking one is kept in `openmb2.ini` (`language`)

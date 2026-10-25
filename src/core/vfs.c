@@ -27,10 +27,19 @@ typedef struct VfsEntry {
     char *real;  /* path relative to the root, with the real case */
     bool is_dir;
     bool added;  /* from the OpenMB2 folder, standing in for the game's own */
+    bool outside; /* in the overrides folder, not the game folder */
 } VfsEntry;
+
+/* The folder the OpenMB2 folder is in, when not the game folder. */
+static char *g_overrides;
+
+/* The folder being scanned, and whether it is the overrides folder. */
+static const char *g_scan_base;
+static bool g_scan_outside;
 
 static struct {
     char *root;
+    char *overrides; /* NULL: the OpenMB2 folder is in the game folder */
     VfsEntry *entries;
     int count;
     int capacity;
@@ -119,6 +128,7 @@ static void push_entry(const char *key, const char *relative, bool is_dir, bool 
     entry->real = copy_string(relative);
     entry->is_dir = is_dir;
     entry->added = added;
+    entry->outside = g_scan_outside;
     if (!is_dir && !added)
         g_vfs.file_count++;
 }
@@ -129,9 +139,11 @@ static void add_entry(const char *relative, bool is_dir)
     size_t added = strlen(VFS_ADDED);
 
     vfs_normalise(relative, key, sizeof(key));
-    push_entry(key, relative, is_dir, false);
+    if (!g_scan_outside)
+        push_entry(key, relative, is_dir, false);
     /* A file under OpenMB2/ is also listed under its path without it. */
-    if (strncmp(key, VFS_ADDED, added) == 0 && key[added] != '\0')
+    if (strncmp(key, VFS_ADDED, added) == 0 && key[added] != '\0' &&
+        (g_vfs.overrides == NULL) == !g_scan_outside)
         push_entry(key + added, relative, is_dir, true);
 }
 
@@ -180,9 +192,9 @@ static void scan_folder(const char *relative, int depth)
         return;
 
     if (relative[0] == '\0')
-        snprintf(pattern, sizeof(pattern), "%s\\*", g_vfs.root);
+        snprintf(pattern, sizeof(pattern), "%s\\*", g_scan_base);
     else
-        snprintf(pattern, sizeof(pattern), "%s\\%s\\*", g_vfs.root, relative);
+        snprintf(pattern, sizeof(pattern), "%s\\%s\\*", g_scan_base, relative);
     if (!utf8_to_wide(pattern, wide_pattern, VFS_MAX_PATH))
         return;
 
@@ -217,7 +229,7 @@ static void scan_folder(const char *relative, int depth)
     if (depth > VFS_MAX_DEPTH)
         return;
 
-    join_path(folder, sizeof(folder), g_vfs.root, relative);
+    join_path(folder, sizeof(folder), g_scan_base, relative);
     dir = opendir(folder);
     if (dir == NULL)
         return;
@@ -257,22 +269,47 @@ static int compare_layers(const void *a, const void *b)
     return order != 0 ? order : (int)eb->added - (int)ea->added;
 }
 
+/* A copy without the trailing slash, so joined paths look tidy. */
+static char *copy_folder(const char *dir)
+{
+    char *copy = copy_string(dir);
+    size_t len = copy != NULL ? strlen(copy) : 0;
+
+    while (len > 1 && (copy[len - 1] == '/' || copy[len - 1] == '\\'))
+        copy[--len] = '\0';
+    return copy;
+}
+
+void vfs_set_overrides(const char *dir)
+{
+    free(g_overrides);
+    g_overrides = dir != NULL && dir[0] != '\0' ? copy_folder(dir) : NULL;
+}
+
 bool vfs_mount(const char *root_dir)
 {
     int i, kept;
+    bool found;
 
     vfs_unmount();
-    g_vfs.root = copy_string(root_dir);
+    g_vfs.root = copy_folder(root_dir);
+    g_vfs.overrides = g_overrides != NULL ? copy_string(g_overrides) : NULL;
 
-    /* Strip a trailing slash so joined paths look tidy. */
-    {
-        size_t len = strlen(g_vfs.root);
-        while (len > 1 && (g_vfs.root[len - 1] == '/' || g_vfs.root[len - 1] == '\\'))
-            g_vfs.root[--len] = '\0';
-    }
-
+    g_scan_base = g_vfs.root;
+    g_scan_outside = false;
     scan_folder("", 0);
-    if (g_vfs.count == 0) {
+    found = g_vfs.count > 0;
+    if (g_vfs.overrides != NULL) {
+        g_scan_base = g_vfs.overrides;
+        g_scan_outside = true;
+        i = g_vfs.count;
+        scan_folder("OpenMB2", 0);
+        if (g_vfs.count == i)
+            scan_folder("openmb2", 0);
+        g_scan_outside = false;
+        log_info("vfs: OpenMB2 folder from '%s' (%d entries)", g_vfs.overrides, g_vfs.count - i);
+    }
+    if (!found) {
         log_error("vfs: '%s' is empty or can't be read", root_dir);
         vfs_unmount();
         return false;
@@ -316,6 +353,7 @@ void vfs_unmount(void)
     }
     free(g_vfs.entries);
     free(g_vfs.root);
+    free(g_vfs.overrides);
     memset(&g_vfs, 0, sizeof(g_vfs));
 }
 
@@ -382,7 +420,7 @@ static bool real_path(const VfsEntry *entry, char *out, size_t out_size)
 
     if (entry == NULL)
         return false;
-    written = snprintf(out, out_size, "%s/%s", g_vfs.root, entry->real);
+    written = snprintf(out, out_size, "%s/%s", entry->outside ? g_vfs.overrides : g_vfs.root, entry->real);
     return written >= 0 && (size_t)written < out_size;
 }
 

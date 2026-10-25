@@ -23,6 +23,10 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+/* Read the OpenMB2 folder from this folder instead of the game folder,
+   from the next vfs_mount on; NULL goes back to the game folder. */
+void vfs_set_overrides(const char *dir);
+
 /* Index the folder at root_dir. Returns false if it can't be read. */
 bool vfs_mount(const char *root_dir);
 void vfs_unmount(void);

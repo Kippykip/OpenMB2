@@ -560,6 +560,8 @@ int main(int argc, char **argv)
     for (i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--game") == 0 && i + 1 < argc)
             game_folder = argv[++i];
+        else if (strcmp(argv[i], "--overrides") == 0 && i + 1 < argc)
+            vfs_set_overrides(argv[++i]);
         else if (strcmp(argv[i], "--level") == 0 && i + 1 < argc)
             start_level = argv[++i];
         else if (strcmp(argv[i], "--menu") == 0 && i + 1 < argc)
