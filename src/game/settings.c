@@ -22,6 +22,8 @@ void settings_set_defaults(Settings *settings)
     settings->precise_mouse = true;
     settings->wide_menus = false;
     settings->language[0] = '\0';
+    snprintf(settings->score_server, sizeof(settings->score_server), "https://kippykip.com/mb2s");
+    settings->online_id[0] = '\0';
 }
 
 static bool same(const char *a, const char *b)
@@ -74,6 +76,11 @@ static void set(Settings *s, const char *section, const char *key, const char *v
             s->wide_menus = parse_bool(value, s->wide_menus);
         else if (same(key, "language"))
             snprintf(s->language, sizeof(s->language), "%s", value);
+    } else if (same(section, "online")) {
+        if (same(key, "score_server"))
+            snprintf(s->score_server, sizeof(s->score_server), "%s", value);
+        else if (same(key, "id"))
+            snprintf(s->online_id, sizeof(s->online_id), "%s", value);
     }
 }
 
@@ -163,8 +170,16 @@ int settings_format(const Settings *s, char *out, size_t size)
                     "wide_menus = %s\n"
                     "; A language only in the OpenMB2 folder's Languages; empty uses\n"
                     "; params.txt's, which the original game shares\n"
-                    "language = %s\n",
+                    "language = %s\n"
+                    "\n"
+                    "[online]\n"
+                    "; Where the online high scores are kept; the original's server is gone,\n"
+                    "; this is its community revival. Empty turns online scores off.\n"
+                    "score_server = %s\n"
+                    "; Who you are there, where the original's id (from the C: drive) can't be had\n"
+                    "id = %s\n",
                     s->width, s->height, on_off(s->maximized), fullscreen[s->fullscreen], on_off(s->vsync),
                     on_off(s->smooth), on_off(s->level_intro), on_off(s->sort_glass),
-                    on_off(s->edge_bounce), on_off(s->precise_mouse), on_off(s->wide_menus), s->language);
+                    on_off(s->edge_bounce), on_off(s->precise_mouse), on_off(s->wide_menus), s->language, s->score_server,
+                    s->online_id);
 }

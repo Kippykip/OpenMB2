@@ -30,6 +30,7 @@
 #include "game/params.h"
 #include "game/settings.h"
 #include "menu_screen.h"
+#include "online.h"
 #include "platform/gl.h"
 #include "play_screen.h"
 #include "render/render.h"
@@ -508,7 +509,7 @@ static void save_params(void)
 
 static void save_settings(void)
 {
-    char text[2048];
+    char text[4096];
     int length = settings_format(&g_app.settings, text, sizeof(text));
     if (length > 0 && length < (int)sizeof(text))
         userfile_write("openmb2.ini", text, (size_t)length);
@@ -532,6 +533,7 @@ static void load_settings(void)
 
 static void shutdown_app(void)
 {
+    online_shutdown();
     menu_screen_shutdown();
     play_screen_shutdown();
     lang_free();
@@ -632,6 +634,14 @@ int main(int argc, char **argv)
     }
     menu_screen_set_wide(wide_menus);
     menu_screen_set_settings(&g_app.settings, video_changed);
+#ifndef _WIN32
+    /* The original goes by the C: drive's serial number; elsewhere a
+       number made up once and kept in openmb2.ini stands in for it. */
+    if (g_app.settings.online_id[0] == '\0')
+        snprintf(g_app.settings.online_id, sizeof(g_app.settings.online_id), "0s%X",
+                 (unsigned)(SDL_GetPerformanceCounter() * 2654435761u) ^ (unsigned)time(NULL));
+#endif
+    online_init(g_app.settings.score_server, (const char *)gl.GetString(GL_RENDERER), g_app.settings.online_id);
 
     g_app.running = true;
     g_app.last_ticks = SDL_GetTicks();

@@ -84,6 +84,14 @@ On a screen that isn't 4:3 the menus keep their shape between black
 bars; `--wide-menus` fills the screen instead, cutting off the
 background's edges.
 
+The online high scores work again. The original's server is long gone;
+OpenMB2 speaks its protocol to the community's revival at
+`https://kippykip.com/mb2s` (the same server mb2fix.dll's `ScoreServer`
+points the original at), so both games share one table. A score of a
+million or more is sent once its name is entered, as in the original,
+and the high scores page's online table shows the pack's best, with
+yours blinking.
+
 ### The OpenMB2 folder
 
 A folder named `OpenMB2` in the game folder is read before the game's
@@ -124,6 +132,9 @@ never reads it, so both games still share `params.txt`.
   `wide_menus`, and `language` for one only the OpenMB2 folder has.
   A switch on
   the command line wins over the file for that run.
+- `[online]`: `score_server` is the online scores' server (empty turns
+  them off); `id` is the id the server knows you by where the
+  original's (the C: drive's serial number) can't be had, as on Linux.
 
 `mb2inspect` looks inside a game folder:
 
@@ -174,6 +185,7 @@ src/render/    OpenGL ES 2 renderer
 src/platform/  SDL and OpenGL glue
   gl.c         loads GL functions at runtime
 src/viewer.c   the level viewer
+src/online.c   the online high scores (core/des3.c encrypts them)
 src/main.c     startup and main loop
 src/third_party/ stb_image (public domain / MIT)
 tools/         command-line tools

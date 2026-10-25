@@ -31,6 +31,7 @@ target_include_directories(openmb2_third_party PRIVATE src/third_party)
 
 add_library(openmb2_core STATIC
     src/core/config.c
+    src/core/des3.c
     src/core/image.c
     src/core/log.c
     src/core/matrix.c
@@ -100,6 +101,7 @@ add_executable(openmb2
     src/intro.c
     src/main.c
     src/menu_screen.c
+    src/online.c
     src/play_screen.c
     src/userfile.c
     src/audio/audio.c
@@ -107,6 +109,9 @@ add_executable(openmb2
     src/render/render.c
 )
 target_link_libraries(openmb2 PRIVATE openmb2_core)
+if(WIN32)
+    target_link_libraries(openmb2 PRIVATE wininet)
+endif()
 openmb2_warnings(openmb2)
 
 include(cmake/libopenmpt.cmake)

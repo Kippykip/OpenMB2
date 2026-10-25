@@ -59,6 +59,7 @@ static struct {
     Play play;
     bool playing;
     int score, lives;  /* carried from level to level */
+    int level_score;   /* the score as this level began (0x4e3468), for online scores */
     int music;         /* which level tune is playing, 0-3 */
     RenderMesh shadows, glows, prize_glows, trail, bullet_shadows, strings, billboards;
     RenderMesh bolts;
@@ -866,6 +867,7 @@ static void load_level(int pack, int level)
     load_animal_models();
     v.object_time = 0;
     v.scene_loaded = true;
+    v.level_score = v.score;
 
     build_background_mesh();
     build_board_mesh();
@@ -1047,6 +1049,15 @@ int play_screen_pack_count(void)
 const char *play_screen_pack_folder(int pack)
 {
     return pack >= 0 && pack < v.pack_count ? v.packs[pack].folder : "";
+}
+
+void play_screen_progress(int *level, int *level_score, const char **folder)
+{
+    /* 0x4e3430 counts levels from 1, and is one past the last once the
+       pack is done ("101" on the online table). */
+    *level = v.level + 1 + (v.result == PLAY_SCREEN_PACK_DONE ? 1 : 0);
+    *level_score = v.level_score;
+    *folder = v.pack_count > 0 ? v.packs[v.pack].folder : "Levels";
 }
 
 void play_screen_load_font(void)

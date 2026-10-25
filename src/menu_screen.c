@@ -2,6 +2,7 @@
 /* Copyright (C) 2026 the OpenMB2 contributors */
 
 #include "menu_screen.h"
+#include "online.h"
 #include "assets.h"
 #include "intro.h"
 #include "play_screen.h"
@@ -394,6 +395,7 @@ static void load_page(const char *list, Page page)
     if (list != NULL)
         menu_list_load(&m.list, list);
     menu_list_load(&m.list, "logos.txt");
+    online_set_build(m.list.build);
     prepare_items();
     m.page = page;
     m.page_time = 0;
@@ -553,12 +555,30 @@ static void show_scores(int highlight)
     m.scroll = 66.0f;
 }
 
+/* 0x40000: the online table of the pack last played (0x415570). */
+static void show_online_scores(void)
+{
+    const char *folder;
+    int level, level_score;
+
+    m.highlight = -1;
+    load_page("Menu/lglobalhighscores.txt", PAGE_GLOBAL_SCORES);
+    m.scroll = -200.0f;
+    play_screen_progress(&level, &level_score, &folder);
+    online_fetch(online_pack_number(m.pack[0] != '\0' ? m.pack : folder));
+}
+
 /* Enter, or the button on the name page: the name goes in the table. */
 static void enter_name(void)
 {
-    int place = scores_add(&m.scores, m.name[0] != '\0' ? m.name : "Unnamed", m.score);
+    const char *name = m.name[0] != '\0' ? m.name : "Unnamed", *folder;
+    int place = scores_add(&m.scores, name, m.score), level, level_score;
+
     if (place >= 0)
         save_scores();
+    /* 0x417c10: a million or more goes to the online table too. */
+    play_screen_progress(&level, &level_score, &folder);
+    online_send(name, m.score, level_score, level, online_pack_number(folder), online_bat_number(m.pad));
     show_scores(place);
     audio_play_music("Music/menu.txt");
 }
@@ -594,9 +614,7 @@ static void run_command(MenuItem *item)
     } else if (strcmp(id, "highscores") == 0) {
         show_scores(-1);
     } else if (strcmp(id, "viewglobalscore") == 0) {
-        m.highlight = -1;
-        load_page("Menu/lglobalhighscores.txt", PAGE_GLOBAL_SCORES);
-        m.scroll = -200.0f;
+        show_online_scores();
     } else if (strcmp(id, "navigatefromenterscore") == 0 || strcmp(id, "mysendscore") == 0) {
         enter_name();
     } else if (strcmp(id, "clearscore") == 0) {
@@ -1214,6 +1232,120 @@ static void draw_score(int place, float y, uint32_t color)
     batch_text(180.0f, y, 0.75f, FONT_RIGHT, text, color);
 }
 
+/* Lower a colour's alpha to at most alpha. */
+static uint32_t cap_alpha(uint32_t color, float alpha)
+{
+    uint32_t a = alpha <= 0.0f ? 0u : (uint32_t)alpha;
+    return (color >> 24) > a ? (color & 0xffffffu) | a << 24 : color;
+}
+
+/* 0x4266e0: one score on the online table, its number counting from 1.
+   Rows are tinted blue and green by turns, fade out near the top and
+   bottom, and have their date, time and level small underneath. */
+static void draw_online_score(const OnlineRow *row, int number, float y)
+{
+    char text[128];
+    uint32_t color = 0xffffffffu, plain;
+
+    if (y > 85.0f || y < -130.0f)
+        return;
+    if (row->flagged)
+        color = (m.time / 250) & 1 ? 0xffffffffu : 0xffff0000u;
+    plain = color;
+    color &= number % 2 == 0 ? 0xffbbbbffu : 0xffbbffbbu;
+    if (y > 60.0f) {
+        plain = cap_alpha(plain, (85.0f - y) * 10.0f);
+        color = cap_alpha(color, (85.0f - y) * 10.0f);
+    } else if (y < -105.0f) {
+        color = cap_alpha(color, (130.0f + y) * 10.0f);
+        plain = color;
+    }
+    snprintf(text, sizeof(text), "%d.", number);
+    batch_text(-200.0f, y, 0.75f, FONT_LEFT, text, color);
+    batch_text(-130.0f, y, 0.75f, FONT_LEFT, row->name, color);
+    /* The bat: glyphs 0xda to 0xdc of the font. */
+    text[0] = (char)(0xda + (row->bat >= 0 && row->bat <= 2 ? row->bat : 0));
+    text[1] = '\0';
+    batch_text(-164.0f, y - 7.0f, 0.75f, FONT_LEFT, text, plain);
+    snprintf(text, sizeof(text), "%d", row->score);
+    batch_text(180.0f, y, 0.75f, FONT_RIGHT, text, color);
+    color &= 0xffffff88u;
+    if (row->date[0] != '\0') {
+        snprintf(text, sizeof(text), "%s %s", lang_text(173, "Date:"), row->date);
+        batch_text(-130.0f, y - 20.0f, 0.5f, FONT_LEFT, text, color);
+    }
+    if (row->time[0] != '\0') {
+        snprintf(text, sizeof(text), "%s %s", lang_text(174, "Time:"), row->time);
+        batch_text(0.0f, y - 20.0f, 0.5f, FONT_LEFT, text, color);
+    }
+    if (strcmp(row->level, "101") == 0) {
+        batch_text(90.0f, y - 20.0f, 0.5f, FONT_LEFT, lang_text(167, "Pack Completed"), color);
+    } else if (row->level[0] != '\0') {
+        snprintf(text, sizeof(text), "%s %s", lang_text(175, "Level:"), row->level);
+        batch_text(110.0f, y - 20.0f, 0.5f, FONT_LEFT, text, color);
+    }
+}
+
+/* 0x426190: a message line, which opens its link when clicked. */
+static void draw_online_message(const OnlineRow *row, float y)
+{
+    uint32_t color = row->color;
+    float width;
+
+    if (y > 85.0f || y < -150.0f)
+        return;
+    width = font_text_width(&m.text_font, row->text) * row->scale;
+    if (row->url[0] != '\0' && fabsf(m.mouse_x) < width * 0.5f && fabsf(m.mouse_y - y) < 18.0f) {
+        if (m.button && !m.wait_release) {
+            /* The original minimises the game and lets Windows open it. */
+            if (SDL_GetWindowFlags(m.window) & SDL_WINDOW_FULLSCREEN)
+                SDL_MinimizeWindow(m.window);
+            SDL_OpenURL(row->url);
+            m.wait_release = true;
+        }
+        color = 0xffff0000u;
+    }
+    if (y > 60.0f)
+        color = cap_alpha(color, (85.0f - y) * 10.0f);
+    else if (y < -125.0f)
+        color = cap_alpha(color, (150.0f + y) * 10.0f);
+    batch_text(0.0f, y, row->scale, FONT_CENTER, row->text, color);
+}
+
+/* 0x417230: the online table runs up the panel, slower while a flagged
+   line (the player's own) goes by, and starts again from the bottom. */
+static void draw_online_table(uint32_t ms)
+{
+    const OnlineRow *rows;
+    int count = online_rows(&rows), i, number = 0;
+    float speed = 1.0f;
+
+    if (online_state() != ONLINE_READY) {
+        batch_text(0.0f, 0.0f, 0.75f, FONT_CENTER, lang_text(171, "Retrieving Recent Global High Scores."),
+                   0xffffff00u);
+        batch_text(0.0f, -25.0f, 0.75f, FONT_CENTER, lang_text(172, "Please Wait."), 0xffffff00u);
+        return;
+    }
+    for (i = 0; i < count; i++) {
+        float y = m.scroll - (float)i * 36.0f;
+        if (rows[i].message)
+            draw_online_message(&rows[i], y);
+        else
+            draw_online_score(&rows[i], ++number, y);
+        if (rows[i].flagged && y < 85.0f && y > -150.0f) {
+            if (y > -15.0f)
+                speed = (y + 15.0f) * 0.005f + 0.5f;
+            else if (y >= -50.0f)
+                speed = (fabsf(y) - 50.0f) * 0.005f + 0.5f;
+            else
+                speed = 0.5f;
+        }
+    }
+    if (m.scroll - (float)count * 36.0f > 200.0f)
+        m.scroll = -200.0f;
+    m.scroll += speed * 0.08f * (float)ms;
+}
+
 /*
  * 0x416970: the first eight places fade in over a second; after five
  * seconds the table runs up until its end is in view, waits, fades out
@@ -1254,6 +1386,8 @@ static void draw_score_table(uint32_t ms)
                     m.scroll += (float)ms * 0.075f;
             }
         }
+    } else {
+        draw_online_table(ms);
     }
     batch_text(0.0f, 123.0f, 0.9f, FONT_CENTER, lang_text(22, "High Scores"), 0xff000000u);
 }
@@ -1403,7 +1537,9 @@ void menu_screen_show_splash(void)
 
 void menu_screen_show_page(const char *list)
 {
-    if (strstr(list, "highscores") != NULL)
+    if (strstr(list, "global") != NULL)
+        show_online_scores();
+    else if (strstr(list, "highscores") != NULL)
         show_scores(-1);
     else if (strcmp(list, "packs") == 0)
         choose_pack();

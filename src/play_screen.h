@@ -53,6 +53,9 @@ bool play_screen_start_file(const char *path);
 /* Leave the level, for the menus. */
 void play_screen_stop(void);
 int play_screen_score(void);
+/* For the online scores: the level reached (from 1), the score it began
+   with, and its pack's folder. */
+void play_screen_progress(int *level, int *level_score, const char **folder);
 /* The options page's settings. */
 void play_screen_set_options(float mouse_sensitivity, bool infravision);
 /* Load the HUD's font again, for the language now in use (see lang_font). */

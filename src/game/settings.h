@@ -24,6 +24,9 @@
  *   precise_mouse = on    ; --original-mouse
  *   wide_menus = off    ; --wide-menus
  *   language =          ; one only in OpenMB2\Languages, or params.txt's
+ *
+ *   [online]
+ *   score_server = https://kippykip.com/mb2s   ; empty: no online scores
  */
 #ifndef OPENMB2_SETTINGS_H
 #define OPENMB2_SETTINGS_H
@@ -49,6 +52,8 @@ typedef struct Settings {
     bool precise_mouse;
     bool wide_menus;
     char language[64]; /* a language only OpenMB2 has, "" for params.txt's */
+    char score_server[256]; /* the online scores' server, "" for none */
+    char online_id[32];     /* who we are online where the original's id can't be had */
 } Settings;
 
 void settings_set_defaults(Settings *settings);
