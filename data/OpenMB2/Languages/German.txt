@@ -98,7 +98,7 @@ Claude (Anthropic)
 Kippykip.com
 pr„sentiert
 eine Neuumsetzung von Magic Ball 2
-OpenMB2 v1.0
+OpenMB2 v1.0.1
 Original-MB2 Copyright (c) 2002-2005 DreamDale    Ver–ffentlicht von Alawar Entertainment
 Spieltipps:   F6 - Musik „ndern   F7 - Hintergrund „ndern   F8 - Spielfeld „ndern   F9 - Kamera zurœcksetzen
 Viel Glœck ;-)
