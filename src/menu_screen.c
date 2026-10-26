@@ -495,7 +495,10 @@ static void show_packs(void)
 static void start_game(const char *pack, int level)
 {
     log_debug("menu: play %s level %d", pack, level + 1);
-    snprintf(m.pack, sizeof(m.pack), "%s", pack);
+    /* The level pages pass m.pack itself; copying a string onto itself
+       is undefined, and glibc on ARM empties it. */
+    if (pack != m.pack)
+        snprintf(m.pack, sizeof(m.pack), "%s", pack);
     m.level = level;
     stop_screw();
     m.action = MENU_ACTION_PLAY;
