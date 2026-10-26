@@ -82,6 +82,11 @@ void pad_handle_event(const SDL_Event *event)
             break;
         }
         log_info("joypad: %s", SDL_GameControllerName(g_pad.pads[i]));
+        {
+            char *mapping = SDL_GameControllerMapping(g_pad.pads[i]);
+            log_debug("joypad mapping: %s", mapping != NULL ? mapping : "none");
+            SDL_free(mapping);
+        }
         break;
     case SDL_CONTROLLERDEVICEREMOVED:
         if ((i = find(event->cdevice.which)) >= 0) {
@@ -90,7 +95,11 @@ void pad_handle_event(const SDL_Event *event)
         }
         break;
     case SDL_CONTROLLERBUTTONDOWN:
-        if ((i = find(event->cbutton.which)) >= 0)
+    case SDL_CONTROLLERBUTTONUP:
+        log_debug("joypad %d: %s %s", (int)event->cbutton.which,
+                  SDL_GameControllerGetStringForButton((SDL_GameControllerButton)event->cbutton.button),
+                  event->type == SDL_CONTROLLERBUTTONDOWN ? "down" : "up");
+        if (event->type == SDL_CONTROLLERBUTTONDOWN && (i = find(event->cbutton.which)) >= 0)
             g_pad.last = i;
         break;
     case SDL_CONTROLLERAXISMOTION:

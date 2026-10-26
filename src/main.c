@@ -504,6 +504,9 @@ static void handle_event(const SDL_Event *event)
     pad_handle_event(event);
     if (pad_key(event))
         return;
+    if ((event->type == SDL_KEYDOWN || event->type == SDL_KEYUP) && !event->key.repeat)
+        log_debug("key %s %s", SDL_GetKeyName(event->key.keysym.sym),
+                  event->type == SDL_KEYDOWN ? "down" : "up");
     switch (event->type) {
     case SDL_QUIT:
         g_app.running = false;

@@ -429,12 +429,14 @@ static void load_language(void)
 /* 0x80: a page a button names; the language may have changed. */
 static void navigate(const char *list)
 {
+    log_debug("menu: %s", list);
     load_language();
     load_page(list, PAGE_MENU);
 }
 
 static void show_main(void)
 {
+    log_debug("menu: main");
     intro_stop();
     load_language();
     load_page("Menu/lmainmenu.txt", PAGE_MENU);
@@ -492,6 +494,7 @@ static void show_packs(void)
 
 static void start_game(const char *pack, int level)
 {
+    log_debug("menu: play %s level %d", pack, level + 1);
     snprintf(m.pack, sizeof(m.pack), "%s", pack);
     m.level = level;
     stop_screw();
