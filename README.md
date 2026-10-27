@@ -101,6 +101,11 @@ shown but not sent while this setting is on.
 - `--menu Menu/loptions.txt` starts on a menu page
 - `--no-intro` skips each level's opening camera flight
 - `--screenshot shot.bmp` saves the first frame and quits
+- `--test-crash` crashes on purpose, to check the crash report below
+
+If OpenMB2 crashes, it writes `openmb2_crash.txt` next to `score.dat`
+with the build, the kind of crash and the addresses it was running.
+Please attach that file to a bug report.
 
 The game logic itself runs in fixed 18 ms steps, like the original does. On
 screens faster than that, OpenMB2 draws the balls, prizes and shots part

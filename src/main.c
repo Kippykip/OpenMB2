@@ -27,6 +27,7 @@
 #include "core/config.h"
 #include "core/log.h"
 #include "core/vfs.h"
+#include "crash.h"
 #include "game/lang.h"
 #include "game/level.h"
 #include "game/params.h"
@@ -661,7 +662,7 @@ int main(int argc, char **argv)
     PlayScreenOptions options;
     unsigned seed = (unsigned)time(NULL);
     /* Switches given on the command line, which win over openmb2.ini. */
-    bool no_smooth = false, no_intro = false, original_glass = false, original_bounce = false,
+    bool no_smooth = false, test_crash = false, no_intro = false, original_glass = false, original_bounce = false,
          original_mouse = false, wide_menus = false;
     int i;
 
@@ -700,8 +701,11 @@ int main(int argc, char **argv)
             seed = (unsigned)strtoul(argv[++i], NULL, 10);
         else if (strcmp(argv[i], "--debug") == 0)
             log_set_level(LOG_DEBUG);
+        else if (strcmp(argv[i], "--test-crash") == 0)
+            test_crash = true;
     }
 
+    crash_install(NULL);
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) != 0) {
         log_error("SDL_Init failed: %s", SDL_GetError());
         return 1;
@@ -713,6 +717,17 @@ int main(int argc, char **argv)
                    "--game \"path to your Magic Ball 2 folder\".");
         shutdown_app();
         return 1;
+    }
+
+    {
+        char path[1024];
+        userfile_path("openmb2_crash.txt", path, sizeof(path));
+        crash_install(path);
+    }
+    if (test_crash) {
+        /* Checks the crash report: writes through a null pointer. */
+        volatile int *nowhere = NULL;
+        *nowhere = 1;
     }
 
     load_settings();

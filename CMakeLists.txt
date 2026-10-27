@@ -107,10 +107,12 @@ add_executable(openmb2
     src/play_screen.c
     src/userfile.c
     src/audio/audio.c
+    src/crash.c
     src/platform/gl.c
     src/render/render.c
 )
 target_link_libraries(openmb2 PRIVATE openmb2_core)
+target_compile_definitions(openmb2 PRIVATE OPENMB2_VERSION="${PROJECT_VERSION}")
 if(WIN32)
     target_link_libraries(openmb2 PRIVATE wininet)
     # The icon and the version details in the exe's Properties.

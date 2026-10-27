@@ -10,7 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-static void user_path(const char *name, char *out, size_t size)
+void userfile_path(const char *name, char *out, size_t size)
 {
     const char *root = vfs_root();
     size_t n = root != NULL ? strlen(root) : 0;
@@ -29,7 +29,7 @@ unsigned char *userfile_read(const char *name, size_t *size)
     unsigned char *data;
 
     *size = 0;
-    user_path(name, path, sizeof(path));
+    userfile_path(name, path, sizeof(path));
     rw = SDL_RWFromFile(path, "rb");
     if (rw == NULL)
         return NULL;
@@ -51,7 +51,7 @@ bool userfile_write(const char *name, const void *data, size_t size)
     SDL_RWops *rw;
     bool ok;
 
-    user_path(name, path, sizeof(path));
+    userfile_path(name, path, sizeof(path));
     rw = SDL_RWFromFile(path, "wb");
     if (rw == NULL) {
         log_warn("can't write %s: %s", path, SDL_GetError());

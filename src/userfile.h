@@ -18,4 +18,7 @@
 unsigned char *userfile_read(const char *name, size_t *size);
 bool userfile_write(const char *name, const void *data, size_t size);
 
+/* Where a file of that name is, or would be made. */
+void userfile_path(const char *name, char *out, size_t size);
+
 #endif
