@@ -44,4 +44,7 @@ Saved games, high scores and `openmb2.ini` are kept in the browser's
 IndexedDB (`/save` in the game, see `pre.js`). Quit in the main menu does
 nothing in a browser, and full screen is only entered with Alt+Enter.
 
-Online high scores don't work in a browser yet.
+Online high scores work when the score server lets the page's site in:
+a browser can't send the game's User-Agent, and the server has to answer
+with CORS headers (`Access-Control-Allow-Origin`) for the page to read
+the replies. The kippykip.com server does this for kippykip.com pages.

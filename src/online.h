@@ -13,7 +13,8 @@
  * talked to www.dreamdale.com, long gone; the default server is the
  * community's revival of it.
  *
- * Requests run on a thread of their own, so the menus never wait.
+ * Requests run on a thread of their own (in a browser, as fetch()
+ * requests answered later), so the menus never wait.
  */
 #ifndef OPENMB2_ONLINE_H
 #define OPENMB2_ONLINE_H

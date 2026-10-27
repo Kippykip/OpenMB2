@@ -16,14 +16,20 @@
 #include <windows.h>
 #include <wininet.h>
 #endif
+#ifdef __EMSCRIPTEN__
+#include <emscripten/fetch.h>
+#endif
 
 #define BODY_SIZE  0x20000 /* the original's request and reply buffer */
 #define MAX_ROWS   600
 
 /* The key the original encrypts every request with (0x47fa6c). */
 static const char k_key[] = "tsbstrkndnthwrld";
-/* What the original says it is; Smash Frenzy 2 says "SF2.4". */
+#ifndef __EMSCRIPTEN__
+/* What the original says it is; Smash Frenzy 2 says "SF2.4". A browser
+   sends its own. */
 static const char k_agent[] = "Magic Ball 2 ver .2";
+#endif
 static const char k_regto[] = "Full version";
 
 static const char *const k_packs[] = { "Levels", "Levels1", "Levels2", "Levels3", "Levels4",
@@ -45,6 +51,7 @@ static struct {
     SDL_atomic_t state;
     OnlineRow *rows;      /* written by the thread while loading */
     int row_count;
+    int fetches;          /* online_fetch() calls, so an older table's answer is left out */
 } on;
 
 /* ------------------------------------------------------------------------ */
@@ -161,14 +168,7 @@ static bool http_post(const char *path, const unsigned char *body, size_t size, 
     InternetCloseHandle(net);
     return ok;
 }
-#elif defined(__EMSCRIPTEN__)
-static bool http_post(const char *path, const unsigned char *body, size_t size, char *reply, size_t reply_size)
-{
-    (void)path, (void)body, (void)size, (void)reply_size;
-    reply[0] = '\0';
-    return false;
-}
-#else
+#elif !defined(__EMSCRIPTEN__) /* a browser's requests are further down */
 /* Elsewhere the curl program does the talking: it is on nearly every
    system and knows https. The body goes through a file. */
 static bool http_post(const char *path, const unsigned char *body, size_t size, char *reply, size_t reply_size)
@@ -212,18 +212,37 @@ static bool http_post(const char *path, const unsigned char *body, size_t size, 
 }
 #endif
 
-/* 0x414d00: encrypt the line, padded with zeros to the next 128 bytes,
-   and send it. */
+/* 0x414d00: the line, padded with zeros to the next 128 bytes and
+   encrypted; free() it. */
+static unsigned char *encrypt_line(const char *line, size_t *size)
+{
+    size_t length = strlen(line);
+    unsigned char *body;
+
+    *size = (length / 128 + 1) * 128;
+    body = calloc(1, *size);
+    if (body == NULL)
+        return NULL;
+    memcpy(body, line, length);
+    des3_ecb_encrypt((const unsigned char *)k_key, strlen(k_key), body, *size);
+    return body;
+}
+
+static void activation_line(char *line, size_t size)
+{
+    snprintf(line, size, "v=%s&vcs=%d&c=%s&ccs=%d&f=%d&hID=%s&regto=%s&build=%s&e=e", on.gpu,
+             byte_sum(on.gpu), on.cpu, byte_sum(on.cpu), on.mhz, on.hid, k_regto, on.build);
+}
+
+#ifndef __EMSCRIPTEN__
 static bool request(const char *path, const char *line, char *reply, size_t reply_size)
 {
-    size_t length = strlen(line), size = (length / 128 + 1) * 128;
-    unsigned char *body = calloc(1, size);
+    size_t size;
+    unsigned char *body = encrypt_line(line, &size);
     bool ok;
 
     if (body == NULL)
         return false;
-    memcpy(body, line, length);
-    des3_ecb_encrypt((const unsigned char *)k_key, strlen(k_key), body, size);
     ok = http_post(path, body, size, reply, reply_size);
     free(body);
     return ok;
@@ -236,11 +255,11 @@ static void activate(char *buffer)
 
     if (SDL_AtomicGet(&on.activated))
         return;
-    snprintf(line, sizeof(line), "v=%s&vcs=%d&c=%s&ccs=%d&f=%d&hID=%s&regto=%s&build=%s&e=e", on.gpu,
-             byte_sum(on.gpu), on.cpu, byte_sum(on.cpu), on.mhz, on.hid, k_regto, on.build);
+    activation_line(line, sizeof(line));
     if (request("/scripts/mb2activation.php", line, buffer, 0x1fa0) && strcmp(buffer, "OK") == 0)
         SDL_AtomicSet(&on.activated, 1);
 }
+#endif
 
 /* ------------------------------------------------------------------------ */
 /* Reading the table                                                        */
@@ -340,30 +359,133 @@ static int parse_rows(const char *xml, OnlineRow *rows, int max)
 
 typedef struct Job {
     bool send;
+    int fetch;            /* on.fetches when it was asked for */
     char line[1024];
+    struct Job *next;     /* browser: the next one waiting */
 } Job;
 
+static const char *job_script(const Job *job)
+{
+    /* 0x417ad0: a sent score's answer doesn't matter. */
+    return job->send ? "/scripts/mb2addscore.php" : "/scripts/mb2getscore.php";
+}
+
+/* The answer to a job, or ok false for none. */
+static void job_done(const Job *job, bool ok, const char *reply)
+{
+    if (job->send || job->fetch != on.fetches)
+        return;
+    if (ok) {
+        int count = parse_rows(reply, on.rows, MAX_ROWS);
+        SDL_LockMutex(on.lock);
+        on.row_count = count;
+        SDL_UnlockMutex(on.lock);
+        SDL_AtomicSet(&on.state, ONLINE_READY);
+        log_info("online: %d lines in the table", count);
+    } else {
+        SDL_AtomicSet(&on.state, ONLINE_FAILED);
+        log_warn("online: no answer from %s", on.server);
+    }
+}
+
+#ifdef __EMSCRIPTEN__
+/*
+ * A browser has no threads to wait on, so a request's answer comes later
+ * in web_answer(), and jobs queue up to go one after another. A browser
+ * won't send the original's User-Agent; the server lets the page's own
+ * site in instead, and must answer with CORS headers so it can be read.
+ */
+static Job *web_queue;          /* the first one is on its way */
+static bool web_activating;     /* its activation is, before it */
+
+static void web_answer(emscripten_fetch_t *fetch);
+
+static void web_post(const char *script, const char *line)
+{
+    emscripten_fetch_attr_t attr;
+    char url[512];
+    size_t size;
+    unsigned char *body = encrypt_line(line, &size);
+
+    emscripten_fetch_attr_init(&attr);
+    strcpy(attr.requestMethod, "POST");
+    attr.attributes = EMSCRIPTEN_FETCH_LOAD_TO_MEMORY;
+    attr.onsuccess = web_answer;
+    attr.onerror = web_answer;
+    attr.timeoutMSecs = 20000;
+    attr.requestData = (const char *)body;
+    attr.requestDataSize = body != NULL ? size : 0;
+    snprintf(url, sizeof(url), "%s%s", on.server, script);
+    emscripten_fetch(&attr, url); /* the body is copied */
+    free(body);
+}
+
+static void web_next(void)
+{
+    char line[2048];
+
+    if (web_queue == NULL)
+        return;
+    web_activating = !SDL_AtomicGet(&on.activated);
+    if (web_activating) {
+        activation_line(line, sizeof(line));
+        web_post("/scripts/mb2activation.php", line);
+    } else {
+        web_post(job_script(web_queue), web_queue->line);
+    }
+}
+
+static void web_answer(emscripten_fetch_t *fetch)
+{
+    static char reply[BODY_SIZE];
+    Job *job = web_queue;
+    bool ok = fetch->status == 200;
+    size_t size = ok ? (size_t)fetch->numBytes : 0;
+
+    if (size >= sizeof(reply))
+        size = sizeof(reply) - 1;
+    if (size > 0)
+        memcpy(reply, fetch->data, size);
+    reply[size] = '\0';
+    emscripten_fetch_close(fetch);
+    if (job == NULL)
+        return;
+    if (web_activating) {
+        /* Like the original, the job goes on whatever the answer was. */
+        if (ok && strcmp(reply, "OK") == 0)
+            SDL_AtomicSet(&on.activated, 1);
+        web_activating = false;
+        web_post(job_script(job), job->line);
+        return;
+    }
+    job_done(job, ok, reply);
+    web_queue = job->next;
+    free(job);
+    web_next();
+}
+
+static void start_job(Job *job)
+{
+    Job **last = &web_queue;
+    bool idle = web_queue == NULL;
+
+    while (*last != NULL)
+        last = &(*last)->next;
+    *last = job;
+    if (idle)
+        web_next();
+}
+#else
 static int run_job(void *data)
 {
     Job *job = data;
     char *buffer = malloc(BODY_SIZE);
 
     if (buffer != NULL) {
+        bool ok;
         activate(buffer);
-        if (job->send) {
-            /* 0x417ad0: the answer doesn't matter. */
-            request("/scripts/mb2addscore.php", job->line, buffer, BODY_SIZE);
-        } else if (request("/scripts/mb2getscore.php", job->line, buffer, BODY_SIZE)) {
-            int count = parse_rows(buffer, on.rows, MAX_ROWS);
-            SDL_LockMutex(on.lock);
-            on.row_count = count;
-            SDL_UnlockMutex(on.lock);
-            SDL_AtomicSet(&on.state, ONLINE_READY);
-            log_info("online: %d lines in the table", count);
-        } else {
-            SDL_AtomicSet(&on.state, ONLINE_FAILED);
-            log_warn("online: no answer from %s", on.server);
-        }
+        ok = request(job_script(job), job->line, buffer, BODY_SIZE);
+        job_done(job, ok, buffer);
     }
     free(buffer);
     free(job);
@@ -384,6 +506,7 @@ static void start_job(Job *job)
         free(job);
     }
 }
+#endif
 
 /* ------------------------------------------------------------------------ */
 
@@ -439,6 +562,7 @@ void online_fetch(int pack)
         on.thread = NULL;
     }
     on.row_count = 0;
+    job->fetch = ++on.fetches;
     SDL_AtomicSet(&on.state, ONLINE_LOADING);
     snprintf(job->line, sizeof(job->line), "hID=%s&pack=%d&regto=%s&build=%s&e=e", on.hid, pack < 0 ? 0 : pack,
              k_regto, on.build);

@@ -12,7 +12,7 @@ the game, so you need a Magic Ball 2 or Smash Frenzy 2 install.
 
 ## Status / Roadmap
 
-Version 1.0.2: the whole game plays from start to finish.
+Version 1.1.0: the whole game plays from start to finish, now in web browsers too.
 
 - [x] Reads the game folder, loose or packed (`.pak` / `.dat`), with
       Windows-style file names on any system
@@ -24,7 +24,8 @@ Version 1.0.2: the whole game plays from start to finish.
       with the original
 - [x] Online high scores
 - [x] Keyboard controls, joypads and rumble
-- [ ] Web, Android and handheld builds
+- [x] Web browser build (see [web/README.md](web/README.md))
+- [ ] Android and handheld builds
 
 ## Engine Enhancements
 
@@ -215,9 +216,9 @@ cmake --build build
 - **ARM64 handhelds (muOS, PortMaster):** add
   `-DCMAKE_TOOLCHAIN_FILE=cmake/aarch64-linux-gnu.cmake -DSDL2_DIR=<aarch64 SDL2>/lib/cmake/SDL2`
   (needs `gcc-aarch64-linux-gnu`). The game links to the device's own SDL2.
-- **Web:** `emcmake cmake -S . -B build-web && cmake --build build-web`
-  (game files will need to be packaged or uploaded; that comes in
-  a later version).
+- **Web:** `emcmake cmake -S . -B build-web && cmake --build build-web`,
+  then pack the game files and put them on a page as
+  [web/README.md](web/README.md) shows.
 
 ## Source layout
 
