@@ -1323,7 +1323,7 @@ static void draw_level_select(const MenuItem *item, const ItemState *state)
 }
 
 /* Then from the service font, a cross over each level still shut and a
-   frame round the one under the pointer. */
+   frame round the one under the pointer (or the keys). */
 static void draw_level_marks(const MenuItem *item, const ItemState *state)
 {
     int col, row, hover = m.keys ? (is_focused(item) ? m.focus_cell : -1) : level_cell(item, &col, &row);
@@ -1331,9 +1331,12 @@ static void draw_level_marks(const MenuItem *item, const ItemState *state)
     for (row = 0; row < 4; row++) {
         for (col = 0; col < 5; col++) {
             float x = (float)col * 110.0f - 220.0f, y = 118.0f - (float)row * 76.0f;
-            if (!level_open(item->level_index + row * 5 + col))
+            bool open = level_open(item->level_index + row * 5 + col);
+            if (!open)
                 batch_text_clipped(true, x, y, 1.0f, FONT_CENTER, "B", 0xffffffffu, 0.0f);
-            else if (hover == row * 5 + col && state->age > CLICK_DELAY)
+            /* The original frames only open levels, as the pointer shows
+               where it is anyway; with the keys the frame is all there is. */
+            if ((open || m.keys) && hover == row * 5 + col && state->age > CLICK_DELAY)
                 batch_text_clipped(true, x, y, 1.0f, FONT_CENTER, "A", 0xffffffffu, 0.0f);
         }
     }
