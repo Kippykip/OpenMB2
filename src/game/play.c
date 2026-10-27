@@ -370,15 +370,19 @@ static void brick_take(Play *play, int index)
 
 static void brick_destroy(Play *play, int index);
 
-/* An explosion breaks the brick it starts in and its neighbours (0x40feb0). */
-static void explode(Play *play, Vec3 at)
+/*
+ * An explosion breaks the brick it starts in (self, or -1) and its
+ * neighbours (0x40feb0). Self goes first, so a chain of explosive bricks
+ * can't come back to one that is still standing.
+ */
+static void burst(Play *play, int self, Vec3 at)
 {
     static const float offsets[][3] = {
         { -1.49f, 0, 0 }, { 1.51f, 0, 0 },
         { 0, 2, 0 }, { 1, 2, 0 }, { 0, -2, 0 }, { 1, -2, 0 },
         { 0, 0, -2 }, { 1, 0, -2 }, { 0, 0, 2 }, { 1, 0, 2 }
     };
-    int self = brick_at(play, at), i;
+    int i;
     Vec3 p = at;
 
     rumble(play, PLAY_RUMBLE_STRONG);
@@ -392,6 +396,11 @@ static void explode(Play *play, Vec3 at)
         if (n >= 0)
             brick_destroy(play, n);
     }
+}
+
+static void explode(Play *play, Vec3 at)
+{
+    burst(play, brick_at(play, at), at);
 }
 
 /* Break a brick outright, whatever hits it has left (vtable slot 0x4c). */
@@ -408,7 +417,10 @@ static void brick_destroy(Play *play, int index)
     switch (b->object->type) {
     case 0x20: /* explosive */
         brick_sound(play, index, "Explosive.ogg");
-        explode(play, b->position);
+        /* Itself, not whatever brick_at finds there: a brick sharing its
+           cell would leave it standing, and two such bricks would blow
+           each other up for ever. */
+        burst(play, index, b->position);
         break;
     case 0x28:
         brick_sound(play, index, "Strong2.ogg");
@@ -449,7 +461,7 @@ static bool brick_hit(Play *play, int index, const Ball *ball)
         return b->animal->kind == MODEL_ROCKET || !through;
     }
     if (flags & BALL_EXPLOSIVE) {
-        explode(play, b->position);
+        burst(play, index, b->position);
         return !through;
     }
     switch (b->object->type) {
@@ -1772,7 +1784,7 @@ static bool bullet_update(Play *play, Bullet *bullet, uint32_t ms, float dt)
         return true;
     case BULLET_YADRO:
     case BULLET_SMALL_CANNON:
-        explode(play, play->scene->bricks[index].position);
+        burst(play, index, play->scene->bricks[index].position);
         return false;
     default:
         rumble(play, PLAY_RUMBLE_LIGHT);
