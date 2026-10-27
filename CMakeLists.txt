@@ -136,8 +136,9 @@ else()
     target_link_libraries(openmb2 PRIVATE ${SDL2_TARGET})
 endif()
 
-# While the engine is young it keeps a console window on Windows, so the
-# log is visible. Set WIN32_EXECUTABLE on the target to hide it later.
+# No console window on Windows; main.c borrows the command prompt's, or
+# opens one for --console.
+set_target_properties(openmb2 PROPERTIES WIN32_EXECUTABLE ON)
 if(MINGW)
     target_link_options(openmb2 PRIVATE -static -static-libgcc)
     if(OPENMB2_BUILD_TOOLS)

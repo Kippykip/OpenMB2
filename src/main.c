@@ -50,6 +50,10 @@
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #endif
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#endif
 
 /* The original game's menus are laid out for 800x600. */
 
@@ -656,6 +660,26 @@ static void shutdown_app(void)
     SDL_Quit();
 }
 
+/* The Windows exe has no console window of its own. Started from a
+   command prompt it writes the log there, unless that was redirected to a
+   file; --console opens a window for it otherwise. */
+static void open_console(bool wanted)
+{
+#ifdef _WIN32
+    HANDLE err = GetStdHandle(STD_ERROR_HANDLE);
+
+    if (err != NULL && err != INVALID_HANDLE_VALUE && GetFileType(err) != FILE_TYPE_UNKNOWN)
+        return;
+    if (!AttachConsole(ATTACH_PARENT_PROCESS) && !(wanted && AllocConsole()))
+        return;
+    freopen("CONOUT$", "w", stdout);
+    freopen("CONOUT$", "w", stderr);
+    fputc('\n', stderr); /* off the end of the prompt */
+#else
+    (void)wanted;
+#endif
+}
+
 int main(int argc, char **argv)
 {
     const char *game_folder = NULL, *start_level = NULL, *start_menu = NULL;
@@ -663,7 +687,7 @@ int main(int argc, char **argv)
     unsigned seed = (unsigned)time(NULL);
     /* Switches given on the command line, which win over openmb2.ini. */
     bool no_smooth = false, test_crash = false, no_intro = false, original_glass = false, original_bounce = false,
-         original_mouse = false, wide_menus = false;
+         original_mouse = false, wide_menus = false, console = false;
     int i;
 
     g_app.mouse_mode = -1;
@@ -703,7 +727,11 @@ int main(int argc, char **argv)
             log_set_level(LOG_DEBUG);
         else if (strcmp(argv[i], "--test-crash") == 0)
             test_crash = true;
+        else if (strcmp(argv[i], "--console") == 0)
+            console = true;
     }
+
+    open_console(console);
 
     crash_install(NULL);
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) != 0) {

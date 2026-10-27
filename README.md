@@ -102,6 +102,7 @@ shown but not sent while this setting is on.
 - `--no-intro` skips each level's opening camera flight
 - `--screenshot shot.bmp` saves the first frame and quits
 - `--test-crash` crashes on purpose, to check the crash report below
+- `--console` opens a console window for the log on Windows (`--debug` makes the log more detailed)
 
 If OpenMB2 crashes, it writes `openmb2_crash.txt` next to `score.dat`
 with the build, the kind of crash and the addresses it was running.
