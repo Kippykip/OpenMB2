@@ -1,0 +1,32 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-2.0-or-later -->
+<!-- OpenMB2 in a browser. Put this next to openmb2.js, openmb2.wasm and
+     the game data made by file_packager (openmb2-data.js, openmb2.data);
+     see web/README.md. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpenMB2</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; color: #ddd; font: 16px sans-serif; }
+  #openmb2 { position: relative; width: 100%; max-width: 1024px; aspect-ratio: 4 / 3; margin: 0 auto; }
+  #openmb2 canvas { display: block; outline: none; width: 100%; height: 100%; background: #000; }
+  #openmb2-start { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
+                   justify-content: center; gap: 12px; background: rgba(0, 0, 0, 0.75); cursor: pointer; }
+  #openmb2-start[hidden] { display: none; }
+  #openmb2-start b { font-size: 28px; }
+  #openmb2-bar { width: 50%; height: 6px; background: #333; }
+  #openmb2-bar div { width: 0; height: 100%; background: #6af; }
+</style>
+</head>
+<body>
+<div id="openmb2">
+  <canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
+  <div id="openmb2-start"><b>OpenMB2</b><span id="openmb2-status">Loading…</span><div id="openmb2-bar"><div></div></div></div>
+</div>
+<script src="openmb2-boot.js"></script>
+<script src="openmb2-data.js"></script>
+<script src="openmb2.js" async></script>
+</body>
+</html>

@@ -126,9 +126,18 @@ include(cmake/libopenmpt.cmake)
 target_link_libraries(openmb2 PRIVATE ${LIBOPENMPT_TARGET})
 
 if(EMSCRIPTEN)
+    # The page (web/index.html) loads openmb2.js, the game data packed
+    # with file_packager at /game, and starts it with --game /game.
+    # web/pre.js keeps /save (saved games, scores, openmb2.ini) in the
+    # browser's IndexedDB.
     target_compile_options(openmb2 PRIVATE -sUSE_SDL=2)
-    target_link_options(openmb2 PRIVATE -sUSE_SDL=2 -sMAX_WEBGL_VERSION=1 -sALLOW_MEMORY_GROWTH=1)
-    set_target_properties(openmb2 PROPERTIES SUFFIX ".html")
+    target_link_options(openmb2 PRIVATE
+        -sUSE_SDL=2 -sMIN_WEBGL_VERSION=1 -sMAX_WEBGL_VERSION=2 -sGL_ENABLE_GET_PROC_ADDRESS
+        -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=64MB -sSTACK_SIZE=1MB
+        -sDISABLE_EXCEPTION_CATCHING=0 -sFORCE_FILESYSTEM -lidbfs.js
+        -sEXPORTED_RUNTIME_METHODS=callMain,FS
+        --pre-js ${CMAKE_CURRENT_SOURCE_DIR}/web/pre.js)
+    set_property(TARGET openmb2 APPEND PROPERTY LINK_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/web/pre.js)
 else()
     if(TARGET SDL2::SDL2main)
         target_link_libraries(openmb2 PRIVATE SDL2::SDL2main)

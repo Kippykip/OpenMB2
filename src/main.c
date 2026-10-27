@@ -68,6 +68,7 @@ typedef struct App {
     const char *screenshot_path;
     int run_ms;          /* with screenshot_path: game time to play first */
     uint32_t last_ticks;
+    uint32_t saved_ticks; /* when the settings were last saved (browser) */
     bool playing;        /* a level, not the menus */
     bool focused;        /* the window has the keyboard */
     bool cheats;         /* --cheats: the arrow keys are the testing keys in a level */
@@ -183,9 +184,19 @@ static void log_game_contents(void)
 static bool create_gl_context(void)
 {
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
+#ifdef __EMSCRIPTEN__
+    /* WebGL 2 where there is one: WebGL 1 can't repeat textures whose
+       sides aren't powers of two, and some of the game's aren't. */
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
     g_app.gl_context = SDL_GL_CreateContext(g_app.window);
+    if (g_app.gl_context == NULL)
+        log_info("no WebGL 2 (%s), trying WebGL 1", SDL_GetError());
+#endif
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+    if (g_app.gl_context == NULL)
+        g_app.gl_context = SDL_GL_CreateContext(g_app.window);
 
     if (g_app.gl_context == NULL) {
         log_info("no OpenGL ES 2 context (%s), trying OpenGL 2.1", SDL_GetError());
@@ -309,8 +320,11 @@ static bool create_window(void)
         log_error("can't create window: %s", SDL_GetError());
         return false;
     }
+#ifndef __EMSCRIPTEN__
+    /* A page may only go full screen when the player asks (Alt+Enter). */
     if (want_fullscreen())
         apply_video(true);
+#endif
     return create_gl_context();
 }
 
@@ -574,7 +588,9 @@ static void frame(int width, int height, uint32_t ms)
     }
     switch (menu_screen_frame(width, height, ms)) {
     case MENU_ACTION_PLAY: start_play(); break;
+#ifndef __EMSCRIPTEN__
     case MENU_ACTION_QUIT: g_app.running = false; break;
+#endif
     default: break;
     }
 }
@@ -604,6 +620,12 @@ static void run_frame(void)
     SDL_GL_SwapWindow(g_app.window);
 
 #ifdef __EMSCRIPTEN__
+    /* A page is closed without warning, so settings changed in the menus
+       are saved every few seconds instead of on the way out. */
+    if (g_app.last_ticks - g_app.saved_ticks > 3000) {
+        g_app.saved_ticks = g_app.last_ticks;
+        save_settings();
+    }
     if (!g_app.running)
         emscripten_cancel_main_loop();
 #endif
@@ -619,10 +641,13 @@ static void show_error(const char *message)
 
 static void save_settings(void)
 {
+    static char saved[4096];
     char text[4096];
     int length = settings_format(&g_app.settings, text, sizeof(text));
-    if (length > 0 && length < (int)sizeof(text))
-        userfile_write("openmb2.ini", text, (size_t)length);
+    if (length <= 0 || length >= (int)sizeof(text) || strcmp(text, saved) == 0)
+        return;
+    if (userfile_write("openmb2.ini", text, (size_t)length))
+        memcpy(saved, text, (size_t)length + 1);
 }
 
 /* openmb2.ini over params.txt's settings (an older openmb2.ini has only
