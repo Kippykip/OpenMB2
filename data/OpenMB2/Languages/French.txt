@@ -98,7 +98,7 @@ Claude (Anthropic)
 Kippykip.com
 pr‰sente
 Une r‰impl‰mentation de Magic Ball 2
-OpenMB2 v1.0.1
+OpenMB2 v1.0.2
 Magic Ball 2 original (c) 2002-2005 DreamDale    Publi‰ par Alawar Entertainment
 Astuces :   F6 - Changer de musique   F7 - Changer d'arriˆre-plan   F8 - Changer la texture du plateau   F9 - Replacer la cam‰ra.
 Bonne chance ;-)

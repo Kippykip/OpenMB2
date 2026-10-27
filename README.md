@@ -12,7 +12,7 @@ the game, so you need a Magic Ball 2 or Smash Frenzy 2 install.
 
 ## Status / Roadmap
 
-Version 1.0.1: the whole game plays from start to finish.
+Version 1.0.2: the whole game plays from start to finish.
 
 - [x] Reads the game folder, loose or packed (`.pak` / `.dat`), with
       Windows-style file names on any system

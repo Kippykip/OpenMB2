@@ -99,7 +99,7 @@ Claude (Anthropic)
 Kippykip.com
 Przedstawia
 Nowa implementacja Magic Ball 2
-OpenMB2 v1.0.1
+OpenMB2 v1.0.2
 Oryginalne MB2 Copyright (c) 2002-2005 DreamDale    Wydane przez Alawar Entertainment
 Wskaz“wki:   F6 - zmiana muzyki   F7 - zmiana tàa   F8 - zmiana tekstury planszy   F9 - reset kamery
 Powodzenia ;-)
